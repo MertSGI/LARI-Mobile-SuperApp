@@ -13,6 +13,43 @@ const ELIGIBLE_SUBSCRIPTION_STATUSES = new Set([
   'trialing'
 ]);
 
+const LEGACY_PLAN_CODES = new Set(['standart']);
+
+export function isLegacyPlanCode(planCode?: string | null): boolean {
+  if (typeof planCode !== 'string') return false;
+  return LEGACY_PLAN_CODES.has(planCode.trim().toLowerCase());
+}
+
+export function filterPublicAssignableCatalog(plans: unknown): CommercialPublicPlan[] {
+  if (!Array.isArray(plans)) {
+    return [];
+  }
+  return plans.filter((item): item is CommercialPublicPlan => {
+    if (!item || typeof item !== 'object') {
+      return false;
+    }
+    const plan = item as CommercialPublicPlan & {
+      is_public?: boolean;
+      is_legacy?: boolean;
+      is_assignable?: boolean;
+      is_active?: boolean;
+      plan_id?: string;
+    };
+    if (
+      plan.is_legacy === true ||
+      plan.is_public === false ||
+      plan.is_assignable === false ||
+      plan.is_active === false
+    ) {
+      return false;
+    }
+    if (isLegacyPlanCode(plan.plan_code) || isLegacyPlanCode(plan.plan_id)) {
+      return false;
+    }
+    return true;
+  });
+}
+
 export interface CommercialEnforcementSnapshot {
   success: boolean;
   tenant_id?: string;
@@ -101,7 +138,83 @@ export function isCommercialSubscriptionSnapshotEligible(
     return false;
   }
 
+  const paidThroughDate =
+    (typeof record.paid_through_date === 'string' || record.paid_through_date === null
+      ? (record.paid_through_date as string | null)
+      : undefined) ??
+    (typeof record.paidThroughDate === 'string' || record.paidThroughDate === null
+      ? (record.paidThroughDate as string | null)
+      : undefined) ??
+    (nestedSub && (typeof nestedSub.paid_through_date === 'string' || nestedSub.paid_through_date === null)
+      ? (nestedSub.paid_through_date as string | null)
+      : undefined) ??
+    (nestedSub && (typeof nestedSub.paidThroughDate === 'string' || nestedSub.paidThroughDate === null)
+      ? (nestedSub.paidThroughDate as string | null)
+      : undefined);
+
+  if (normalizedStatus === 'manual_active' && !isFutureOrUnboundedTimestamp(paidThroughDate, nowMs)) {
+    return false;
+  }
+
   return true;
+}
+
+/**
+ * Checks whether a `past_due` snapshot explicitly holds a still-valid grace window.
+ * Kept separate from `isCommercialSubscriptionSnapshotEligible` so bare `past_due`
+ * without explicit grace remains fail-closed.
+ */
+export function isPastDueWithinGraceWindow(
+  snapshot: TenantCommercialSubscriptionSnapshot | null | undefined,
+  now: Date | number = Date.now()
+): boolean {
+  if (!snapshot || snapshot.success !== true) {
+    return false;
+  }
+  const record = snapshot as unknown as Record<string, unknown>;
+  const nestedSub =
+    record.subscription && typeof record.subscription === 'object'
+      ? (record.subscription as Record<string, unknown>)
+      : null;
+
+  const rawStatus =
+    (typeof record.status === 'string' ? record.status : undefined) ??
+    (nestedSub && typeof nestedSub.status === 'string' ? nestedSub.status : undefined);
+  const normalizedStatus = typeof rawStatus === 'string' ? rawStatus.trim().toLowerCase() : '';
+  if (normalizedStatus !== 'past_due') {
+    return false;
+  }
+
+  const nowMs = typeof now === 'number' ? now : now.getTime();
+  const graceUntil =
+    (typeof record.grace_until === 'string' || record.grace_until === null
+      ? (record.grace_until as string | null)
+      : undefined) ??
+    (typeof record.graceUntil === 'string' || record.graceUntil === null
+      ? (record.graceUntil as string | null)
+      : undefined) ??
+    (nestedSub && (typeof nestedSub.grace_until === 'string' || nestedSub.grace_until === null)
+      ? (nestedSub.grace_until as string | null)
+      : undefined) ??
+    (nestedSub && (typeof nestedSub.graceUntil === 'string' || nestedSub.graceUntil === null)
+      ? (nestedSub.graceUntil as string | null)
+      : undefined);
+
+  return isRequiredFutureTimestamp(graceUntil, nowMs);
+}
+
+/**
+ * Backward-compatibility helper that accepts standard eligible snapshots as well as
+ * `past_due` snapshots within an explicit unexpired grace window.
+ */
+export function isLegacySubscriptionSnapshotEligible(
+  snapshot: TenantCommercialSubscriptionSnapshot | null | undefined,
+  now: Date | number = Date.now()
+): boolean {
+  return (
+    isCommercialSubscriptionSnapshotEligible(snapshot, now) ||
+    isPastDueWithinGraceWindow(snapshot, now)
+  );
 }
 
 function isValidTenantSnapshotResponse(
@@ -152,7 +265,7 @@ export const commercialCatalogService = {
       return [];
     }
 
-    return data as CommercialPublicPlan[];
+    return filterPublicAssignableCatalog(data);
   },
 
   /**
