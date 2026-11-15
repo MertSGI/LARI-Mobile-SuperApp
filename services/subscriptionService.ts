@@ -37,9 +37,18 @@ export interface TenantSubscription {
   planChangeStatus?: 'none' | 'upgrade_pending' | 'downgrade_scheduled' | 'cancelled_at_period_end' | 'manual_review_required';
   scheduledPlanId?: string;
   paidThroughDate?: string;
+  lastWebhookEventAt?: string;
   manualActivationReason?: string;
   paymentReferenceNote?: string;
   nextManualReviewAt?: string;
+}
+
+const CLIENT_SIMULATION_MODES = new Set(['mock', 'local', 'demo']);
+
+function getRuntimeDataMode(): string {
+  const importMetaMode = typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_DATA_MODE : undefined;
+  const processMode = typeof process !== 'undefined' ? process.env?.VITE_DATA_MODE : undefined;
+  return String(processMode || importMetaMode || 'mock').trim();
 }
 
 export interface TenantUsage {
@@ -502,72 +511,95 @@ export const subscriptionService = {
   async schedulePlanChange(tenantId: string, targetPlanId: string, timing: 'immediate' | 'period_end'): Promise<TenantSubscription> {
     if (timing === 'immediate') {
       return this.upgradePlanNow(tenantId, targetPlanId);
-    } else {
+    }
+    if (timing === 'period_end') {
       return this.scheduleDowngradeAtPeriodEnd(tenantId, targetPlanId);
     }
+    throw new Error(`INVALID_TIMING: Invalid plan change timing '${String(timing)}'`);
   },
 
   async upgradePlanNow(tenantId: string, targetPlanId: string): Promise<TenantSubscription> {
-    const sub = await this.getCurrentSubscription(tenantId);
-    if (sub) {
-      sub.planId = targetPlanId;
-      sub.planChangeStatus = 'none';
-      sub.scheduledPlanId = undefined;
-      localStorage.setItem(`mock_subscription_${tenantId}`, JSON.stringify(sub));
-      await dataProvider.set(DYNAMIC_STORAGE_KEYS.tenantSubscription(tenantId), sub);
-
-      // Queue Upgrade Success event
-      try {
-        communicationEventService.queueCommunicationEvent({
-          tenantId,
-          subscriptionId: sub.planId,
-          audience: 'business_owner',
-          channel: 'email',
-          type: 'plan_upgraded',
-          contextArgs: {
-            businessName: tenantId,
-            newPlanName: targetPlanId.toUpperCase()
-          }
-        });
-      } catch (e) {
-        console.error('Plan upgrade outbox hook error:', e);
-      }
-
-      return sub;
+    const mode = getRuntimeDataMode();
+    if (!CLIENT_SIMULATION_MODES.has(mode)) {
+      throw new Error('Client-side plan upgrade is unauthorized in production/supabase mode. Use server-side RPC or verified webhook.');
     }
-    throw new Error('Subscription not found');
+    const sub = await this.getCurrentSubscription(tenantId);
+    if (!sub) {
+      throw new Error('Subscription not found');
+    }
+    const { subscriptionLifecycleService } = await import('./subscriptionLifecycleService');
+    const calc = subscriptionLifecycleService.calculatePlanChange(sub, targetPlanId, 'immediate');
+    if (!calc.success) {
+      throw new Error(`${calc.errorCode || 'PLAN_CHANGE_REJECTED'}: ${calc.message || 'Plan upgrade rejected.'}`);
+    }
+
+    const updated = calc.updatedSub;
+    localStorage.setItem(`mock_subscription_${tenantId}`, JSON.stringify(updated));
+    await dataProvider.set(DYNAMIC_STORAGE_KEYS.tenantSubscription(tenantId), updated);
+
+    // Queue Upgrade Success event
+    try {
+      communicationEventService.queueCommunicationEvent({
+        tenantId,
+        subscriptionId: updated.planId,
+        audience: 'business_owner',
+        channel: 'email',
+        type: 'plan_upgraded',
+        contextArgs: {
+          businessName: tenantId,
+          newPlanName: targetPlanId.toUpperCase()
+        }
+      });
+    } catch (e) {
+      console.error('Plan upgrade outbox hook error:', e);
+    }
+
+    return updated;
   },
 
   async scheduleDowngradeAtPeriodEnd(tenantId: string, targetPlanId: string): Promise<TenantSubscription> {
-    const sub = await this.getCurrentSubscription(tenantId);
-    if (sub) {
-      sub.planChangeStatus = 'downgrade_scheduled';
-      sub.scheduledPlanId = targetPlanId;
-      localStorage.setItem(`mock_subscription_${tenantId}`, JSON.stringify(sub));
-      await dataProvider.set(DYNAMIC_STORAGE_KEYS.tenantSubscription(tenantId), sub);
-
-      // Queue Downgrade Scheduled event
-      try {
-        communicationEventService.queueCommunicationEvent({
-          tenantId,
-          subscriptionId: sub.planId,
-          audience: 'business_owner',
-          channel: 'in_app',
-          type: 'plan_downgrade_scheduled',
-          contextArgs: {
-            newPlanName: targetPlanId.toUpperCase()
-          }
-        });
-      } catch (e) {
-        console.error('Plan downgrade outbox hook error:', e);
-      }
-
-      return sub;
+    const mode = getRuntimeDataMode();
+    if (!CLIENT_SIMULATION_MODES.has(mode)) {
+      throw new Error('Client-side plan downgrade scheduling is unauthorized in production/supabase mode. Use server-side RPC or verified webhook.');
     }
-    throw new Error('Subscription not found');
+    const sub = await this.getCurrentSubscription(tenantId);
+    if (!sub) {
+      throw new Error('Subscription not found');
+    }
+    const { subscriptionLifecycleService } = await import('./subscriptionLifecycleService');
+    const calc = subscriptionLifecycleService.calculatePlanChange(sub, targetPlanId, 'period_end');
+    if (!calc.success) {
+      throw new Error(`${calc.errorCode || 'PLAN_CHANGE_REJECTED'}: ${calc.message || 'Plan downgrade rejected.'}`);
+    }
+
+    const updated = calc.updatedSub;
+    localStorage.setItem(`mock_subscription_${tenantId}`, JSON.stringify(updated));
+    await dataProvider.set(DYNAMIC_STORAGE_KEYS.tenantSubscription(tenantId), updated);
+
+    // Queue Downgrade Scheduled event
+    try {
+      communicationEventService.queueCommunicationEvent({
+        tenantId,
+        subscriptionId: updated.planId,
+        audience: 'business_owner',
+        channel: 'in_app',
+        type: 'plan_downgrade_scheduled',
+        contextArgs: {
+          newPlanName: targetPlanId.toUpperCase()
+        }
+      });
+    } catch (e) {
+      console.error('Plan downgrade outbox hook error:', e);
+    }
+
+    return updated;
   },
 
   async cancelAtPeriodEnd(tenantId: string): Promise<TenantSubscription> {
+    const mode = getRuntimeDataMode();
+    if (!CLIENT_SIMULATION_MODES.has(mode)) {
+      throw new Error('Client-side direct cancellation is unauthorized in production/supabase mode. Use server-side RPC or verified webhook.');
+    }
     const sub = await this.getCurrentSubscription(tenantId);
     if (sub) {
       sub.cancelAtPeriodEnd = true;
@@ -596,7 +628,49 @@ export const subscriptionService = {
     throw new Error('Subscription not found');
   },
 
+  async withdrawScheduledCancellation(tenantId: string): Promise<TenantSubscription> {
+    const mode = getRuntimeDataMode();
+    if (!CLIENT_SIMULATION_MODES.has(mode)) {
+      throw new Error('Client-side cancellation withdrawal is unauthorized in production/supabase mode. Use server-side RPC or verified webhook.');
+    }
+    const sub = await this.getCurrentSubscription(tenantId);
+    if (sub) {
+      sub.cancelAtPeriodEnd = false;
+      if (sub.planChangeStatus === 'cancelled_at_period_end') {
+        sub.planChangeStatus = 'none';
+      }
+      localStorage.setItem(`mock_subscription_${tenantId}`, JSON.stringify(sub));
+      await dataProvider.set(DYNAMIC_STORAGE_KEYS.tenantSubscription(tenantId), sub);
+
+      // Queue Cancellation Withdrawn event using canonical subscription_active template
+      try {
+        communicationEventService.queueCommunicationEvent({
+          tenantId,
+          subscriptionId: sub.planId,
+          audience: 'business_owner',
+          channel: 'email',
+          type: 'subscription_active',
+          contextArgs: {
+            businessName: tenantId
+          },
+          metadata: {
+            reason: 'cancellation_withdrawn'
+          }
+        });
+      } catch (e) {
+        console.error('Cancellation withdrawal outbox hook error:', e);
+      }
+
+      return sub;
+    }
+    throw new Error('Subscription not found');
+  },
+
   async cancelImmediately(tenantId: string): Promise<TenantSubscription> {
+    const mode = getRuntimeDataMode();
+    if (!CLIENT_SIMULATION_MODES.has(mode)) {
+      throw new Error('Client-side direct cancellation is unauthorized in production/supabase mode. Use server-side RPC or verified webhook.');
+    }
     const sub = await this.getCurrentSubscription(tenantId);
     if (sub) {
       sub.status = 'cancelled';
@@ -657,6 +731,10 @@ export const subscriptionService = {
     const sub = await this.getCurrentSubscription(tenantId);
     if (sub) {
       sub.status = 'active';
+      sub.cancelAtPeriodEnd = false;
+      if (sub.planChangeStatus === 'cancelled_at_period_end') {
+        sub.planChangeStatus = 'none';
+      }
       localStorage.setItem(`mock_subscription_${tenantId}`, JSON.stringify(sub));
       await dataProvider.set(DYNAMIC_STORAGE_KEYS.tenantSubscription(tenantId), sub);
 
@@ -742,6 +820,30 @@ export const subscriptionService = {
         website_publication: isActive && entitlements.features.website_publication,
         online_booking: isActive && entitlements.features.online_booking,
       }
+    };
+  },
+
+  async reconcileSubscriptionWithProvider(
+    tenantId: string,
+    remoteProviderData: { status: string; currentPeriodEnd?: string; planId?: string; hasVerifiedPaymentProof?: boolean }
+  ): Promise<{ inSync: boolean; subscription: TenantSubscription }> {
+    const mode = getRuntimeDataMode();
+    if (!CLIENT_SIMULATION_MODES.has(mode)) {
+      throw new Error('Client-side provider reconciliation is unauthorized in production/supabase mode. Use server-side RPC.');
+    }
+    const current = await this.getCurrentSubscription(tenantId);
+    if (!current) {
+      throw new Error(`Subscription for tenant ${tenantId} not found`);
+    }
+    const { subscriptionLifecycleService } = await import('./subscriptionLifecycleService');
+    const result = subscriptionLifecycleService.reconcileSubscription(current, remoteProviderData);
+    if (!result.inSync && (result.resolutionApplied === 'updated_local_status' || result.resolutionApplied === 'updated_period')) {
+      localStorage.setItem(`mock_subscription_${tenantId}`, JSON.stringify(result.reconciledSub));
+      await dataProvider.set(DYNAMIC_STORAGE_KEYS.tenantSubscription(tenantId), result.reconciledSub);
+    }
+    return {
+      inSync: result.inSync,
+      subscription: result.reconciledSub
     };
   }
 };

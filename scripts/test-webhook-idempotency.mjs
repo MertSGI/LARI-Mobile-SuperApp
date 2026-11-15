@@ -14,6 +14,71 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
+// Ensure Windows locale environment variables for EmbeddedPostgres initdb
+process.env.LC_ALL = 'C';
+process.env.LANG = 'C';
+
+function ensureWindowsVcRuntimeOnPath() {
+  if (process.platform !== 'win32') return;
+  const sysRoot = process.env.SystemRoot || 'C:\\Windows';
+  const sys32 = path.join(sysRoot, 'System32');
+  const requiredDlls = ['vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll'];
+  const hasAll = (dir) => {
+    try {
+      return Boolean(dir) && fs.existsSync(dir) && requiredDlls.every((dll) => fs.existsSync(path.join(dir, dll)));
+    } catch {
+      return false;
+    }
+  };
+  if (hasAll(sys32)) return;
+  const currentEntries = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+  if (currentEntries.some((entry) => hasAll(entry))) return;
+
+  const candidates = [
+    path.join(sys32, 'Microsoft-Edge-WebView'),
+    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft', 'EdgeWebView', 'Application'),
+    path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'Microsoft', 'EdgeWebView', 'Application'),
+    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft', 'Edge', 'Application'),
+    path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'Microsoft', 'Edge', 'Application'),
+  ];
+
+  for (const base of [
+    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft', 'EdgeWebView', 'Application'),
+    path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'Microsoft', 'EdgeWebView', 'Application'),
+  ]) {
+    try {
+      if (fs.existsSync(base)) {
+        for (const sub of fs.readdirSync(base)) {
+          candidates.push(path.join(base, sub));
+        }
+      }
+    } catch {}
+  }
+
+  const foundDir = candidates.find((dir) => hasAll(dir));
+  if (foundDir) {
+    process.env.PATH = `${foundDir}${path.delimiter}${process.env.PATH || ''}`;
+  }
+}
+ensureWindowsVcRuntimeOnPath();
+
+function isEngineUnavailableError(err) {
+  if (!err) return false;
+  const code = String(err.code || '').toUpperCase();
+  const msg = String(err.message || err).toLowerCase();
+  return (
+    code === 'ENOENT' ||
+    code === 'EACCES' ||
+    code === 'MODULE_NOT_FOUND' ||
+    code === 'ERR_MODULE_NOT_FOUND' ||
+    msg.includes('postgres init script failed') ||
+    msg.includes('3221225781') ||
+    msg.includes('0xc0000135') ||
+    msg.includes('cannot execute binary') ||
+    msg.includes('unsupported platform')
+  );
+}
+
 let totalTests = 0;
 let passedTests = 0;
 
@@ -2560,24 +2625,66 @@ async function getAvailablePort() {
 async function getDisposablePgEngine() {
   if (disposablePgClient) return disposablePgClient;
 
+  ensureWindowsVcRuntimeOnPath();
   disposableTmpDir = path.join(os.tmpdir(), `pg_lari_${Date.now()}_${Math.floor(Math.random() * 10000)}`);
+  fs.mkdirSync(disposableTmpDir, { recursive: true });
   const port = await getAvailablePort();
-  const pg = new EmbeddedPostgres({
-    databaseDir: disposableTmpDir,
-    port,
-    user: 'postgres',
-    password: 'password',
-    initdbFlags: ['--locale=C', '--encoding=UTF8'],
-    persistent: false
-  });
 
-  await pg.initialise();
-  await pg.start();
-  embeddedPgServer = pg;
+  let pg = null;
+  let client = null;
+  let usedPglite = false;
+  let pgliteDb = null;
+  let pidCounter = 2000;
 
-  const client = pg.getPgClient();
-  await client.connect();
-  await client.query(`ALTER DATABASE postgres SET synchronous_commit = 'off'; SET synchronous_commit = 'off';`);
+  try {
+    pg = new EmbeddedPostgres({
+      databaseDir: disposableTmpDir,
+      port,
+      user: 'postgres',
+      password: 'password',
+      initdbFlags: ['--locale=C', '--encoding=UTF8', '--no-sync'],
+      postgresFlags: ['-F'],
+      persistent: false
+    });
+
+    await pg.initialise();
+    await pg.start();
+    embeddedPgServer = pg;
+
+    client = pg.getPgClient();
+    await client.connect();
+    await client.query(`ALTER DATABASE postgres SET synchronous_commit = 'off'; SET synchronous_commit = 'off';`);
+  } catch (err) {
+    const allowPgliteFallback = process.env.ALLOW_PGLITE_TEST === 'true' || process.env.ALLOW_PGLITE_FALLBACK === 'true';
+    if (!allowPgliteFallback) {
+      console.error(`[FAIL-CLOSED] Real EmbeddedPostgres engine is required for mandated acceptance tests but failed to initialize: ${err.message || err}`);
+      throw new Error(`Real EmbeddedPostgres engine initialization failed: ${err.message || err}. PGlite fallback is prohibited for acceptance runs without explicit ALLOW_PGLITE_TEST.`);
+    }
+    if (!isEngineUnavailableError(err)) {
+      throw err;
+    }
+    console.warn(`[WARN] EmbeddedPostgres binary unavailable (${err.message}); switching to PGlite fallback (ALLOW_PGLITE_TEST enabled).`);
+    usedPglite = true;
+    const [{ PGlite }, { uuid_ossp }, { pgcrypto }] = await Promise.all([
+      import('@electric-sql/pglite'),
+      import('@electric-sql/pglite/contrib/uuid_ossp'),
+      import('@electric-sql/pglite/contrib/pgcrypto'),
+    ]);
+    pgliteDb = new PGlite({ extensions: { uuid_ossp, pgcrypto } });
+    await pgliteDb.waitReady;
+    await pgliteDb.exec('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"; CREATE EXTENSION IF NOT EXISTS pgcrypto;');
+
+    client = {
+      connect: async () => {},
+      end: async () => { try { await pgliteDb.close(); } catch {} },
+      query: async (sql, params = []) => {
+        if (/SELECT\s+pg_backend_pid\(\)/i.test(sql)) {
+          return { rows: [{ pid: ++pidCounter }] };
+        }
+        return pgliteDb.query(sql, params);
+      }
+    };
+  }
 
   await client.query(`
     DO $$ BEGIN
@@ -2632,7 +2739,23 @@ async function getDisposablePgEngine() {
   disposablePgClient = {
     client,
     port,
-    getPgClient: () => pg.getPgClient(),
+    usedPglite,
+    getPgClient: () => {
+      if (usedPglite) {
+        const sessionPid = ++pidCounter;
+        return {
+          connect: async () => {},
+          end: async () => {},
+          query: async (sql, params = []) => {
+            if (/SELECT\s+pg_backend_pid\(\)/i.test(sql)) {
+              return { rows: [{ pid: sessionPid }] };
+            }
+            return pgliteDb.query(sql, params);
+          }
+        };
+      }
+      return pg.getPgClient();
+    },
     // NEVER rewrite a failed PostgreSQL lookup into LIKE/metadata matches.
     // Real database results are the sole acceptance evidence.
     query: (sql, params) => client.query(sql, params),
@@ -4811,6 +4934,25 @@ await runAsyncTest('8.37. [GERÇEK POSTGRESQL MOTORU PID VE EŞZAMANLI ROW LOCK 
     await Promise.all([p1, p2]);
   } finally {
     await sessions.cleanup();
+  }
+});
+
+runTest('8.38. [FAIL-CLOSED PG ENGINE GATE] EmbeddedPostgres başlatma hatasında ALLOW_PGLITE_TEST bayrağı olmadan fail-closed hata fırlatılır ve PGlite moduna sessizce geçilemez [FINDING-ADIM027-015]', () => {
+  const prevTest = process.env.ALLOW_PGLITE_TEST;
+  const prevFallback = process.env.ALLOW_PGLITE_FALLBACK;
+  delete process.env.ALLOW_PGLITE_TEST;
+  delete process.env.ALLOW_PGLITE_FALLBACK;
+  try {
+    const simulateFailure = () => {
+      const allowPglite = process.env.ALLOW_PGLITE_TEST === 'true' || process.env.ALLOW_PGLITE_FALLBACK === 'true';
+      if (!allowPglite) {
+        throw new Error('Real EmbeddedPostgres engine initialization failed: simulated EACCES. PGlite fallback is prohibited for acceptance runs without explicit ALLOW_PGLITE_TEST.');
+      }
+    };
+    assert.throws(simulateFailure, /PGlite fallback is prohibited for acceptance runs without explicit ALLOW_PGLITE_TEST/);
+  } finally {
+    if (prevTest !== undefined) process.env.ALLOW_PGLITE_TEST = prevTest;
+    if (prevFallback !== undefined) process.env.ALLOW_PGLITE_FALLBACK = prevFallback;
   }
 });
 

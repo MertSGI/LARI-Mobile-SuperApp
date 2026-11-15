@@ -186,6 +186,19 @@ const BillingTab: React.FC = () => {
     }
   };
 
+  const handleWithdrawCancellation = async () => {
+    if (!tenant) return;
+    try {
+      const updated = await subscriptionService.withdrawScheduledCancellation(tenant.id);
+      setSubscription(updated);
+      setCheckoutMessage(language === 'tr'
+        ? "Dönem sonu iptal talebiniz geri çekildi. Aboneliğiniz kesintisiz devam edecektir."
+        : "Cancellation request withdrawn. Your subscription will renew normally.");
+    } catch (e: any) {
+      setCheckoutError(e.message);
+    }
+  };
+
   if (loading) {
     return <div className="p-8 text-center text-gray-500">{translations[language || 'tr']?.billing?.loading || 'Yükleniyor...'}</div>;
   }
@@ -534,7 +547,7 @@ const BillingTab: React.FC = () => {
 
                   {subscription.cancelAtPeriodEnd && (
                     <button
-                      onClick={handleResume}
+                      onClick={handleWithdrawCancellation}
                       className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1.5 rounded-md font-medium transition-colors cursor-pointer"
                     >
                       {language === 'tr' ? '🔄 İptali Geri Çek' : '🔄 Recede Cancellation'}

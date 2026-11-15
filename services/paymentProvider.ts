@@ -7,6 +7,11 @@
  * - Non-connected client-side adapters return typed disabled errors with NO checkout URLs or session IDs.
  */
 
+// Re-export provider-neutral payment domain contracts & deterministic test provider
+export * from './paymentProviderContract.ts';
+export { DeterministicTestPaymentProvider } from './deterministicTestPaymentProvider.ts';
+export type { DeterministicPaymentProviderOptions, SimulatedPaymentOutcome } from './deterministicTestPaymentProvider.ts';
+
 export interface CheckoutSessionResult {
   url?: string;
   sessionId?: string;
