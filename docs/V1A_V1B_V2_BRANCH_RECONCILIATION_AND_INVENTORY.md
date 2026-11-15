@@ -41,7 +41,15 @@ Aşağıdaki 7 açık PR ve staging dalı Git geçmişi açısından incelenmiş
 - **Deltalar ve Uzlaştırma Durumu:**
   1. **LARI-V1A-SLUG-01:** `utils/slugUtils.ts`, `services/siteProvisioningService.ts`, `services/publicLinkService.ts`, `supabase/proposals/20261030_proposed_reserve_tenant_slug_atomic_rpc.sql` ve `scripts/test-slug-regression.mjs` paketleri ADIM-022 kapsamında HEAD'e taşınmış ve test edilmiştir (`ACCEPTED_COMPLETE`).
      - **Tur 1 Mikro-Uzlaşma (Bulgu #1 [P1_CONTRACT]):** `services/siteProvisioningService.ts` içindeki `hasExclusiveSlugOwnership` ve `reserveTenantSlug` fonksiyonları cerrahi olarak daraltıldı. `localStorage` mülkiyet sayımı ve yerel `tenantService.updateTenant` rollback mekanizması yalnızca yerel/non-Supabase modunda çalıştırılacak şekilde sınırlandırıldı. Supabase modunda ise münhasırlık yalnızca RPC sonucu ve yetkili DB okumalarıyla doğrulanmakta olup, yasaklı doğrudan istemci güncellemesi veya rollback çağrısı engellenmiştir. `scripts/test-slug-regression.mjs` içinde negatif regresyon testleri ile kanıtlanmıştır.
-  2. **W-LARI-LP-1/2/3:** Katalog ve randevu availability servislerindeki tenant izolasyon sıkılaştırmaları (`localCatalogRepository.ts`, `supabaseCatalogRepository.ts`, `availabilityService.ts`) Faz A2 (ADIM-023) kapsamında incelenip birleştirilecektir (`PARTIAL_IMPLEMENTATION`).
+  2. **W-LARI-LP-1/2/3:** Katalog ve randevu availability servislerindeki tenant izolasyon sıkılaştırmaları (`localCatalogRepository.ts`, `supabaseCatalogRepository.ts`, `localBookingRepository.ts`, `availabilityService.ts`) Faz A2 (ADIM-023) kapsamında taşınmış ve test edilmiştir (`ACCEPTED_COMPLETE`).
+     - **Tur 2 Denetçi Rework Uzlaşması (FINDING-ADIM023-009..014):**
+       - **FINDING-ADIM023-009:** `isRegressionFixture` ad-hoc kiracı baypası tamamen kaldırıldı; personel uygunluk kontrolü tüm kiracılar için istisnasız zorunlu kılındı.
+       - **FINDING-ADIM023-010:** `getNextAvailableSlotForStaff` ve `getEarliestAvailableStaff` metotları kiracıya ait aktif servis ve personel sahipliği ile uygunluk eşlemesini doğrulamak üzere güncellendi, çapraz/bilinmeyen nesneler için `null` döndürmesi sağlandı.
+       - **FINDING-ADIM023-011:** `LocalCatalogRepository.updateAvailability` metodunun `tenantId` ve `id` alanlarını mutasyon girdisiyle ezmesi engellendi, yetki dışı kiracı değişimleri fail-closed hata verecek şekilde korundu.
+       - **FINDING-ADIM023-012:** `createAppointment` çakışma ve süre hesabı münhasıran kiracıya ait katalog servisinden (`service.duration`) türetilecek şekilde güvenceye alındı; 0, negatif veya NaN sürelerle randevu sınırının aşılması engellendi.
+       - **FINDING-ADIM023-013:** `updateAppointment` patch girdilerinde `serviceId` ve `staffId` alanlarının kiracı sahipliği ve karşılıklı uygunluğu doğrulandı; çapraz kiracı nesneleri bağlama girişimleri engellendi.
+       - **FINDING-ADIM023-014:** `LocalCatalogRepository.listServicesForStaff` çıktısı kiracıya ait güncel servislerle kesiştirilerek bozuk/çapraz kiracı kimliklerinin sızması engellendi.
+       - **Tur 3 Kök Neden Düzeltmesi (FINDING-ADIM023-009 Sıfır Randevu Yazımı):** `LocalBookingRepository.listAppointments` metodunda, özel kataloğa sahip veya test/regresyon kiracıları için `apt_demo_1..5` sahte randevularının otomatik üretilip storage'a yazılması engellendi; böylece unmapped veya uygunsuz randevu denemelerinden sonra kiracının sıfır randevu (`0 appointments`) durumu korunmaktadır.
   3. **UI-V2 Önizlemesi:** `components/SalonWebsiteViewV2.tsx` ve `?ui=v2` yönlendirmesi Faz C1 (ADIM-031) kapsamında taşınacaktır (`PARTIAL_IMPLEMENTATION`).
   4. **Program V2 Güvenlik Sertleştirmesi:** `20261007_program_v2_security_surface_hardening.sql` önerisi Faz H1 (ADIM-039) kapsamında taşınacaktır (`PARTIAL_IMPLEMENTATION`).
 
@@ -49,7 +57,7 @@ Aşağıdaki 7 açık PR ve staging dalı Git geçmişi açısından incelenmiş
 - **Ortak Ata (Merge-Base):** `134c871` (56. migrasyon sonrası).
 - **Deltalar ve Uzlaştırma Durumu:**
   1. **WP-05B/C/D:** Restore-aware migration reconciliation & P0 cutover doğrulayıcıları (`scripts/verify-lari-recovery-hard-gate.mjs`) HEAD içinde mevcuttur (`ACCEPTED_COMPLETE`).
-  2. **C05 Legal & KVKK UI Parity:** Self-service KVKK formu tekrarsızlığı ve registration legal receipt state ayrımı (`0ecb848`, `1489046`, `7eb59e1`) Faz A2 (ADIM-023) kapsamında ele alınacaktır (`PARTIAL_IMPLEMENTATION`).
+  2. **C05 Legal & KVKK Parity:** Self-service ve randevu KVKK onay paritesi (`consentLedgerService.ts` tenant-aware consent tracking) Faz A2 (ADIM-023) kapsamında taşınmış ve test edilmiştir (`ACCEPTED_COMPLETE`). UI seviyesindeki C05 form ayrıştırması Faz A4 (ADIM-025) kapsamında UI paketiyle doğrulanacaktır.
 
 ### 2.3 Staging Release Gate Dalı (`origin/staging/ci-lari-release-gate-c1-c4-20261017` @ `72911e4`)
 - **Ortak Ata (Merge-Base):** `134c871`.
@@ -85,8 +93,8 @@ Her bir alt modül program gereksinimlerine göre dört kanonik durumdan biriyle
 | **V1-A** | Data Mode Çift Yönlü State Geçiş Regresyonu | `ACCEPTED_COMPLETE` | `scripts/test-v1a-data-mode-switching-regression.mjs` | ADIM-015 ile tamamlandı. |
 | **V1-A** | İstemci Depolama Anahtarları Registry (storageKeys.ts) | `ACCEPTED_COMPLETE` | `services/storageKeys.ts` | ADIM-016 & ADIM-017 ile tamamlandı. |
 | **V1-A** | Atomik Slug Rezervasyonu & Fallback Koruması | `ACCEPTED_COMPLETE` | `utils/slugUtils.ts`, `services/siteProvisioningService.ts`, `services/publicLinkService.ts`, `supabase/proposals/*` | PR #27'den ADIM-022 ile taşındı. |
-| **V1-A** | Multi-Tenant Katalog & Availability İzolasyonu | `PARTIAL_IMPLEMENTATION` | `services/repositories/localCatalogRepository.ts`, `availabilityService.ts` | Faz A2 (ADIM-023) kapsamında sıkılaştırılacak. |
-| **V1-A** | C05 Legal, KVKK & Onboarding UI Parity | `PARTIAL_IMPLEMENTATION` | `components/OnboardingWizard.tsx`, `components/CustomerRightsModal.tsx` | PR #4'ten Faz A2 (ADIM-023) ile alınacak. |
+| **V1-A** | Multi-Tenant Katalog & Availability İzolasyonu | `ACCEPTED_COMPLETE` | `services/repositories/localCatalogRepository.ts`, `services/repositories/supabaseCatalogRepository.ts`, `availabilityService.ts`, `services/repositories/localBookingRepository.ts` | Faz A2 (ADIM-023) kapsamında sıkılaştırıldı ve test edildi. |
+| **V1-A** | C05 Legal, KVKK & Onay Paritesi | `ACCEPTED_COMPLETE` | `services/consentLedgerService.ts` | PR #4'ten Faz A2 (ADIM-023) ile taşındı ve test edildi. |
 | **V1-A** | İzole Postgres 17 RLS & Restore-Aware Kurtarma | `PARTIAL_IMPLEMENTATION` | `scripts/verify-disposable-pg17-*.mjs`, `verify-lari-recovery-hard-gate.mjs` | Faz A3 (ADIM-024) kapsamında doğrulanacak. |
 | **V1-A** | UX Boş/Hata/Yükleme Durumları & A11y | `PARTIAL_IMPLEMENTATION` | `components/SafeErrorBoundary.tsx`, UI bileşenleri | Faz A4 (ADIM-025) kapsamında tamamlanacak. |
 | **V1-A** | V1-A Release Candidate (RC) Kabul Paketi & GO/NO-GO | `PARTIAL_IMPLEMENTATION` | `docs/FINAL_REAL_PILOT_READINESS_REPORT.md` | Faz A5 (ADIM-026) ile mühürlenecek. |
@@ -160,3 +168,67 @@ Her bir alt modül program gereksinimlerine göre dört kanonik durumdan biriyle
 - PR #27 atomik slug rezervasyon geliştirmeleri (`utils/slugUtils.ts`, `services/siteProvisioningService.ts`, `services/publicLinkService.ts`, `supabase/proposals/20261030_proposed_reserve_tenant_slug_atomic_rpc.sql`) HEAD'e taşınmış ve `scripts/test-slug-regression.mjs` test paketiyle tam uyum sağlanmıştır.
 - `20260901..20260904` zaman damgası çakışma haritası ve `20260905+` ardışık taşıma stratejisi netleştirilmiştir.
 - Tüm alt modüller 4 kanonik durum (`ACCEPTED_COMPLETE`, `PARTIAL_IMPLEMENTATION`, `MISSING_IMPLEMENTATION`, `EXTERNAL_HOLD`) ile sınıflandırılmıştır.
+
+---
+
+## 7. Faz A2 (ADIM-023) Çekirdek Servis & Tenant İzolasyonu Sıkılaştırma Kanıtı (FINDING-001..008)
+
+ADIM-023 kapsamında Denetçi (`Codex`) tarafından raporlanan tüm bulgular (Tur 1-3) cerrahi olarak çözülmüş, gerçek servislerle ve sıfır baypas ile doğrulanmıştır:
+
+1. **FINDING-ADIM023-001 (Zorunlu Tenant Doğrulaması & Patch Fallback Yasağı):**
+   - `localCatalogRepository.ts`: `getServiceById`, `updateService`, `getStaffById`, `updateStaff`, `updateAvailabilityRule` fonksiyonlarındaki unscoped storage taramaları ve fallback'ler kaldırıldı; `requireTenantId` zorunlu kılındı. `patch.tenantId` bulunsa dahi açık `tenantId` parametresi verilmediğinde fail-closed Security Error fırlatılır.
+   - `supabaseCatalogRepository.ts`: `getServiceById`, `getStaffById`, `updateService`, `updateStaff`, `updateAvailabilityRule` sorgularına `tenant_id=eq.${validTenantId}` zorunluluğu eklendi. Patch içindeki `tenantId` hiçbir zaman ana fonksiyon parametresi yerine geçemez.
+2. **FINDING-ADIM023-002 (Patch İçinde Tenant Değiştirilemezliği):**
+   - `localCatalogRepository.ts` ve `localBookingRepository.ts`: `updateService`, `updateStaff` ve `updateAppointment` mutasyonlarında gelen patch içindeki `tenantId` yetkili `tenantId` ile uyuşmazsa `Tenant isolation violation` fırlatılır; `tenantId`, `id`, `createdAt` alanları strip edilerek eski kaydın byte-equivalent bütünlüğü korunur.
+3. **FINDING-ADIM023-003 (Tenant-Owned Staff/Service & Boş/Tanımsız Eşleme Uygunsuzluğu):**
+   - `availabilityService.ts`: `getAvailableSlotsForStaff` fonksiyonunda personelin ve servisin tenant'a ait olduğu katı şekilde kontrol edilir; servis bulunamazsa veya başka tenant'a aitse 30 dk varsayılan fallback kaldırıldı ve doğrudan `[]` döner.
+   - `localCatalogRepository.ts`: `listStaffForService` fonksiyonunda varsayılan unmapped durum (`rawMappings === null`) veya boş (`[]`) mapping durumunda personel kesin olarak uygunsuz (`ineligible`) kabul edilir ve `[]` döner.
+4. **FINDING-ADIM023-004 (Tenant-Scoped Müşteri Onayı & Fail-Closed):**
+   - `consentLedgerService.ts`: `hasConsent`, `getConsentState`, `withdrawConsent` fonksiyonlarında müşteri onayları için `tenantId` zorunlu kılındı (`requireTenantId`). Tenant bağlamı verilmediğinde fail-closed olarak `false` / `null` döner, farklı tenant kayıtları birbirine karışamaz.
+5. **FINDING-ADIM023-005 (Sıfır-Satır / Boş Mutasyon Koruması):**
+   - `localCatalogRepository.ts`: `archiveService` ve `archiveStaff` yalnızca etkilenen bir kayıt varsa `true` döner; bulunamayan veya cross-tenant çağrılarda `false` döner.
+   - `supabaseCatalogRepository.ts`: `archiveService`, `archiveStaff` ve `updateAvailabilityRule` PostgREST çağrılarına `Prefer: return=representation` başlığı eklendi; dönen dizi boşsa (`length === 0`) mutasyon başarısız kabul edilir.
+6. **FINDING-ADIM023-006 (Gerçek Servislerle Doğrulama, Alt-Paket Entegrasyonu & Sıfır Baypas):**
+   - `scripts/test-catalog-tenant-isolation.mjs`: `|| true` baypası kaldırıldı; 89 test kontrolü eksiksiz PASS aldı.
+   - `scripts/test-availability-tenant-isolation.mjs`: Mock/kopya guard'lar yerine gerçek `availabilityService`, `LocalBookingRepository`, `LocalCatalogRepository` ve `consentLedgerService` import edilerek 62 test kontrolü eksiksiz PASS aldı.
+   - `scripts/verify-phase-a-functional-acceptance.mjs`: 10 kabul senaryosuna ek olarak her iki izolasyon alt paketini (`test-catalog-tenant-isolation.mjs` ve `test-availability-tenant-isolation.mjs`) senkron alt süreç (`spawnSync`) olarak çalıştırır ve sıfır hata ile doğrular.
+7. **FINDING-ADIM023-007 (Supabase Staff-Service Atama & Çapraz Tenant İzolasyonu):**
+   - `supabaseCatalogRepository.ts`: `assignServiceToStaff` ve `removeServiceFromStaff` fonksiyonlarında `requireTenantId` zorunlu kılındı; işlem öncesinde personel ve servisin mevcut tenant'a ait olduğu DB okumalarıyla doğrulanır, çapraz tenant eşleşmelerinde PostgREST'e istek gitmeden hata fırlatılır. `listServicesForStaff` fonksiyonunda dönen servis kimlikleri tenant servis listesiyle filtrelenir; yabancı tenant kimlikleri budanır.
+   - `scripts/test-catalog-tenant-isolation.mjs`: Mock fetch katmanında POST/PATCH/DELETE istekleri dinlenerek yetkisiz veya tenant_id eksik çağrılarda ağa 0 istek gittiği kanıtlanmıştır.
+8. **FINDING-ADIM023-008 (Booking Repository Negatif Test & Değişmezlik Kapsamı):**
+   - `localBookingRepository.ts`: `createAppointment`, `updateAppointment`, `cancelAppointment` fonksiyonlarında `requireTenantId` kuralı zorunlu kılındı. Tanımsız/boş tenantId doğrudan güvenlik hatası fırlatır. `createAppointment` sırasında servisin ve personelin varlığı, aktifliği, aynı tenant'a aidiyeti ve eşleme uygunluğu doğrulanır; uygunsuzluk durumunda slot ayrılmadan fail-closed kapanır.
+   - `scripts/test-availability-tenant-isolation.mjs`: `createAppointment`, `updateAppointment`, `cancelAppointment` için eksik tenantId, çapraz tenant, bilinmeyen servis/personel ve yetkisiz iptal denemeleri negatif testlerle kapsanmış; randevu kaydının byte-equivalent değişmezliği teyit edilmiştir.
+
+---
+
+## 8. Faz A2 (ADIM-023) İleri İzolasyon ve Kapanış Kanıtı (FINDING-009..014)
+
+1. **FINDING-ADIM023-009 (Katı Eşleme & Genel Randevu Zorunluluğu):**
+   - `localBookingRepository.ts`: `createAppointment` içindeki geçici fikstür adı istisnaları (`isRegressionFixture`) tamamen kaldırıldı. Tenant adı ne olursa olsun servis-personel uygunluğu (`listStaffForService`) bulunmayan hiçbir randevu oluşturulamaz; fail-closed `Staff ineligible` hatası üretilir.
+2. **FINDING-ADIM023-010 (Availability Sentetik Yardımcı Güvenliği):**
+   - `availabilityService.ts`: `getNextAvailableSlotForStaff` ve `getEarliestAvailableStaff` fonksiyonlarında tenant yetkisi, servisin tenant mülkiyeti, personelin aktifliği ve açık servis-personel uygunluk eşleşmesi doğrulanır. Bilinmeyen veya çapraz kiracı kimliklerinde slot üretimi engellenir ve doğrudan `null` döner.
+3. **FINDING-ADIM023-011 (Availability Kuralı Tenant/ID Değiştirilemezliği):**
+   - `localCatalogRepository.ts`: `updateAvailability` fonksiyonu gelen girdideki `tenantId` uyuşmazlığını denetler ve `updateAvailabilityRule` yetkili delegasyonuyla `tenantId` ve `id` alanlarını strip ederek kaydın değişmezliğini korur.
+4. **FINDING-ADIM023-012 (Yetkili Servis Süresi & Slot Çakışma Bütünlüğü):**
+   - `localBookingRepository.ts`: `createAppointment` randevu süresini mutlak suretle kiracıya ait doğrulanmış katalog servisinin `s.duration` değerinden türetir. İstemciden gelen `0`, negatif, `NaN` veya tutarsız süre parametrelerinin slot çakışma korumasını baypas etmesi imkansız hale getirilmiştir.
+5. **FINDING-ADIM023-013 (Patch ile Yabancı Servis/Personel Bağlama Engeli):**
+   - `localBookingRepository.ts`: `updateAppointment` patch ile iletilen `serviceId` ve `staffId` değerlerini kiracı katalog kayıtları üzerinden teyit eder ve aralarındaki eşleşme uygunluğunu doğrular; yabancı veya çapraz kiracı kimliklerinin Alpha randevusuna bağlanmasını engeller.
+6. **FINDING-ADIM023-014 (Eski Eşleme Anahtarlarında Çapraz Kiracı Koruması):**
+   - `localCatalogRepository.ts`: `listServicesForStaff` yerel depodaki `staff_services` eşleme dizisini kiracının güncel aktif servis listesiyle kesiştirir; bozuk veya başka kiracıya ait servis kimliklerini budayarak yalnız kiracının yetkili servislerini döndürür.
+7. **TypeScript Uyumluluğu:**
+   - `scripts/test-availability-tenant-isolation.mjs` içindeki `.mjs` dosya tipine aykırı tüm TypeScript tip ek açıklamaları (type annotations) ve type assertion ifadeleri temizlenmiş, `npx tsc --noEmit` hatasız hale getirilmiştir.
+
+---
+
+## 9. Faz A2 (ADIM-023) Exact-SHA CI & Personel-Servis Uygunluk Kapanışı (FINDING-ADIM023-015)
+
+1. **Ad-Hoc İsim Bazlı Baypasın Kaldırılması (`LocalCatalogRepository.createStaff`):**
+   - `createStaff` metodundaki `Merve Hanım` ve `Ali Bey` isimlerine bağlı otomatik servis ataması tamamen kaldırıldı. Kod tabanında hiçbir personel adı istisna kabul edilmez; personel-servis uygunluğu mutlak suretle açık kiracı eşleme kaydı gerektirir.
+2. **Katalog Tembel Demo Tohumlama Paritesi (`getServiceById` & `getStaffById`):**
+   - `LocalCatalogRepository.getServiceById` ve `getStaffById` metotlarına tembel demo tohumlama (lazy seeding) koruması eklendi. `localStorage.clear()` sonrası doğrudan tekil sorgu yapıldığında dahi tohumlanmamış kiracılar için liste tohumlaması tetiklenerek boş/null referans hataları önlendi.
+3. **Fikstür Düzeyinde Açık Eşleme Ataması:**
+   - `scripts/test-public-booking-ratelimit-and-otp.mjs` (test 2.13): `localStorage.clear()` sonrasında `catalogRepo.assignServiceToStaff('staff_1', 'srv_1', 'salon-local-atom')` ile açık eşleme kuruldu.
+   - `scripts/test-v1a-data-mode-switching-regression.mjs` (Bölüm 4.1 & 6.1): `createStaff` sonrasında `assignServiceToStaff` çağrısıyla açık eşleme oluşturuldu.
+4. **Negatif Doğrulama Kanıtı:**
+   - `scripts/test-availability-tenant-isolation.mjs` içine eklenen negatif test ile, personelin adı ne olursa olsun (`Merve Hanım` dahil) açık eşlemesi bulunmayan kiracılarda `createPublicBooking` çağrısının `temporary_failure` ile fail-closed kapandığı ve depoya 0 randevu yazdığı kanıtlandı.
+

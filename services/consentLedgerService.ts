@@ -1,4 +1,4 @@
-import { LegalDocumentType } from '../types';
+import type { LegalDocumentType } from '../types.ts';
 import { auditLogService } from './auditLogService';
 import { legalDocumentService } from './legalDocumentService';
 import { STORAGE_KEYS } from './storageKeys';
@@ -147,26 +147,23 @@ export const consentLedgerService = {
 
   /**
    * Withdraws (revokes) a consent by updating its status and logging the withdrawal timestamp.
+   * Requires non-empty tenantId for customer consent decisions to fail closed on omitted or ambiguous tenant context.
    */
-  withdrawConsent(actorId: string, consentType: string, reason: string = 'Kullanıcı talebi'): boolean {
+  withdrawConsent(actorId: string, consentType: string, reason: string = 'Kullanıcı talebi', tenantId?: string): boolean {
     if (!actorId?.trim() || !consentType?.trim()) return false;
+    const cleanTenantId = tenantId?.trim();
+    if (!cleanTenantId) {
+      console.warn('Consent withdrawal failed: tenantId is required for customer consent decisions.');
+      return false;
+    }
     const ledger = this._getLedgerFromStore();
     const normalizedActorId = actorId.trim();
     const normalizedConsentType = consentType.trim();
-    const recordsForActorType = ledger.filter(r => r.actorId === normalizedActorId && r.consentType === normalizedConsentType);
-    const tenantIds = new Set(
-      recordsForActorType
-        .map(r => r.tenantId?.trim())
-        .filter((tenantId): tenantId is string => Boolean(tenantId))
+    const recordsForActorType = ledger.filter(r =>
+      r.actorId === normalizedActorId &&
+      r.consentType === normalizedConsentType &&
+      r.tenantId === cleanTenantId
     );
-
-    if (tenantIds.size > 1) {
-      console.warn('Consent withdrawal is ambiguous across multiple tenants for the same actorId and consentType.', {
-        actorId: normalizedActorId,
-        consentType: normalizedConsentType
-      });
-      return false;
-    }
 
     const latestRecord = recordsForActorType[0];
     if (!latestRecord) return false;
@@ -183,7 +180,7 @@ export const consentLedgerService = {
       }
       const withdrawalRecord: ConsentLedgerRecord = {
         id: withdrawalId,
-        tenantId: latestRecord.tenantId,
+        tenantId: cleanTenantId,
         actorType: latestRecord.actorType,
         actorId: latestRecord.actorId,
         contact: latestRecord.contact,
@@ -207,7 +204,7 @@ export const consentLedgerService = {
 
       // Audit trail record
       auditLogService.logAuditEvent({
-        tenantId: latestRecord.tenantId,
+        tenantId: cleanTenantId,
         actorType: latestRecord.actorType === 'tenant_owner' ? 'tenant_owner' : 'customer',
         actorId: latestRecord.actorId,
         category: 'security',
@@ -229,20 +226,38 @@ export const consentLedgerService = {
 
   /**
    * Checks if a user has currently granted a specific consent.
+   * Requires non-empty tenantId and fails closed when tenant context is omitted or ambiguous.
    */
-  hasConsent(actorId: string, consentType: string): boolean {
+  hasConsent(actorId: string, consentType: string, tenantId?: string): boolean {
+    const cleanTenantId = tenantId?.trim();
+    if (!cleanTenantId) {
+      return false;
+    }
     const ledger = this._getLedgerFromStore();
-    // Find latest record for actor and consent type
-    const match = ledger.find(r => r.actorId === actorId && r.consentType === consentType);
+    // Find latest record for actor and consent type scoped to tenantId
+    const match = ledger.find(r =>
+      r.actorId === actorId &&
+      r.consentType === consentType &&
+      r.tenantId === cleanTenantId
+    );
     return match ? match.status === 'granted' : false;
   },
 
   /**
    * Alias method for checking active consent state (for QA contract compliance).
+   * Requires non-empty tenantId and fails closed (null) when tenant context is omitted.
    */
-  getConsentState(actorId: string, consentType: string): ConsentStatusType | null {
+  getConsentState(actorId: string, consentType: string, tenantId?: string): ConsentStatusType | null {
+    const cleanTenantId = tenantId?.trim();
+    if (!cleanTenantId) {
+      return null;
+    }
     const ledger = this._getLedgerFromStore();
-    const match = ledger.find(r => r.actorId === actorId && r.consentType === consentType);
+    const match = ledger.find(r =>
+      r.actorId === actorId &&
+      r.consentType === consentType &&
+      r.tenantId === cleanTenantId
+    );
     return match ? match.status : null;
   },
 
