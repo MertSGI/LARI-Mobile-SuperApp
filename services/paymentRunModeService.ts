@@ -8,6 +8,19 @@ export interface RunModeStatus {
     isPaymentCollectionAuthorized: boolean;
     isMockSimulation: boolean;
     missingBlockers: string[];
+    isPersistentDatabaseMode?: boolean;
+    serverAuthorityRequired?: boolean;
+}
+
+function readEnvFlag(key: string): string | undefined {
+    const env = (typeof process !== 'undefined' ? process.env : {}) as Record<string, string | undefined>;
+    const metaEnv = ((import.meta as unknown as { env?: Record<string, string | undefined> }).env || {});
+    return metaEnv[key] ?? env[key];
+}
+
+function isPersistentSupabaseDataMode(): boolean {
+    const mode = String(readEnvFlag('VITE_DATA_SOURCE') || '').trim().toLowerCase();
+    return mode === 'supabase';
 }
 
 export class PaymentRunModeService {
@@ -17,9 +30,7 @@ export class PaymentRunModeService {
      * CANNOT grant payment collection authority.
      */
     public getCurrentMode(): PaymentRunMode {
-        const env = (typeof process !== 'undefined' ? process.env : {}) as any;
-        const metaEnv = ((import.meta as any).env || {}) as any;
-        const configuredMode = metaEnv.VITE_PAYMENT_RUN_MODE || env.VITE_PAYMENT_RUN_MODE;
+        const configuredMode = readEnvFlag('VITE_PAYMENT_RUN_MODE');
 
         if (configuredMode === 'production_live') {
             return 'production_live';
@@ -75,6 +86,8 @@ export class PaymentRunModeService {
             hasVerifiedBackend = !!options.hasVerifiedBackendConfig;
         }
 
+        const persistentDb = isPersistentSupabaseDataMode();
+
         switch (mode) {
             case 'production_live':
                 // Production live collection CANNOT be authorized from browser client state.
@@ -85,6 +98,8 @@ export class PaymentRunModeService {
                     canRunCheckout: false,
                     isPaymentCollectionAuthorized: false,
                     isMockSimulation: false,
+                    isPersistentDatabaseMode: persistentDb,
+                    serverAuthorityRequired: true,
                     missingBlockers: [
                         'Sunucu tarafı doğrulanmış Iyzico PROD konfigürasyonu ve canlı onay belgesi mevcut değil.',
                         'Issue #10 Prodüksiyon Yayın Engeli henüz çözülmedi.',
@@ -92,8 +107,17 @@ export class PaymentRunModeService {
                     ]
                 };
 
-            case 'sandbox_live':
+            case 'sandbox_live': {
                 const sandboxReady = hasVerifiedBackend && blockers.length === 0;
+                const sandboxBlockers = sandboxReady
+                    ? []
+                    : [
+                        'Sandbox API anahtarları veya Edge Function entegrasyonu doğrulanmadı.',
+                        ...(persistentDb
+                            ? ['Kalıcı Supabase modunda sandbox ödeme handoff işlemi sunucu doğrulaması gerektirir.']
+                            : []),
+                        ...blockers
+                    ];
                 return {
                     mode: 'sandbox_live',
                     label: 'Sandbox Rehearsal (Test)',
@@ -101,14 +125,20 @@ export class PaymentRunModeService {
                     canRunCheckout: sandboxReady,
                     isPaymentCollectionAuthorized: false,
                     isMockSimulation: false,
-                    missingBlockers: sandboxReady ? [] : [
-                        'Sandbox API anahtarları veya Edge Function entegrasyonu doğrulanmadı.',
-                        ...blockers
-                    ]
+                    isPersistentDatabaseMode: persistentDb,
+                    serverAuthorityRequired: true,
+                    missingBlockers: sandboxBlockers
                 };
+            }
 
             case 'local_dry_run':
-            default:
+            default: {
+                const localBlockers = [...blockers];
+                if (persistentDb) {
+                    localBlockers.push(
+                        'Kalıcı Supabase veri modunda gerçek ödeme veya istemci tarafı ücretli abonelik onayı verilemez.'
+                    );
+                }
                 return {
                     mode: 'local_dry_run',
                     label: 'Local Dry Run (Simülasyon)',
@@ -116,8 +146,11 @@ export class PaymentRunModeService {
                     canRunCheckout: false,
                     isPaymentCollectionAuthorized: false,
                     isMockSimulation: true,
-                    missingBlockers: []
+                    isPersistentDatabaseMode: persistentDb,
+                    serverAuthorityRequired: persistentDb,
+                    missingBlockers: localBlockers
                 };
+            }
         }
     }
 
