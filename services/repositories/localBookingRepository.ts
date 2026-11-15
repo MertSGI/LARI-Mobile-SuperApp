@@ -154,13 +154,12 @@ export class LocalBookingRepository implements BookingRepository {
       const isSeeded = localStorage.getItem(DYNAMIC_STORAGE_KEYS.tenantAppointmentsSeeded(cleanTenantId)) === 'true';
       if (isSeeded) return [];
 
-      // If tenant has custom services or staff, or is a test/isolated tenant, do not seed foreign demo appointments
+      // If tenant has custom services or staff, do not seed foreign demo appointments
       const servicesKey = DYNAMIC_STORAGE_KEYS.tenantServices(cleanTenantId);
       const staffKey = DYNAMIC_STORAGE_KEYS.tenantStaff(cleanTenantId);
       const hasCustomCatalog = localStorage.getItem(servicesKey) || localStorage.getItem(staffKey);
-      const isTestOrRegression = cleanTenantId.includes('reg') || cleanTenantId.includes('parity') || cleanTenantId.includes('test') || cleanTenantId.includes('avail');
 
-      if (hasCustomCatalog || isTestOrRegression) {
+      if (hasCustomCatalog) {
         localStorage.setItem(DYNAMIC_STORAGE_KEYS.tenantAppointmentsSeeded(cleanTenantId), 'true');
         return [];
       }

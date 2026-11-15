@@ -799,6 +799,33 @@ async function main() {
   const cancelledApt = await bookingRepo.getAppointmentById(aptCreated.id, tenantAlpha);
   assert(cancelledApt?.status === 'cancelled_by_customer', 'Cancelled appointment status is updated to cancelled_by_customer');
 
+  // --- §5.3 Negative Test for FINDING-ADIM023-017 (Demo Seeding Invariant) ---
+  console.log('\n--- §5.3 Negative Test for FINDING-ADIM023-017 (Demo Seeding Invariant) ---');
+  // Substrings 'reg', 'parity', 'test', 'avail' in tenantId must NOT bypass demo seeding for empty tenants
+  const testSubstrings = ['reg', 'parity', 'test', 'avail'];
+  for (const sub of testSubstrings) {
+    const mockTid = `salon_${sub}_ordinary_${Date.now()}`;
+    // Ensure clean storage for mock tenant
+    localStorage.removeItem(`lari:${mockTid}:appointments`);
+    localStorage.removeItem(`lari:${mockTid}:appointments_seeded`);
+    localStorage.removeItem(`lari:${mockTid}:services`);
+    localStorage.removeItem(`lari:${mockTid}:staff`);
+
+    const seededApts = await bookingRepo.listAppointments(mockTid);
+    assert(Array.isArray(seededApts) && seededApts.length === 5, `listAppointments seeds 5 demo appointments for empty tenant containing '${sub}' substring`);
+    assert(localStorage.getItem(`lari:${mockTid}:appointments_seeded`) === 'true', `appointments_seeded flag set to true for ${mockTid}`);
+  }
+
+  // Tenant with custom catalog (custom services or staff) MUST NOT receive foreign demo appointments
+  const customCatalogTid = 'salon_with_custom_catalog_' + Date.now();
+  localStorage.removeItem(`lari:${customCatalogTid}:appointments`);
+  localStorage.removeItem(`lari:${customCatalogTid}:appointments_seeded`);
+  localStorage.setItem(`lari:${customCatalogTid}:services`, JSON.stringify([{ id: 'srv_custom_1', name: 'Custom Service' }]));
+
+  const customCatalogApts = await bookingRepo.listAppointments(customCatalogTid);
+  assert(Array.isArray(customCatalogApts) && customCatalogApts.length === 0, 'listAppointments returns [] and does NOT seed foreign demo appointments for tenant with custom catalog');
+  assert(localStorage.getItem(`lari:${customCatalogTid}:appointments_seeded`) === 'true', 'appointments_seeded flag set to true without foreign appointments');
+
   console.log(`\n======================================================`);
   console.log(`🏁 Availability/Booking Multi-Tenant Isolation Results: ${passed} passed, ${failed} failed`);
   console.log(`======================================================\n`);

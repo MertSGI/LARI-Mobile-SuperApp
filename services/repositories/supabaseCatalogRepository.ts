@@ -438,13 +438,22 @@ export class SupabaseCatalogRepository implements CatalogRepository {
 
   async updateAvailability(tenantId: string, input: any): Promise<any> {
     const validTenantId = requireTenantId(tenantId, 'updateAvailability');
+    if (input?.tenantId !== undefined && input.tenantId.trim() !== validTenantId) {
+      throw new Error('[supabaseCatalogRepository] Tenant isolation violation: cannot alter availability rule tenantId');
+    }
+    const { id: _stripId, tenantId: _stripTid, ...safeInput } = input || {};
     const rules = await this.listAvailabilityRules(validTenantId);
     if (rules.length > 0) {
       const firstRule = rules[0];
-      await this.updateAvailabilityRule(firstRule.id || '', input, validTenantId);
-      return { ...firstRule, ...input };
+      await this.updateAvailabilityRule(firstRule.id || '', safeInput, validTenantId);
+      const refreshedRules = await this.listAvailabilityRules(validTenantId);
+      const updatedRule = refreshedRules.find(r => r.id === firstRule.id);
+      if (updatedRule) {
+        return { ...firstRule, ...updatedRule, ...safeInput, id: firstRule.id, tenantId: validTenantId };
+      }
+      return { ...firstRule, ...safeInput, id: firstRule.id, tenantId: validTenantId };
     } else {
-      return this.createAvailabilityRule(validTenantId, input);
+      return this.createAvailabilityRule(validTenantId, safeInput);
     }
   }
 

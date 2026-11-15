@@ -49,6 +49,8 @@ Aşağıdaki 7 açık PR ve staging dalı Git geçmişi açısından incelenmiş
        - **FINDING-ADIM023-012:** `createAppointment` çakışma ve süre hesabı münhasıran kiracıya ait katalog servisinden (`service.duration`) türetilecek şekilde güvenceye alındı; 0, negatif veya NaN sürelerle randevu sınırının aşılması engellendi.
        - **FINDING-ADIM023-013:** `updateAppointment` patch girdilerinde `serviceId` ve `staffId` alanlarının kiracı sahipliği ve karşılıklı uygunluğu doğrulandı; çapraz kiracı nesneleri bağlama girişimleri engellendi.
        - **FINDING-ADIM023-014:** `LocalCatalogRepository.listServicesForStaff` çıktısı kiracıya ait güncel servislerle kesiştirilerek bozuk/çapraz kiracı kimliklerinin sızması engellendi.
+       - **FINDING-ADIM023-015-REOPENED:** `LocalCatalogRepository.createStaff` içindeki tüm ad-bazlı veya kiracı kimliği bazlı otomatik servis atama baypasları (`tenant_pub_parity`, `tenant_v1a_reg_isolated_001`, `Merve Hanım`, `Ali Bey`) tamamen kaldırıldı; personel uygunluğu yalnız açık tenant-scoped `assignServiceToStaff` eşlemesiyle kurulacak şekilde kesinleştirildi. İlgili test/regresyon kurulumları açık eşlemeyle güncellendi ve negatif testler eklendi.
+       - **FINDING-ADIM023-016:** Phase F tarayıcı testinde (`scripts/test-phase-f-browser-regression.mjs`), Stage 5 başlamadan önce `Can Demir` (`staff_aura_02`) için `Klasik Manikür` (`srv_aura_04`) tenant-scoped `staff_services` eşlemesi açıkça tanımlandı ve Playwright doğrulaması tam sağlandı.
        - **Tur 3 Kök Neden Düzeltmesi (FINDING-ADIM023-009 Sıfır Randevu Yazımı):** `LocalBookingRepository.listAppointments` metodunda, özel kataloğa sahip veya test/regresyon kiracıları için `apt_demo_1..5` sahte randevularının otomatik üretilip storage'a yazılması engellendi; böylece unmapped veya uygunsuz randevu denemelerinden sonra kiracının sıfır randevu (`0 appointments`) durumu korunmaktadır.
   3. **UI-V2 Önizlemesi:** `components/SalonWebsiteViewV2.tsx` ve `?ui=v2` yönlendirmesi Faz C1 (ADIM-031) kapsamında taşınacaktır (`PARTIAL_IMPLEMENTATION`).
   4. **Program V2 Güvenlik Sertleştirmesi:** `20261007_program_v2_security_surface_hardening.sql` önerisi Faz H1 (ADIM-039) kapsamında taşınacaktır (`PARTIAL_IMPLEMENTATION`).
@@ -231,4 +233,34 @@ ADIM-023 kapsamında Denetçi (`Codex`) tarafından raporlanan tüm bulgular (Tu
    - `scripts/test-v1a-data-mode-switching-regression.mjs` (Bölüm 4.1 & 6.1): `createStaff` sonrasında `assignServiceToStaff` çağrısıyla açık eşleme oluşturuldu.
 4. **Negatif Doğrulama Kanıtı:**
    - `scripts/test-availability-tenant-isolation.mjs` içine eklenen negatif test ile, personelin adı ne olursa olsun (`Merve Hanım` dahil) açık eşlemesi bulunmayan kiracılarda `createPublicBooking` çağrısının `temporary_failure` ile fail-closed kapandığı ve depoya 0 randevu yazdığı kanıtlandı.
+
+---
+
+## 10. Faz A2 (ADIM-023) Exact-SHA CI Rework Kapanışı (FINDING-ADIM023-015-REOPENED & FINDING-ADIM023-016)
+
+1. **FINDING-ADIM023-015-REOPENED (Tenant-ID İstisnalarının Kaldırılması & Sıfır-Baypas):**
+   - `services/repositories/localCatalogRepository.ts`: `createStaff` metodundan `cleanTenantId === 'tenant_pub_parity'` ve `cleanTenantId === 'tenant_v1a_reg_isolated_001'` ad-hoc istisnaları tamamen temizlendi. Personel oluşturma işleminde hiçbir kiracı adı veya kimliği için otomatik servis eşlemesi yapılmaz.
+   - Personel-servis uygunluğu mutlak suretle açık `assignServiceToStaff` çağrısıyla veya çağrıcının ilettiği `serviceIds` dizisi üzerinden tesis edilir.
+   - `scripts/test-v1a-data-mode-switching-regression.mjs` (test 4.1 ve 6.1) içinde `createStaff` sonrasında açık `assignServiceToStaff` çağrıları eklendi.
+   - `scripts/test-catalog-tenant-isolation.mjs` içine eklenen negatif test ile, tam olarak `tenant_pub_parity` ve `tenant_v1a_reg_isolated_001` kiracıları altında oluşturulan eşlemesiz personelin randevu oluşturamadığı (`Staff ineligible`) ve `staff_services` depolama kaydının byte-identical kaldığı kanıtlandı.
+
+2. **FINDING-ADIM023-016 (Phase F Tarayıcı Playwright Fikstür & Stage 5 Eşlemesi):**
+   - `scripts/test-phase-f-browser-regression.mjs`: `SyntheticSalonFixtureService.getBrowserStorageSnapshot` tarayıcıya enjekte edilmeden önce ve Stage 5 ikinci rezervasyon akışı başlamadan önce `staff_aura_02` (Can Demir) -> `srv_aura_04` (Klasik Manikür) açık kiracı eşlemesi (`staff_services`) senkronize edildi.
+   - `services/repositories/localCatalogRepository.ts:listStaffForService`: Personelin tenant kaydı üzerindeki açık `serviceIds` bilgisiyle depolanan eşlemeler uzlaştırıldı; üretim kontrolü fail-closed korunarak hem fikstür hem canlı akışlarda uyum sağlandı.
+
+---
+
+## 11. Faz A2 (ADIM-023) Nihai İzolasyon & Regresyon Kapanışı (FINDING-ADIM023-016-TEST-GAP, FINDING-ADIM023-017 & FINDING-ADIM023-018)
+
+1. **FINDING-ADIM023-016-TEST-GAP (Phase F Playwright Stage 5 Gerçek Negatif Eşleme Doğrulaması):**
+   - `scripts/test-phase-f-browser-regression.mjs`: Stage 5 rezervasyon öncesinde `staff_aura_02` (Can Demir) -> `srv_aura_04` (Klasik Manikür) eşlemesi tarayıcının gerçek `localStorage` alanından geçici olarak silinir; çalışma zamanında `availabilityService.getAvailableSlotsForStaff` ve `LocalCatalogRepository.listStaffForService` çağrılarak unmapped durumda personelin 0 slot ürettiği ve uygunsuz kabul edildiği kanıtlanır. Ardından eşleme depoya geri yüklenir, slotların yeniden açıldığı (>0) doğrulanır ve ikinci rezervasyon akışı UI üzerinden başarıyla tamamlanır.
+
+2. **FINDING-ADIM023-017 (Demo Tohumlama Tenant Adı Substring Sezgisinin Kaldırılması):**
+   - `services/repositories/localBookingRepository.ts`: `listAppointments` fonksiyonunda tenantId içinde `reg`, `parity`, `test`, `avail` geçmesine göre demo tohumlamayı engelleyen ad-hoc `isTestOrRegression` kontrolü tamamen kaldırıldı. Demo tohumlama davranışı yalnızca açık `hasCustomCatalog` (servis veya personel kataloğu varlığı) durumuna veya önceden tohumlanmış olma bayrağına (`tenantAppointmentsSeeded`) dayanır.
+   - `scripts/test-availability-tenant-isolation.mjs`: `reg`, `parity`, `test`, `avail` içeren fakat özel kataloğu bulunmayan kiracıların sıradan kiracılar gibi 5 demo randevusu aldığı, özel katalog içeren kiracıların ise demo randevusu almayıp `[]` döndüğü negatif testlerle kanıtlandı.
+
+3. **FINDING-ADIM023-018 (Supabase Availability Wrapper Sahte ID/Tenant Koruması):**
+   - `services/repositories/supabaseCatalogRepository.ts`: `updateAvailability` fonksiyonunda gelen girdideki `tenantId` uyuşmazlığı kontrol edilir (`Tenant isolation violation`), girdiden `id` ve `tenantId` strip edilir, `updateAvailabilityRule` çalıştırıldıktan sonra yetkili taze kural `listAvailabilityRules` ile okunarak döndürülür. İstemcinin sahte `id` veya yabancı `tenantId` döndürmesi engellenmiştir.
+   - `scripts/test-catalog-tenant-isolation.mjs`: Mock PostgREST üzerinde `updateAvailability` çağrısında `id` ve `tenantId` alanlarının strip edildiği, dönen nesnede özgün kural kimliğinin korunduğu ve PostgREST PATCH gövdesinde `id`/`tenant_id` bulunmadığı negatif testlerle kanıtlandı.
+
 

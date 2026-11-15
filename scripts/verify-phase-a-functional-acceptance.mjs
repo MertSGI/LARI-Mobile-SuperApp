@@ -643,3 +643,4 @@ console.log('='.repeat(80));
 // 1-hop companion resolution reference:
 // import './test-v1a-data-mode-switching-regression.mjs';
 // import './test-public-booking-ratelimit-and-otp.mjs';
+// import './test-phase-f-browser-regression.mjs';

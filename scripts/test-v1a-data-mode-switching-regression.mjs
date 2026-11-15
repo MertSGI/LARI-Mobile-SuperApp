@@ -542,6 +542,8 @@ await runAsyncTest('4.1 Seed local data, switch to supabase, perform remote ops,
     active: true
   });
   assert.ok(initialStaff.id);
+  // Explicit tenant-scoped staff-service mapping (FINDING-ADIM023-015)
+  await localCatalogRepo.assignServiceToStaff(initialStaff.id, initialService.id, TEST_TENANT);
 
   // Create Appointment
   const initialAppointment = await localBookingRepo.createAppointment(TEST_TENANT, {
@@ -1061,6 +1063,8 @@ await runAsyncTest('6.1 Local createPublicBooking returns canonical PublicBookin
     isOwner: true,
     active: true
   });
+  // Explicit tenant-scoped staff-service mapping (FINDING-ADIM023-015)
+  await catalogRepo.assignServiceToStaff(stf.id, srv.id, 'tenant_pub_parity');
 
   const res = await bookingRepo.createPublicBooking({
     slug: 'tenant_pub_parity',

@@ -165,16 +165,12 @@ export class LocalCatalogRepository implements CatalogRepository {
     const newStaff: Staff = { ...input, id: `staff_${Date.now()}`, tenantId: cleanTenantId };
     await dataProvider.set(key, [...(existing || []), newStaff]);
 
-    // For canonical legacy regression test fixtures (4.1 & 6.1 in test-v1a-data-mode-switching-regression),
-    // ensure explicit staff-service mappings are created so eligibility passes without altering test files.
-    if (cleanTenantId === 'tenant_v1a_reg_isolated_001' || cleanTenantId === 'tenant_pub_parity') {
-      const existingServices = await this.listServices(cleanTenantId);
-      if (existingServices.length > 0) {
-        const mappingKey = this.getStaffServiceMappingKey(cleanTenantId);
-        const mappings = JSON.parse(localStorage.getItem(mappingKey) || '{}');
-        mappings[newStaff.id] = existingServices.map(s => s.id);
-        localStorage.setItem(mappingKey, JSON.stringify(mappings));
-      }
+    // If caller explicitly provides initial service mappings, record them
+    if (Array.isArray((input as any).serviceIds) && (input as any).serviceIds.length > 0) {
+      const mappingKey = this.getStaffServiceMappingKey(cleanTenantId);
+      const mappings = JSON.parse(localStorage.getItem(mappingKey) || '{}');
+      mappings[newStaff.id] = (input as any).serviceIds;
+      localStorage.setItem(mappingKey, JSON.stringify(mappings));
     }
 
     return newStaff;
@@ -275,15 +271,21 @@ export class LocalCatalogRepository implements CatalogRepository {
     const key = this.getStaffServiceMappingKey(cleanTenantId);
     const rawMappings = localStorage.getItem(key);
     if (rawMappings === null) {
-      return [];
+      return staffList.filter(s => {
+        if (Array.isArray((s as any).serviceIds) && (s as any).serviceIds.length > 0) {
+          return (s as any).serviceIds.includes(serviceId);
+        }
+        return false;
+      });
     }
+
     const mappings = JSON.parse(rawMappings || '{}');
     return staffList.filter(s => {
-      const theirServices = mappings[s.id];
-      if (!theirServices || !Array.isArray(theirServices) || theirServices.length === 0) {
-        return false;
+      const theirServices = mappings[s.id] || (Array.isArray((s as any).serviceIds) ? (s as any).serviceIds : undefined);
+      if (theirServices && Array.isArray(theirServices) && theirServices.length > 0) {
+        return theirServices.includes(serviceId);
       }
-      return theirServices.includes(serviceId);
+      return false;
     });
   }
 

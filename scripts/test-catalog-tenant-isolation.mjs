@@ -541,6 +541,14 @@ async function main() {
   }
 
   const interceptedCalls = [];
+  let mockAvailabilityRuleAlpha = {
+    id: 'rule_123',
+    tenant_id: 'tenant_alpha',
+    start_time: '09:00:00',
+    end_time: '18:00:00',
+    weekday: 1,
+    is_active: true
+  };
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url, options = {}) => {
     const urlStr = String(url);
@@ -649,12 +657,21 @@ async function main() {
     }
 
     if (urlStr.includes('/rest/v1/availability_rules')) {
+      if (method === 'GET') {
+        if (urlStr.includes('tenant_id=eq.tenant_alpha')) {
+          return new Response(JSON.stringify([mockAvailabilityRuleAlpha]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       if (method === 'PATCH') {
-        return new Response(JSON.stringify([{
+        const patchData = options?.body ? JSON.parse(options.body) : {};
+        mockAvailabilityRuleAlpha = {
+          ...mockAvailabilityRuleAlpha,
+          ...patchData,
           id: 'rule_123',
-          tenant_id: 'tenant_alpha',
-          is_active: false
-        }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          tenant_id: 'tenant_alpha'
+        };
+        return new Response(JSON.stringify([mockAvailabilityRuleAlpha]), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
     }
 
@@ -763,6 +780,41 @@ async function main() {
   assert(supaRuleMismatchThrows, 'Supabase updateAvailabilityRule with mismatched patch.tenantId throws isolation violation');
   assert(interceptedCalls.filter(c => c.method === 'PATCH').length === 0, 'Zero PATCH requests sent on rule tenant mismatch');
 
+  // Test 5.3: updateAvailability with id and tenantId in input strips both and preserves authoritative id and tenantId (FINDING-ADIM023-018)
+  interceptedCalls.length = 0;
+  const updatedAvailabilityResult = await supaRepo.updateAvailability('tenant_alpha', {
+    id: 'rule_tampered_by_attacker',
+    tenantId: 'tenant_alpha',
+    start_time: '10:00:00'
+  });
+  assert(updatedAvailabilityResult.id === 'rule_123', 'updateAvailability returns authoritative original id rule_123, ignoring spoofed id in patch');
+  assert(updatedAvailabilityResult.tenantId === 'tenant_alpha', 'updateAvailability returns authoritative tenantId tenant_alpha');
+  assert(updatedAvailabilityResult.start_time === '10:00:00', 'updateAvailability applies safe fields from input');
+
+  // Verify that the PATCH sent to PostgREST stripped id and tenantId
+  const availPatchCalls = interceptedCalls.filter(c => c.method === 'PATCH' && c.url.includes('availability_rules'));
+  assert(availPatchCalls.length > 0, 'PATCH sent for availability update');
+  const sentAvailBody = JSON.parse(availPatchCalls[0].options.body);
+  assert(sentAvailBody.id === undefined, 'PATCH payload strips id');
+  assert(sentAvailBody.tenant_id === undefined && sentAvailBody.tenantId === undefined, 'PATCH payload strips tenant_id');
+
+  // Test 5.4: updateAvailability with conflicting patch.tenantId throws isolation violation
+  interceptedCalls.length = 0;
+  let supaAvailMismatchThrows = false;
+  try {
+    await supaRepo.updateAvailability('tenant_alpha', {
+      id: 'rule_beta',
+      tenantId: 'tenant_beta',
+      start_time: '10:00:00'
+    });
+  } catch (err) {
+    if (err.message && err.message.includes('Tenant isolation violation')) {
+      supaAvailMismatchThrows = true;
+    }
+  }
+  assert(supaAvailMismatchThrows, 'updateAvailability with mismatched patch.tenantId throws isolation violation');
+  assert(interceptedCalls.filter(c => c.method === 'PATCH' && c.url.includes('availability_rules')).length === 0, 'Zero PATCH requests sent on availability tenant mismatch');
+
   // Test 6: assignServiceToStaff without tenantId throws Security error and sends 0 POST calls
   interceptedCalls.length = 0;
   let supaAssignMissingTenantThrows = false;
@@ -831,6 +883,53 @@ async function main() {
   const staffServices = await supaRepo.listServicesForStaff('staff_alpha', 'tenant_alpha');
   assert(staffServices.includes('srv_alpha'), 'listServicesForStaff returns matching tenant service srv_alpha');
   assert(!staffServices.includes('srv_beta'), 'listServicesForStaff strictly filters out cross-tenant service srv_beta');
+
+  // --- §4 Negative Test (FINDING-ADIM023-015-REOPENED) ---
+  console.log('\n--- §4 Negative Test for FINDING-ADIM023-015-REOPENED (tenant_pub_parity & tenant_v1a_reg_isolated_001) ---');
+  const { LocalBookingRepository } = await import('../services/repositories/localBookingRepository.ts');
+  const localBookingRepo = new LocalBookingRepository();
+
+  for (const tid of ['tenant_pub_parity', 'tenant_v1a_reg_isolated_001']) {
+    const preMappingKey = `lari:${tid}:staff_services`;
+    const preSnapshot = localStorage.getItem(preMappingKey);
+    
+    const unmappedStaff = await repo.createStaff(tid, {
+      name: `Unmapped Staff for ${tid}`,
+      title: 'Stylist',
+      active: true
+    });
+    assert(Boolean(unmappedStaff && unmappedStaff.id), `createStaff succeeds for ${tid}`);
+
+    const postSnapshot = localStorage.getItem(preMappingKey);
+    assert(preSnapshot === postSnapshot, `staff_services storage remains byte-identical for ${tid} after createStaff`);
+
+    const srv = await repo.createService(tid, {
+      name: `Test Service for ${tid}`,
+      duration: 30,
+      price: 250,
+      active: true
+    });
+
+    let bookingThrewIneligible = false;
+    try {
+      await localBookingRepo.createAppointment(tid, {
+        serviceId: srv.id,
+        staffId: unmappedStaff.id,
+        date: '2026-12-25',
+        time: '10:00',
+        durationMinutes: 30,
+        status: 'confirmed',
+        userId: 'cust_neg_1',
+        user_name: 'Test Customer',
+        phone: '+905551112233'
+      });
+    } catch (err) {
+      if (err.message && err.message.includes('Staff ineligible')) {
+        bookingThrewIneligible = true;
+      }
+    }
+    assert(bookingThrewIneligible, `createAppointment fails closed with Staff ineligible for unmapped staff under ${tid}`);
+  }
 
   // Restore fetch
   globalThis.fetch = originalFetch;
