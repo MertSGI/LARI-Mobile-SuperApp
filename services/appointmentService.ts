@@ -232,10 +232,10 @@ export const updateAppointmentStatus = async (
   cancelledBy?: 'customer' | 'salon' | 'system'
 ): Promise<Appointment | null> => {
   if (status.includes('cancel')) {
-    await getBookingRepository().cancelAppointment(appointmentId, cancelReason, cancelledBy);
+    await (getBookingRepository() as any).cancelAppointment(appointmentId, cancelReason, cancelledBy, tenantId);
   }
   
-  const updatedApt = await getBookingRepository().updateAppointment(appointmentId, { status });
+  const updatedApt = await (getBookingRepository() as any).updateAppointment(appointmentId, { status }, tenantId);
 
   // Hook Communication events on successful status transitions
   if (updatedApt) {
@@ -331,7 +331,7 @@ export const updateAppointmentStatus = async (
         let matchedReferral = referrals.find(r => r.appointmentId === appointmentId);
         
         if (!matchedReferral) {
-          const appointmentDetails = await getBookingRepository().getAppointmentById(appointmentId);
+          const appointmentDetails = await (getBookingRepository() as any).getAppointmentById(appointmentId, tenantId);
           if (appointmentDetails) {
             const clientPhone = appointmentDetails.phone ? appointmentDetails.phone.replace(/\s+/g, '') : '';
             const clientName = appointmentDetails.user_name ? appointmentDetails.user_name.toLowerCase().trim() : '';
@@ -370,7 +370,7 @@ export const deleteAppointment = async (tenantId: string, appointmentId: string)
   // but if hard delete is required by some tests:
   // For safety, cancel instead if it's not truly hard-deleted by repos, but we can't delete directly without exposing a delete interface.
   // We'll update the status to "cancelled"
-  return await getBookingRepository().cancelAppointment(appointmentId, 'Deleted', 'system');
+  return await (getBookingRepository() as any).cancelAppointment(appointmentId, 'Deleted', 'system', tenantId);
 };
 
 export const getBookedSlots = async (tenantId: string, date: string, staffId?: string): Promise<string[]> => {

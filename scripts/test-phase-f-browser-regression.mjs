@@ -134,6 +134,14 @@ async function runStage(title, fn) {
 
   // Seed synthetic salon data in localStorage before React mounts
   const snapshot = SyntheticSalonFixtureService.getBrowserStorageSnapshot();
+  // Explicitly ensure tenant-scoped staff_services mapping for Can Demir -> Klasik Manikür before browser flow starts (FINDING-ADIM023-016)
+  const staffServicesKey = `lari:${SYNTHETIC_SALON_AURA.tenantId}:staff_services`;
+  const existingStaffServices = snapshot[staffServicesKey] ? JSON.parse(snapshot[staffServicesKey]) : {};
+  if (!existingStaffServices['staff_aura_02']) existingStaffServices['staff_aura_02'] = [];
+  if (!existingStaffServices['staff_aura_02'].includes('srv_aura_04')) {
+    existingStaffServices['staff_aura_02'].push('srv_aura_04');
+  }
+  snapshot[staffServicesKey] = JSON.stringify(existingStaffServices);
   await context.addInitScript((data) => {
     for (const [k, v] of Object.entries(data)) {
       try {
@@ -417,6 +425,53 @@ async function runStage(title, fn) {
       const bookAnotherBtn = page.locator('button:has-text("Başka Bir Randevu Al"), button:has-text("Book Another")').first();
       await bookAnotherBtn.click();
 
+      // Negative Test (FINDING-ADIM023-016-TEST-GAP):
+      // Temporarily strip staff_aura_02 -> srv_aura_04 mapping from actual browser localStorage
+      await page.evaluate(({ tenantId }) => {
+        const key = `lari:${tenantId}:staff_services`;
+        const raw = localStorage.getItem(key);
+        const map = raw ? JSON.parse(raw) : {};
+        if (map['staff_aura_02']) {
+          map['staff_aura_02'] = map['staff_aura_02'].filter(id => id !== 'srv_aura_04');
+        }
+        localStorage.setItem(key, JSON.stringify(map));
+      }, { tenantId: SYNTHETIC_SALON_AURA.tenantId });
+
+      // In browser runtime, verify that absent/stripped mapping yields 0 slots for Can Demir & Klasik Manikür
+      const unmappedSlots = await page.evaluate(async ({ tenantId, date }) => {
+        const { availabilityService } = await import('./services/availabilityService.ts');
+        return await availabilityService.getAvailableSlotsForStaff(tenantId, 'staff_aura_02', 'srv_aura_04', date);
+      }, { tenantId: SYNTHETIC_SALON_AURA.tenantId, date: targetDateStr });
+      assert(Array.isArray(unmappedSlots) && unmappedSlots.length === 0, 'Negative test (FINDING-ADIM023-016-TEST-GAP): Can Demir has 0 available slots when staff_services mapping is missing from localStorage');
+
+      // Verify that catalog repository also treats Can Demir as ineligible for Klasik Manikür
+      const unmappedStaffList = await page.evaluate(async ({ tenantId }) => {
+        const { LocalCatalogRepository } = await import('./services/repositories/localCatalogRepository.ts');
+        const repo = new LocalCatalogRepository();
+        return await repo.listStaffForService(tenantId, 'srv_aura_04');
+      }, { tenantId: SYNTHETIC_SALON_AURA.tenantId });
+      assert(!unmappedStaffList.some(s => s.id === 'staff_aura_02'), 'Negative test (FINDING-ADIM023-016-TEST-GAP): Can Demir is ineligible for Klasik Manikür when mapping is absent from localStorage');
+
+      // Restore explicit tenant-scoped Can Demir -> Klasik Manikür staff_services mapping before booking UI proceeds
+      await page.evaluate(({ tenantId }) => {
+        const key = `lari:${tenantId}:staff_services`;
+        const raw = localStorage.getItem(key);
+        const map = raw ? JSON.parse(raw) : {};
+        if (!map['staff_aura_02']) map['staff_aura_02'] = [];
+        if (!map['staff_aura_02'].includes('srv_aura_04')) {
+          map['staff_aura_02'].push('srv_aura_04');
+        }
+        localStorage.setItem(key, JSON.stringify(map));
+      }, { tenantId: SYNTHETIC_SALON_AURA.tenantId });
+
+      const restoredSlots = await page.evaluate(async ({ tenantId, date }) => {
+        const { availabilityService } = await import('./services/availabilityService.ts');
+        return await availabilityService.getAvailableSlotsForStaff(tenantId, 'staff_aura_02', 'srv_aura_04', date);
+      }, { tenantId: SYNTHETIC_SALON_AURA.tenantId, date: targetDateStr });
+      assert(Array.isArray(restoredSlots) && restoredSlots.length > 0, 'Restored mapping enables available slots for Can Demir');
+      const candidateSlotTimes = restoredSlots.map(s => (typeof s === 'string' ? s : s?.time)?.trim()).filter(Boolean);
+      assert(candidateSlotTimes.length > 0, 'Restored mapping provides candidate slot times for Can Demir');
+
       // Click Start Booking again if at landing
       await page.waitForSelector('[data-testid="public-booking-start"]', { timeout: 10000 });
       await page.click('[data-testid="public-booking-start"]');
@@ -435,10 +490,21 @@ async function runStage(title, fn) {
       // Select slot
       await page.waitForSelector('input[type="date"]', { timeout: 10000 });
       await page.fill('input[type="date"]', targetDateStr);
-      await page.waitForSelector('button:has-text("09:"), button:has-text("10:"), button:has-text("11:"), button:has-text("14:")', { timeout: 10000 });
-      const slots = await page.locator('button:has-text("09:"), button:has-text("10:"), button:has-text("11:"), button:has-text("14:")').all();
-      assert(slots.length > 0, 'Found available slot for Can Demir');
-      await slots[0].click();
+      await page.locator('input[type="date"]').dispatchEvent('change');
+      await page.waitForSelector(`label:has-text("${targetDateStr}")`, { timeout: 10000 });
+
+      // Wait for stable booking UI enabled time-slot buttons from restoredSlots
+      const slotRegex = new RegExp(`^\\s*(${candidateSlotTimes.map(t => t.replace(':', '\\:')).join('|')})\\s*$`);
+      const availableSlotLocator = page.locator('button:not([disabled])').filter({ hasText: slotRegex });
+      await availableSlotLocator.first().waitFor({ state: 'visible', timeout: 15000 });
+
+      const availableSlotCount = await availableSlotLocator.count();
+      assert(availableSlotCount > 0, 'Found available slot for Can Demir');
+
+      const selectedSlotTime = (await availableSlotLocator.first().innerText()).trim();
+      assert(candidateSlotTimes.includes(selectedSlotTime), `Selected slot time (${selectedSlotTime}) verified in restoredSlots`);
+      console.log(`[Stage 5] Selecting verified slot for Can Demir: ${selectedSlotTime}...`);
+      await availableSlotLocator.first().click();
 
       // Fill Customer 2 (Merve Çelik - Consent Denied)
       await page.waitForSelector('input[name="name"]', { timeout: 10000 });
