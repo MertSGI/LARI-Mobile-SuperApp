@@ -187,3 +187,21 @@ After the migrations have successfully been applied:
 1. **Unsafe duplicate tables remain active**: If `20260526_initial_schema.sql` was accidentally restored to the migrations folder, **STOP**.
 2. **Missing Env variables**: Staging env vars are unconfigured. The app will boot safely in demo/local fallback mode, but do not push updates until credentials are set.
 3. **PCI-DSS storage violations occur**: If any column definition logs credit card fields (`card_number`, `card_cvv`), immediately abort migration and correct definitions.
+
+---
+
+## 8. Isolated / Local Restore-Aware P0 Cutover & Direct-Write Hardening Verification (ADIM-024)
+
+* **Isolated Test Artifact**: `supabase/tests/20261011_proposed_appointment_access_tokens_and_consent_rls_hardening.sql` captures the PR #4 (`WP-05B/C/D`, `87ab596`, `0ecb848`) P0 `appointment_access_tokens` direct-select revocation and `consent_ledger` / `policy_acceptances` tenant-scoped RLS hardening for **isolated local PostgreSQL verification only**.
+* **Active Migration Chain Preserved**: The 60 active migrations in `supabase/migrations/` (`001_initial_schema.sql` through `20260904_self_service_token_security_and_ratelimit.sql`) remain untouched, with `20260901..20260904` retaining their `CANDIDATE ONLY` governance headers.
+* **Governance & Production Blocker Invariants**:
+  * `NO_REMOTE_DB_WRITE = TRUE` (zero remote Supabase network egress).
+  * `PRODUCTION = NO_GO` (`PAID_FALLBACK = DISABLED`, `AUTO_MERGE = DISABLED`).
+  * **Issue #10** remains `OPEN_PRODUCTION_BLOCKER` (`live_p0_accepted = false`, `live_status = LIVE_P0_NOT_APPLIED`).
+* **Local Verification Suite**:
+  * `node scripts/verify-supabase-migration-integrity.mjs`
+  * `node scripts/scan-frontend-secrets.mjs`
+  * `node scripts/test-appointments-direct-write-hardening.mjs`
+  * `node scripts/verify-lari-recovery-hard-gate.mjs`
+  * `node scripts/verify-disposable-pg17-pristine-restore.mjs`
+
