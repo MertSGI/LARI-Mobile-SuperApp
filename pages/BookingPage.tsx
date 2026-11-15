@@ -100,16 +100,21 @@ const BookingPage: React.FC = () => {
 
 
   const [timeSlots, setTimeSlots] = useState<string[]>([]);
+  const [isLoadingSlots, setIsLoadingSlots] = useState<boolean>(false);
+  const [isLoadingCatalog, setIsLoadingCatalog] = useState<boolean>(true);
   const [slotLoadingError, setSlotLoadingError] = useState<string | null>(null);
   const [slotRefreshKey, setSlotRefreshKey] = useState<number>(0);
+  const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
     if (tenant && selectedStaff && selectedService && selectedDate) {
+      setIsLoadingSlots(true);
       setSlotLoadingError(null);
       availabilityService.getAvailableSlotsForStaff(tenant.id, selectedStaff.id, selectedService.id, selectedDate)
         .then(slots => {
           setTimeSlots(slots.map(s => s.time));
           setSlotLoadingError(null);
+          setIsLoadingSlots(false);
         })
         .catch(err => {
           console.error("Public slot RPC load error:", err);
@@ -117,10 +122,12 @@ const BookingPage: React.FC = () => {
           setSlotLoadingError(language === 'tr'
             ? 'Müsait saatler şu anda yüklenemiyor. Lütfen tekrar deneyin.'
             : 'Available slots could not be loaded right now. Please try again.');
+          setIsLoadingSlots(false);
         });
     } else {
       setTimeSlots([]);
       setSlotLoadingError(null);
+      setIsLoadingSlots(false);
     }
   }, [tenant?.id, selectedStaff?.id, selectedService?.id, selectedDate, slotRefreshKey]);
 
@@ -162,6 +169,9 @@ const BookingPage: React.FC = () => {
             setSubStatus(sub.status);
           }
           setIsCheckingSub(false);
+        }).catch(err => {
+          console.error('Subscription check failed:', err);
+          setIsCheckingSub(false);
         });
       } else {
         // In supabase staging/production mode, public booking relies strictly on the goLiveService canTenantAcceptBookings RPC.
@@ -169,9 +179,22 @@ const BookingPage: React.FC = () => {
         setSubStatus('active');
         setIsCheckingSub(false);
       }
-      getStaffList(tenant.id, { activeOnly: true }).then(setStaffList);
-      getServices(tenant.id, { activeOnly: true }).then(setServicesList);
-      businessProfileService.getPublicBusinessProfile(tenant.id).then(setBusinessProfile);
+      setIsLoadingCatalog(true);
+      Promise.allSettled([
+        getStaffList(tenant.id, { activeOnly: true }).then(setStaffList).catch(err => {
+          console.error('Staff list load failed:', err);
+          setStaffList([]);
+        }),
+        getServices(tenant.id, { activeOnly: true }).then(setServicesList).catch(err => {
+          console.error('Services list load failed:', err);
+          setServicesList([]);
+        })
+      ]).finally(() => {
+        setIsLoadingCatalog(false);
+      });
+      businessProfileService.getPublicBusinessProfile(tenant.id).then(setBusinessProfile).catch(err => {
+        console.error('Business profile load failed:', err);
+      });
       
       const requestedBranchSlug = new URLSearchParams(window.location.hash.split('?')[1]).get('branch');
       branchService.listPublicBranches(tenant.slug, tenant.id).then(branches => {
@@ -186,6 +209,9 @@ const BookingPage: React.FC = () => {
                // step skip logic is handled down below where step starts at 0 
             }
          }
+      }).catch(err => {
+         console.error('Branch list load failed:', err);
+         setBranches([]);
       });
       
       import('../services/goLiveService').then(({ goLiveService }) => {
@@ -194,6 +220,8 @@ const BookingPage: React.FC = () => {
              setSubStatus('expired'); // Reuse expired state UI for now
              setSetupError(status.reason || 'Online randevu sistemi henüz aktif değil.');
            }
+        }).catch(err => {
+           console.error('Booking eligibility check failed:', err);
         });
       });
 
@@ -204,6 +232,8 @@ const BookingPage: React.FC = () => {
          subscriptionService.getPlanForTenant(tenant.id).then(plan => {
             setIsAiEnabled(!!(plan && plan.id !== 'free'));
             setIsMultiBranchEnabled(plan?.multiBranchEnabled || false);
+         }).catch(err => {
+            console.error('Plan check failed:', err);
          });
       }
 
@@ -224,16 +254,25 @@ const BookingPage: React.FC = () => {
 
   useEffect(() => {
     if (tenant && selectedDate && selectedStaff) {
-      getBookedSlots(tenant.id, selectedDate, selectedStaff.id).then(setBookedSlots);
+      getBookedSlots(tenant.id, selectedDate, selectedStaff.id).then(setBookedSlots).catch(err => {
+        console.error('Booked slots load failed:', err);
+        setBookedSlots([]);
+      });
     }
   }, [tenant, selectedDate, selectedStaff]);
 
   useEffect(() => {
     if (tenant) {
       if (selectedService) {
-        getStaffListForService(tenant.id, selectedService.id).then(setStaffList);
+        getStaffListForService(tenant.id, selectedService.id).then(setStaffList).catch(err => {
+          console.error('Staff list for service load failed:', err);
+          setStaffList([]);
+        });
       } else {
-        getStaffList(tenant.id, { activeOnly: true }).then(setStaffList);
+        getStaffList(tenant.id, { activeOnly: true }).then(setStaffList).catch(err => {
+          console.error('Staff list load failed:', err);
+          setStaffList([]);
+        });
       }
     }
   }, [tenant, selectedService]);
@@ -245,6 +284,8 @@ const BookingPage: React.FC = () => {
           if (slot) {
             setStaffAvailability(prev => ({ ...prev, [staff.id]: slot }));
           }
+        }).catch(err => {
+          console.error('Next available slot check failed:', err);
         });
       });
     }
@@ -380,14 +421,33 @@ const BookingPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     if (!selectedService || !selectedTime || !selectedStaff || !tenant) return;
     const isSupabaseMode = getDataSourceMode() === 'supabase';
     if (isSupabaseMode && (!selectedBranch || !selectedBranch.id)) {
-       alert(language === 'tr' ? 'İşletme şube bilgisi alınamadı. Lütfen sayfayı yenileyip tekrar deneyin.' : 'Salon branch information could not be resolved. Please refresh and try again.');
+       const msg = language === 'tr' ? 'İşletme şube bilgisi alınamadı. Lütfen sayfayı yenileyip tekrar deneyin.' : 'Salon branch information could not be resolved. Please refresh and try again.';
+       setFormError(msg);
+       return;
+    }
+    if (!formData.name.trim()) {
+       const msg = language === 'tr' ? 'Lütfen adınızı ve soyadınızı girin.' : 'Please enter your full name.';
+       setFormError(msg);
+       return;
+    }
+    if (!formData.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+       const msg = language === 'tr' ? 'Lütfen geçerli bir e-posta adresi girin.' : 'Please enter a valid email address.';
+       setFormError(msg);
+       return;
+    }
+    const cleanPhone = formData.phone.replace(/[^0-9]/g, '');
+    if (cleanPhone.length < 10) {
+       const msg = language === 'tr' ? 'Lütfen en az 10 haneli geçerli bir telefon numarası girin.' : 'Please enter a valid phone number with at least 10 digits.';
+       setFormError(msg);
        return;
     }
     if (!consentForms.requiredBookingConsent) {
-       alert('Lütfen randevu işlemini tamamlamak için öncelikle kullanım iznini onaylayınız.');
+       const msg = language === 'tr' ? 'Lütfen randevu işlemini tamamlamak için öncelikle kullanım iznini onaylayınız.' : 'Please accept terms to proceed.';
+       setFormError(msg);
        return;
     }
 
@@ -415,13 +475,15 @@ const BookingPage: React.FC = () => {
           clientFingerprint: clientFp,
           success: false
         });
-        alert(evaluation.reason || 'Rezervasyon talebiniz güvenlik politikaları gereğince onaylanamadı.');
+        const msg = evaluation.reason || (language === 'tr' ? 'Rezervasyon talebiniz güvenlik politikaları gereğince onaylanamadı.' : 'Booking request could not be approved due to security policies.');
+        setFormError(msg);
         setIsSubmitting(false);
         return;
       }
     } catch (err) {
       console.error('Abuse protection evaluation failed', err);
-      alert(language === 'tr' ? 'Güvenlik doğrulaması sırasında bir hata oluştu. Lütfen tekrar deneyin.' : 'An error occurred during security verification. Please try again.');
+      const msg = language === 'tr' ? 'Güvenlik doğrulaması sırasında bir hata oluştu. Lütfen tekrar deneyin.' : 'An error occurred during security verification. Please try again.';
+      setFormError(msg);
       setIsSubmitting(false);
       return;
     }
@@ -765,7 +827,8 @@ isWaDelivered = waDelivered === true;
 
     } catch (e: any) {
       console.error("Critical booking failure", e);
-      alert(e.message || (language === 'tr' ? 'Randevu oluşturulurken beklenmedik bir hata oluştu.' : 'An unexpected error occurred while booking.'));
+      const errorMsg = e.message || (language === 'tr' ? 'Randevu oluşturulurken beklenmedik bir hata oluştu.' : 'An unexpected error occurred while booking.');
+      setFormError(errorMsg);
     } finally {
       setIsSubmitting(false);
     }
@@ -889,9 +952,14 @@ isWaDelivered = waDelivered === true;
               <button onClick={() => setStep(0)} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white underline transition-colors duration-300">{language === 'tr' ? 'Geri Dön' : 'Go Back'}</button>
             </div>
             
-            {filteredServices.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="mt-4 text-gray-500 dark:text-gray-400 text-lg">Şu anda seçilebilir aktif hizmet bulunmuyor.</p>
+            {isLoadingCatalog ? (
+              <div role="status" aria-live="polite" data-testid="booking-catalog-loading" className="text-center py-12 flex flex-col items-center justify-center">
+                <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin mb-3" aria-hidden="true" />
+                <span className="text-gray-500 dark:text-gray-400 text-sm font-medium">{language === 'tr' ? 'Hizmetler yükleniyor...' : 'Loading services...'}</span>
+              </div>
+            ) : filteredServices.length === 0 ? (
+              <div role="status" data-testid="booking-services-empty" className="text-center py-12">
+                <p className="mt-4 text-gray-500 dark:text-gray-400 text-lg">{language === 'tr' ? 'Şu anda seçilebilir aktif hizmet bulunmuyor.' : 'No active services available at the moment.'}</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-4">
@@ -944,7 +1012,12 @@ isWaDelivered = waDelivered === true;
                <span className="font-bold text-gray-900 dark:text-white">{language === 'tr' ? selectedService?.name_tr : selectedService?.name}</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {filteredStaff.length === 0 ? (
+              <div role="status" data-testid="booking-staff-empty" className="text-center py-12">
+                <p className="mt-4 text-gray-500 dark:text-gray-400 text-lg">{language === 'tr' ? 'Bu hizmet için aktif uzman bulunmuyor.' : 'No active staff available for this service.'}</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <button
                  onClick={() => {
                      // For "Bana Fark Etmez", simply select the first staff 
@@ -990,6 +1063,7 @@ isWaDelivered = waDelivered === true;
                 </button>
               ))}
             </div>
+            )}
           </div>
         )}
 
@@ -1020,7 +1094,12 @@ isWaDelivered = waDelivered === true;
 
               <div className="flex-grow">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 transition-colors duration-300">{t.booking.step2_slots} ({selectedDate})</label>
-                {slotLoadingError ? (
+                {isLoadingSlots ? (
+                  <div role="status" aria-live="polite" data-testid="booking-slots-loading" className="py-8 text-center text-gray-500 dark:text-gray-400 flex flex-col items-center bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700">
+                     <div className="w-8 h-8 border-2 border-accent/20 border-t-accent rounded-full animate-spin mb-3" aria-hidden="true" />
+                     <span className="text-sm font-medium">{language === 'tr' ? 'Müsait saatler yükleniyor...' : 'Loading available slots...'}</span>
+                  </div>
+                ) : slotLoadingError ? (
                   <div className="py-8 text-center text-red-600 dark:text-red-400 flex flex-col items-center bg-red-50 dark:bg-slate-800 rounded-xl border border-red-100 dark:border-slate-700">
                      <p className="mb-3 font-medium">{slotLoadingError}</p>
                      <button
@@ -1031,7 +1110,7 @@ isWaDelivered = waDelivered === true;
                      </button>
                   </div>
                 ) : timeSlots.length === 0 || timeSlots.every(time => bookedSlots.includes(time)) ? (
-                  <div className="py-8 text-center text-gray-500 dark:text-gray-400 flex flex-col items-center bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700">
+                  <div role="status" data-testid="booking-slots-empty" className="py-8 text-center text-gray-500 dark:text-gray-400 flex flex-col items-center bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700">
                      <svg className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                      <span>{language === 'tr' ? 'Bu gün için uygun saat yok. Başka bir gün seçebilirsiniz.' : 'No available slots for this day. Please select another day.'}</span>
                   </div>
@@ -1083,6 +1162,20 @@ isWaDelivered = waDelivered === true;
               </div>
               <span className="font-semibold bg-white dark:bg-slate-800 px-3 py-1 rounded-md border border-gray-200 dark:border-slate-600 transition-colors duration-300">{selectedDate} @ {selectedTime}</span>
             </div>
+
+            {formError && (
+              <div
+                role="alert"
+                aria-live="assertive"
+                data-testid="booking-form-error"
+                className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl text-sm font-medium text-red-700 dark:text-red-300 flex items-start gap-3"
+              >
+                <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>{formError}</span>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {hasSavedProfile && (
