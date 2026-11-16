@@ -121,7 +121,7 @@ function run() {
   });
   assert.equal(cashOk.success, true);
   assert.equal(cashOk.reasonCode, 'ORDER_COMPLETED');
-  assert.equal(cashOk.totalMinorUnits, 100000);
+  assert.equal(cashOk.totalMinorUnits, 120000); // 1000.00 TRY + 20% KDV = 1200.00 TRY
   assert.ok(cashOk.staffCommissionMinor > 0);
 
   const conflict = engine.checkoutMixedCart({
