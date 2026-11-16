@@ -124,7 +124,18 @@ const V2_MIGRATIONS = [
   '20260923_phase4_deposit_noshow_policy_foundation.sql',
   '20260924_phase4_loyalty_reactivation_foundation.sql',
   '20260925_phase4_packages_memberships_foundation.sql',
-  '20260926_phase4_giftcards_wallet_foundation.sql'
+  '20260926_phase4_giftcards_wallet_foundation.sql',
+  '20260927_commercial_lifecycle_eligibility_alignment.sql',
+  '20260928_lari_clinic_domain_server_authority.sql',
+  '20260929_lari_clinic_operational_integration.sql',
+  '20260930_lari_clinic_workspace_authority_hardening.sql',
+  '20261001_lari_health_tourism_foundation.sql',
+  '20261002_lari_health_tourism_lead_ops_ai_assist.sql',
+  '20261003_lari_health_tourism_clinic_acceptance.sql',
+  '20261004_lari_health_tourism_clinic_acceptance_workspace.sql',
+  '20261005_phase5_vertical_skus_commercial_packaging.sql',
+  '20261006_phase5_clinic_practitioners_workspace_hardening.sql',
+  '20261007_phase5_ht_treatment_journey_quote_itinerary.sql'
 ];
 
 const ALL_EXPECTED_MIGRATIONS = [...CANONICAL_MIGRATIONS, ...CANDIDATE_MIGRATIONS, ...V2_MIGRATIONS].sort();

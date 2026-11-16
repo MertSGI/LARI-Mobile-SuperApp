@@ -90,6 +90,17 @@ All migrations in `supabase/migrations/` must be applied in the exact alphabetic
 80. **`20260924_phase4_loyalty_reactivation_foundation.sql`** — V2 Faz D3 (from `72911e4:20260925`): `tenant_loyalty_configs`, append-only `customer_loyalty_ledger`, `customer_loyalty_balances`, `customer_reactivation_events`, `service_role`-only `earn_loyalty_points_for_appointment` and `redeem_loyalty_points_for_appointment` (advisory-locked with idempotency conflict checks), `get_customer_loyalty_profile`, and `scan_customer_reactivation_cohorts` (strict 60/90d cohorts, fail-closed `consent_ledger`, queued via `enqueue_communication_outbox`).
 81. **`20260925_phase4_packages_memberships_foundation.sql`** — V2 Faz D3 (from `72911e4:20260925`): `service_package_definitions`, `service_package_eligibility`, `customer_packages`, append-only `customer_package_redemption_ledger`, `membership_plans`, `customer_memberships`, `redeem_customer_package_credits` (advisory-locked + `FOR UPDATE` + idempotency conflict checks), and `admin_grant_customer_package`.
 82. **`20260926_phase4_giftcards_wallet_foundation.sql`** — V2 Faz D3 (from `72911e4:20260926`): `client_wallets`, append-only `client_wallet_ledger`, `gift_cards` (SHA-256 `code_hash` only), append-only `gift_card_redemptions`, `transact_wallet_balance` (`tenant_owner`/`super_admin`/`service_role`, advisory-locked + `FOR UPDATE` + idempotency conflict checks), and `redeem_gift_card`.
+83. **`20260927_commercial_lifecycle_eligibility_alignment.sql`** — V2 Faz E1 (from `72911e4:20260908`): Aligns `resolve_tenant_commercial_eligibility` and `resolve_effective_tenant_entitlements` across `active`, `manual_active`, `comped`, `trialing` (`trial_end`), and `past_due` (`grace_until`).
+84. **`20260928_lari_clinic_domain_server_authority.sql`** — V2 Faz E1 (from `72911e4:20260905`): `clinic_staff_profiles`, `clinic_patient_profiles`, `clinic_encounters`, append-only `clinic_encounter_notes` (`trg_prevent_clinic_encounter_notes_mutation`), table privilege revocation (`PUBLIC, anon, authenticated`), and foundational clinical RPCs.
+85. **`20260929_lari_clinic_operational_integration.sql`** — V2 Faz E1 (from `72911e4:20260906`): Hardens `clinic_start_encounter` (`FOR UPDATE` + confirmed-only), adds open-encounter appointment status guard trigger, atomic `clinic_complete_encounter_and_appointment` (with synthetic `communication_outbox` queue), `clinic_get_my_context`, and `clinic_get_operational_day`.
+86. **`20260930_lari_clinic_workspace_authority_hardening.sql`** — V2 Faz E1 (from `72911e4:20260907`): Restricts `clinic_upsert_patient_profile` to `can_manage_patient_profiles`, adds bounded `clinic_get_patient_profile` and owner-only `clinic_get_staff_setup_profiles`.
+87. **`20261001_lari_health_tourism_foundation.sql`** — V2 Faz E1 (from `72911e4:20260910`): `ht_referring_agencies`, `ht_staff_profiles`, `ht_leads` (table privileges revoked, `passport_number` strictly excluded from staff read RPCs and audit payloads), and public/staff intake & management RPCs.
+88. **`20261002_lari_health_tourism_lead_ops_ai_assist.sql`** — V2 Faz E1 (from `72911e4:20260911`): Extends `ht_leads` with scoring/handoff fields, adds `ht_ai_conversations`, `ht_ai_messages`, transition-enforced `ht_update_lead_status`, `ht_assign_coordinator`, `ht_score_lead`, `ht_enqueue_whatsapp_handoff` (`no_real_send`), and retention cleanup while reusing canonical `ht_rate_limit_buckets`.
+89. **`20261003_lari_health_tourism_clinic_acceptance.sql`** — V2 Faz E1 (from `72911e4:20260912`): Adds lead conversion provenance on `ht_leads`, `preferred_language` on `clinic_patient_profiles`, `appointments.source`, `ht_accept_lead_into_clinic` (reusing `evaluate_booking_slot` + advisory lock), and `ht_list_pending_clinic_acceptance`.
+90. **`20261004_lari_health_tourism_clinic_acceptance_workspace.sql`** — V2 Faz E1 (from `72911e4:20260913`): Server-authoritative clinic acceptance workspace read contracts (`ht_get_clinic_acceptance_options`, `ht_get_clinic_acceptance_slots`).
+91. **`20261005_phase5_vertical_skus_commercial_packaging.sql`** — V2 Faz E1 (from `72911e4:20260927`): Vertical feature definitions, published v1 vertical SKUs (`clinic_starter`, `clinic_pro`, `ht_starter`, `ht_enterprise`), cross-tenant-guarded `resolve_tenant_vertical_context`, and advisory-locked practitioner/coordinator quota triggers.
+92. **`20261006_phase5_clinic_practitioners_workspace_hardening.sql`** — V2 Faz E1 (from `72911e4:20260928`): Hardens `clinic_set_staff_profile` and `clinic_get_my_context` against vertical commercial entitlement and `staff_branches` membership.
+93. **`20261007_phase5_ht_treatment_journey_quote_itinerary.sql`** — V2 Faz E1 (from `72911e4:20260928`): `ht_treatment_journeys`, `ht_journey_quotes`, `ht_journey_itinerary_events`, table privilege revocation + fail-closed RLS, `ht_assert_caller_ht_authority` (`service_role` only), and concurrency-safe journey/quote/itinerary RPCs.
 
 ---
 
@@ -207,6 +218,18 @@ All migrations in `supabase/migrations/` must be applied in the exact alphabetic
 | `client_wallet_ledger` | `20260926_phase4_giftcards_wallet_foundation.sql` | — | `20260926_phase4_giftcards_wallet_foundation.sql` |
 | `gift_cards` | `20260926_phase4_giftcards_wallet_foundation.sql` | — | `20260926_phase4_giftcards_wallet_foundation.sql` |
 | `gift_card_redemptions` | `20260926_phase4_giftcards_wallet_foundation.sql` | — | `20260926_phase4_giftcards_wallet_foundation.sql` |
+| `clinic_staff_profiles` | `20260928_lari_clinic_domain_server_authority.sql` | — | `20260928_lari_clinic_domain_server_authority.sql` |
+| `clinic_patient_profiles` | `20260928_lari_clinic_domain_server_authority.sql` | `20261003` | `20260928_lari_clinic_domain_server_authority.sql` |
+| `clinic_encounters` | `20260928_lari_clinic_domain_server_authority.sql` | — | `20260928_lari_clinic_domain_server_authority.sql` |
+| `clinic_encounter_notes` | `20260928_lari_clinic_domain_server_authority.sql` | — | `20260928_lari_clinic_domain_server_authority.sql` |
+| `ht_referring_agencies` | `20261001_lari_health_tourism_foundation.sql` | — | `20261001_lari_health_tourism_foundation.sql` |
+| `ht_staff_profiles` | `20261001_lari_health_tourism_foundation.sql` | — | `20261001_lari_health_tourism_foundation.sql` |
+| `ht_leads` | `20261001_lari_health_tourism_foundation.sql` | `20261002`, `20261003` | `20261001_lari_health_tourism_foundation.sql` |
+| `ht_ai_conversations` | `20261002_lari_health_tourism_lead_ops_ai_assist.sql` | — | `20261002_lari_health_tourism_lead_ops_ai_assist.sql` |
+| `ht_ai_messages` | `20261002_lari_health_tourism_lead_ops_ai_assist.sql` | — | `20261002_lari_health_tourism_lead_ops_ai_assist.sql` |
+| `ht_treatment_journeys` | `20261007_phase5_ht_treatment_journey_quote_itinerary.sql` | — | `20261007_phase5_ht_treatment_journey_quote_itinerary.sql` |
+| `ht_journey_quotes` | `20261007_phase5_ht_treatment_journey_quote_itinerary.sql` | — | `20261007_phase5_ht_treatment_journey_quote_itinerary.sql` |
+| `ht_journey_itinerary_events` | `20261007_phase5_ht_treatment_journey_quote_itinerary.sql` | — | `20261007_phase5_ht_treatment_journey_quote_itinerary.sql` |
 
 ---
 

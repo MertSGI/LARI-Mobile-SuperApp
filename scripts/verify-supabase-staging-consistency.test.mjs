@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -74,7 +75,7 @@ async function runPgTests() {
     await client.query(bootstrapSql);
 
     const migrationFiles = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
-    assert.equal(migrationFiles.length, 82, `Expected 82 total migrations, got ${migrationFiles.length}`);
+    assert.equal(migrationFiles.length, 93, `Expected 93 total migrations, got ${migrationFiles.length}`);
 
     const bridgeSql = fs.readFileSync(
       path.join(testsDir, 'fixtures', 'p2a_historical_replay_bridge_before_migration_38.sql'),
@@ -1487,7 +1488,1005 @@ async function runPgTests() {
     );
     console.log('[PASS] Phase 3/4 Customer 360, Comms, Payments, Deposit/No-Show, Loyalty, Packages & Wallet/Gift Cards verified on PG17');
 
-    console.log('\nALL ADIM-033 + ADIM-034 + ADIM-035 DISPOSABLE PG17 TESTS PASSED.');
+    // 11. Test ADIM-036 Faz E1 (20260927..20261007): Vertical Commercial Core, Clinic Domain & Health Tourism (Synth Fixtures Only)
+    // 11a. Negative: direct DML & SELECT blocked on clinic_* and ht_* tables for authenticated/anon roles
+    await setAuthUid(staffUid);
+    await assert.rejects(
+      async () => client.query(`SELECT * FROM public.clinic_patient_profiles WHERE tenant_id = $1;`, [tenantId]),
+      (err) => err && err.code === '42501'
+    );
+    await assert.rejects(
+      async () => client.query(`INSERT INTO public.clinic_patient_profiles (tenant_id, customer_id, blood_type) VALUES ($1, $2, 'A+');`, [tenantId, d3CustConsentedId]),
+      (err) => err && err.code === '42501'
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT * FROM public.clinic_encounters WHERE tenant_id = $1;`, [tenantId]),
+      (err) => err && err.code === '42501'
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT * FROM public.ht_leads WHERE tenant_id = $1;`, [tenantId]),
+      (err) => err && err.code === '42501'
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT * FROM public.ht_treatment_journeys WHERE tenant_id = $1;`, [tenantId]),
+      (err) => err && err.code === '42501'
+    );
+
+    // 11b. Vertical context hardening: cross-tenant caller rejected, anon execute denied, unentitled clinic denied
+    await setAuthUid(tenantBStaffUid);
+    const vtCross = (await client.query(`SELECT public.resolve_tenant_vertical_context($1) AS res;`, [tenantId])).rows[0].res;
+    assert.equal(vtCross.success, false);
+    assert.equal(vtCross.reason_code, 'FORBIDDEN_CROSS_TENANT');
+
+    await setAuthUid(null);
+    await client.query(`SET ROLE anon;`);
+    await assert.rejects(
+      async () => client.query(`SELECT public.resolve_tenant_vertical_context($1) AS res;`, [tenantId]),
+      (err) => err && err.code === '42501'
+    );
+    await client.query(`RESET ROLE;`);
+
+    await setAuthUid(ownerUid);
+    const vtUnentitled = (await client.query(`SELECT public.resolve_tenant_vertical_context($1) AS res;`, [tenantId])).rows[0].res;
+    assert.equal(vtUnentitled.success, true);
+    assert.equal(vtUnentitled.verticals.clinic_enabled, false);
+    assert.equal(vtUnentitled.verticals.health_tourism_enabled, false);
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_set_staff_profile($1, 'doctor', 'Dermatology', 'SYNTH-LIC-001', true, true, true);`, [ownerStaffId]),
+      (err) => err && err.message.includes('Clinic workspace vertical is not enabled')
+    );
+
+    // ADIM036-COMM-001: Negative & boundary lifecycle checks for trialing (trial_end) and past_due (grace_until)
+    await setAuthUid(null);
+    const commCases = [
+      { status: 'trialing', trialEndSql: 'NULL', graceUntilSql: 'NULL', expectedEligible: false, expectedReason: 'commercial_trial_expired', label: 'trialing + NULL trial_end' },
+      { status: 'trialing', trialEndSql: "now() - interval '1 hour'", graceUntilSql: 'NULL', expectedEligible: false, expectedReason: 'commercial_trial_expired', label: 'trialing + expired trial_end' },
+      { status: 'past_due', trialEndSql: 'NULL', graceUntilSql: 'NULL', expectedEligible: false, expectedReason: 'commercial_grace_expired', label: 'past_due + NULL grace_until' },
+      { status: 'past_due', trialEndSql: 'NULL', graceUntilSql: "now() - interval '1 hour'", expectedEligible: false, expectedReason: 'commercial_grace_expired', label: 'past_due + expired grace_until' },
+      { status: 'trialing', trialEndSql: "now() + interval '7 days'", graceUntilSql: 'NULL', expectedEligible: true, expectedReason: 'commercial_allowed', label: 'trialing + future trial_end' },
+      { status: 'past_due', trialEndSql: 'NULL', graceUntilSql: "now() + interval '3 days'", expectedEligible: true, expectedReason: 'commercial_allowed', label: 'past_due + future grace_until' },
+    ];
+    for (const c of commCases) {
+      await setAuthUid(null);
+      await client.query(`
+        UPDATE public.subscriptions s
+        SET plan_id = 'clinic_starter',
+            plan_version_id = pv.id,
+            status = $2,
+            trial_end = ${c.trialEndSql},
+            grace_until = ${c.graceUntilSql}
+        FROM public.plan_versions pv
+        JOIN public.plans p ON p.id = pv.plan_id
+        WHERE s.tenant_id = $1
+          AND p.code = 'clinic_starter'
+          AND pv.lifecycle_status = 'published';
+      `, [tenantId, c.status]);
+
+      const elig = (await client.query(`SELECT public.resolve_tenant_commercial_eligibility($1) AS res;`, [tenantId])).rows[0].res;
+      assert.equal(elig.eligible, c.expectedEligible, `${c.label}: eligibility mismatch`);
+      assert.equal(elig.reason_code, c.expectedReason, `${c.label}: reason_code mismatch`);
+
+      const clinicEnt = (await client.query(`
+        SELECT boolean_value, source FROM public.resolve_effective_tenant_entitlements($1)
+        WHERE feature_key = 'clinic_workspace';
+      `, [tenantId])).rows[0];
+      assert.equal(clinicEnt.boolean_value, c.expectedEligible, `${c.label}: clinic_workspace boolean_value mismatch`);
+      assert.equal(clinicEnt.source, c.expectedEligible ? 'plan_version' : 'default_deny', `${c.label}: entitlement source mismatch`);
+
+      await setAuthUid(ownerUid);
+      const vertCheck = (await client.query(`SELECT public.resolve_tenant_vertical_context($1) AS res;`, [tenantId])).rows[0].res;
+      assert.equal(vertCheck.eligible, c.expectedEligible, `${c.label}: vertical context eligible mismatch`);
+    }
+
+    // Activate clinic_starter with manual_active lifecycle status (20260927) + HT feature overrides (single-journey/2-coordinator caps)
+    await setAuthUid(null);
+    await client.query(`
+      UPDATE public.subscriptions s
+      SET plan_id = 'clinic_starter',
+          plan_version_id = pv.id,
+          status = 'manual_active',
+          trial_end = NULL,
+          grace_until = NULL
+      FROM public.plan_versions pv
+      JOIN public.plans p ON p.id = pv.plan_id
+      WHERE s.tenant_id = $1
+        AND p.code = 'clinic_starter'
+        AND pv.lifecycle_status = 'published';
+    `, [tenantId]);
+    await client.query(`
+      INSERT INTO public.tenant_entitlement_overrides (tenant_id, feature_key, value_type, boolean_value, integer_value, reason, created_by)
+      VALUES
+        ($1, 'ht_lead_ops', 'boolean', true, NULL, 'ADIM-036 synth test', $2),
+        ($1, 'ht_multilingual_funnel', 'boolean', true, NULL, 'ADIM-036 synth test', $2),
+        ($1, 'ht_agency_network', 'boolean', true, NULL, 'ADIM-036 synth test', $2),
+        ($1, 'ht_ai_chat', 'boolean', true, NULL, 'ADIM-036 synth test', $2),
+        ($1, 'ht_journey_quote', 'boolean', true, NULL, 'ADIM-036 synth test', $2),
+        ($1, 'max_active_journeys', 'integer', NULL, 1, 'ADIM-036 synth test', $2),
+        ($1, 'max_coordinators', 'integer', NULL, 2, 'ADIM-036 synth test', $2),
+        ($1, 'max_staff', 'integer', NULL, 10, 'ADIM-036 synth test', $2)
+      ON CONFLICT DO NOTHING;
+    `, [tenantId, superAdminUid]);
+
+    await setAuthUid(ownerUid);
+    const vtReady = (await client.query(`SELECT public.resolve_tenant_vertical_context($1) AS res;`, [tenantId])).rows[0].res;
+    assert.equal(vtReady.success, true);
+    assert.equal(vtReady.eligible, true);
+    assert.equal(vtReady.subscription_status, 'manual_active');
+    assert.equal(vtReady.verticals.clinic_enabled, true);
+    assert.equal(vtReady.verticals.health_tourism_enabled, true);
+
+    // Non-owner cannot manage clinic staff profiles
+    await setAuthUid(staffUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_set_staff_profile($1, 'doctor', 'Laser', 'SYNTH-LIC-002', true, true, true);`, [staffId]),
+      (err) => err && err.message.includes('FORBIDDEN')
+    );
+
+    // Owner configures unprivileged triage staff2 (all clinic perms false -> quota 0 used) + 2 active practitioners (ownerStaffId, staffId) -> 3rd active practitioner hits max_practitioners=2 cap
+    await setAuthUid(null);
+    const clinicPract3Uid = 'e1000003-0000-4000-8000-000000000003';
+    const clinicPract3Id = 'e1000004-0000-4000-8000-000000000004';
+    await client.query(`INSERT INTO auth.users (id, email) VALUES ($1, 'pract3-synth@example.test') ON CONFLICT DO NOTHING;`, [clinicPract3Uid]);
+    await client.query(`INSERT INTO public.users_profile (id, tenant_id, name, role, active) VALUES ($1, $2, 'Synth Pract 3', 'staff', true) ON CONFLICT DO NOTHING;`, [clinicPract3Uid, tenantId]);
+    await client.query(`INSERT INTO public.staff (id, tenant_id, user_profile_id, name, active) VALUES ($1, $2, $3, 'Synth Pract 3', true) ON CONFLICT DO NOTHING;`, [clinicPract3Id, tenantId, clinicPract3Uid]);
+
+    await setAuthUid(ownerUid);
+    const csStaff2 = (await client.query(`SELECT public.clinic_set_staff_profile($1, 'nurse', 'Triage', 'SYNTH-LIC-100', false, false, false) AS res;`, [staff2Id])).rows[0].res;
+    assert.equal(csStaff2.success, true);
+    const csOwner = (await client.query(`SELECT public.clinic_set_staff_profile($1, 'doctor', 'Aesthetics', 'SYNTH-LIC-101', true, true, true) AS res;`, [ownerStaffId])).rows[0].res;
+    assert.equal(csOwner.success, true);
+    const csPract2 = (await client.query(`SELECT public.clinic_set_staff_profile($1, 'therapist', 'Skin', 'SYNTH-LIC-102', false, true, true) AS res;`, [staffId])).rows[0].res;
+    assert.equal(csPract2.success, true);
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_set_staff_profile($1, 'doctor', 'Laser', 'SYNTH-LIC-103', true, true, false);`, [clinicPract3Id]),
+      (err) => err && err.message.includes('PRACTITIONER_QUOTA_EXCEEDED')
+    );
+
+    // Ensure ownerStaffId has branch/service/availability links for acceptance slots
+    await setAuthUid(null);
+    await client.query(`INSERT INTO public.staff_branches (tenant_id, staff_id, branch_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING;`, [tenantId, ownerStaffId, branchId]);
+    await client.query(`INSERT INTO public.staff_services (staff_id, service_id) VALUES ($1, $2) ON CONFLICT DO NOTHING;`, [ownerStaffId, serviceId]);
+    await client.query(`INSERT INTO public.availability_rules (tenant_id, staff_id, weekday, start_time, end_time, is_active) VALUES ($1, $2, 1, '09:00', '18:00', true) ON CONFLICT DO NOTHING;`, [tenantId, ownerStaffId]);
+
+    // 11c. Negative clinic authorization & cross-tenant isolation
+    // clinicPract3 (unconfigured staff profile) & nurse staff2 (all permissions=false) denied patient write & history read
+    await setAuthUid(clinicPract3Uid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_upsert_patient_profile($1, '1990-01-15'::date, 'female', 'Synth Contact', '+905550009999', 'spouse', 'O+', 'None', 'None');`, [d3CustConsentedId]),
+      (err) => err && err.message.includes('FORBIDDEN')
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_get_patient_history($1);`, [d3CustConsentedId]),
+      (err) => err && err.message.includes('FORBIDDEN')
+    );
+
+    // Nurse staff2 (can_manage_patient_profiles=false, can_view_clinical_records=false, can_write_clinical_notes=false) denied patient profile write & history read
+    await setAuthUid(staff2Uid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_upsert_patient_profile($1, '1990-01-15'::date, 'female');`, [d3CustConsentedId]),
+      (err) => err && err.message.includes('FORBIDDEN')
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_get_patient_history($1);`, [d3CustConsentedId]),
+      (err) => err && err.message.includes('FORBIDDEN')
+    );
+
+    // 11d. Clinic operational & clinical flow (synthetic patient + confirmed appointment + SOAP note immutability + trigger guard)
+    await setAuthUid(ownerUid);
+    const cpRes = (await client.query(`
+      SELECT public.clinic_upsert_patient_profile($1, '1991-05-20'::date, 'female', 'Synth Kin', '+905551112233', 'sibling', 'A+', 'Synth Pollen', 'None') AS res;
+    `, [d3CustConsentedId])).rows[0].res;
+    assert.equal(cpRes.success, true);
+
+    // Create confirmed clinic appointment assigned to ownerStaffId
+    await setAuthUid(null);
+    const clinicApptId = 'e1000001-0000-4000-8000-000000000001';
+    const clinicPendingApptId = 'e1000002-0000-4000-8000-000000000002';
+    await client.query(`
+      INSERT INTO public.appointments (id, tenant_id, branch_id, customer_id, user_name, phone, service_id, staff_id, appointment_date, appointment_time, duration_minutes, status)
+      VALUES
+        ($1, $3, $4, $7, 'Synth Clinic Patient', '+905550001100', $5, $6, $8::date, '11:00'::time, 60, 'confirmed'),
+        ($2, $3, $4, $7, 'Synth Pending Patient', '+905550001101', $5, $6, $8::date, '12:30'::time, 60, 'pending');
+    `, [clinicApptId, clinicPendingApptId, tenantId, branchId, serviceId, ownerStaffId, d3CustConsentedId, futureDate]);
+
+    await setAuthUid(ownerUid);
+    // Starting encounter on pending appointment must fail closed
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_start_encounter($1, 'Pre-check');`, [clinicPendingApptId]),
+      (err) => err && err.message.includes('APPOINTMENT_NOT_CONFIRMED')
+    );
+
+    const encStart = (await client.query(`SELECT public.clinic_start_encounter($1, 'Synthetic checkup') AS res;`, [clinicApptId])).rows[0].res;
+    assert.equal(encStart.success, true);
+    const encId = encStart.encounter_id;
+
+    // Staff without write permission cannot write note on the encounter
+    await setAuthUid(staff2Uid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_save_encounter_note($1, 'S', 'O', 'A', 'P', 'draft');`, [encId]),
+      (err) => err && err.message.includes('FORBIDDEN')
+    );
+
+    await setAuthUid(ownerUid);
+    const noteSave = (await client.query(`SELECT public.clinic_save_encounter_note($1, 'Synth S', 'Synth O', 'Synth A', 'Synth P', 'final') AS res;`, [encId])).rows[0].res;
+    assert.equal(noteSave.success, true);
+    assert.equal(noteSave.version, 1);
+
+    // Direct status mutation on appointment while encounter is open must be blocked by trigger, and encounter_notes is append-only
+    await setAuthUid(null);
+    await assert.rejects(
+      async () => client.query(`UPDATE public.appointments SET status = 'completed' WHERE id = $1;`, [clinicApptId]),
+      (err) => err && err.message.includes('INVARIANT_VIOLATION')
+    );
+    await assert.rejects(
+      async () => client.query(`UPDATE public.clinic_encounter_notes SET subjective = 'Tampered' WHERE encounter_id = $1;`, [encId]),
+      (err) => err && err.message.includes('CLINIC_ENCOUNTER_NOTES_IMMUTABLE')
+    );
+
+    // Atomic encounter + appointment completion writes simulated no_real_send outbox
+    await setAuthUid(ownerUid);
+    const encDone = (await client.query(`SELECT public.clinic_complete_encounter_and_appointment($1) AS res;`, [encId])).rows[0].res;
+    assert.equal(encDone.success, true);
+    assert.equal(encDone.appointment_status, 'completed');
+
+    await setAuthUid(null);
+    const clinicOutboxRows = (await client.query(`
+      SELECT (metadata->>'no_real_send')::boolean AS no_real_send, metadata->>'event_type' AS ev_type
+      FROM public.communication_outbox
+      WHERE tenant_id = $1::text AND (metadata->>'appointment_id') = $2::text
+      ORDER BY created_at DESC LIMIT 1;
+    `, [tenantId, clinicApptId])).rows;
+    assert.equal(clinicOutboxRows.length, 1);
+    assert.equal(clinicOutboxRows[0].no_real_send, true);
+    assert.equal(clinicOutboxRows[0].ev_type, 'appointment_completed');
+
+    // ADIM036-TENANT-002: Clinic operational day must be strictly scoped to caller's staff_branches (explicit branch AND NULL branch)
+    await setAuthUid(staffUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_get_operational_day($1::date, $2);`, [futureDate, branch2Id]),
+      (err) => err && err.message.includes('FORBIDDEN'),
+      'Staff assigned only to Branch A must be denied Branch B operational day'
+    );
+    const staffOpDayNull = (await client.query(`SELECT public.clinic_get_operational_day($1::date, NULL) AS res;`, [futureDate])).rows[0].res;
+    assert.equal(staffOpDayNull.success, true);
+    assert.ok(staffOpDayNull.appointments.length > 0, 'Staff Branch A operational day should include Branch A appointments');
+    assert.ok(
+      staffOpDayNull.appointments.every((a) => a.branch_id === branchId),
+      'NULL branch operational day call must exclude unassigned Branch B appointments'
+    );
+    assert.ok(
+      staffOpDayNull.appointments.some((a) => a.appointment_id === clinicApptId),
+      'Staff Branch A operational day should include clinicApptId'
+    );
+    const staffOpDayBranchA = (await client.query(`SELECT public.clinic_get_operational_day($1::date, $2) AS res;`, [futureDate, branchId])).rows[0].res;
+    assert.equal(staffOpDayBranchA.success, true);
+    assert.ok(staffOpDayBranchA.appointments.some((a) => a.appointment_id === clinicApptId));
+
+    // ADIM036-PHI-006: Branch-A-only staff must be denied Branch-B-only patient profile/history reads & profile writes (0 PHI mutation),
+    // and mixed-branch history must exclude Branch-B encounters
+    await setAuthUid(null);
+    const branchBOnlyEncId = 'e1000005-0000-4000-8000-000000000005';
+    const branchBOnlyApptRow = (await client.query(`
+      SELECT id FROM public.appointments
+      WHERE tenant_id = $1 AND branch_id = $2 AND customer_id = $3
+      LIMIT 1;
+    `, [tenantId, branch2Id, customerB2Id])).rows[0];
+    assert.ok(branchBOnlyApptRow?.id, 'Expected existing Branch-B appointment for customerB2Id');
+
+    await client.query(`
+      INSERT INTO public.clinic_patient_profiles (tenant_id, customer_id, blood_type, allergies, chronic_conditions)
+      VALUES ($1, $2, 'B-', 'Synth Latex', 'None')
+      ON CONFLICT (tenant_id, customer_id) DO NOTHING;
+    `, [tenantId, customerB2Id]);
+    await client.query(`
+      INSERT INTO public.clinic_encounters (id, tenant_id, appointment_id, customer_id, practitioner_staff_id, branch_id, status, reason_for_visit, created_by)
+      VALUES ($1, $2, $3, $4, $5, $6, 'completed', 'Branch-B Only Synth Visit', $7)
+      ON CONFLICT DO NOTHING;
+    `, [branchBOnlyEncId, tenantId, branchBOnlyApptRow.id, customerB2Id, staffB2Id, branch2Id, ownerUid]);
+
+    // Branch-A-only staff (ownerUid with full clinic perms, and staffUid with view/write perms) denied Branch-B-only customer PHI read/write
+    await setAuthUid(ownerUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_get_patient_profile($1);`, [customerB2Id]),
+      (err) => err && err.message.includes('FORBIDDEN'),
+      'Branch-A-only staff must be denied Branch-B-only patient profile read'
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_get_patient_history($1);`, [customerB2Id]),
+      (err) => err && err.message.includes('FORBIDDEN'),
+      'Branch-A-only staff must be denied Branch-B-only patient history read'
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_upsert_patient_profile($1, '1988-02-02'::date, 'male', 'Tamper', '+905550000099', 'other', 'AB-', 'Tampered', 'Tampered');`, [customerB2Id]),
+      (err) => err && err.message.includes('FORBIDDEN'),
+      'Branch-A-only staff must be denied Branch-B-only patient profile write'
+    );
+
+    await setAuthUid(staffUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_get_patient_profile($1);`, [customerB2Id]),
+      (err) => err && err.message.includes('FORBIDDEN')
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_get_patient_history($1);`, [customerB2Id]),
+      (err) => err && err.message.includes('FORBIDDEN')
+    );
+
+    // Zero PHI mutation check on Branch-B-only patient profile
+    await setAuthUid(null);
+    const branchBProfileAfter = (await client.query(`
+      SELECT date_of_birth, blood_type, allergies, chronic_conditions
+      FROM public.clinic_patient_profiles
+      WHERE tenant_id = $1 AND customer_id = $2;
+    `, [tenantId, customerB2Id])).rows[0];
+    assert.equal(branchBProfileAfter.date_of_birth, null);
+    assert.equal(branchBProfileAfter.blood_type, 'B-');
+    assert.equal(branchBProfileAfter.allergies, 'Synth Latex');
+    assert.equal(branchBProfileAfter.chronic_conditions, 'None');
+
+    // Mixed-branch patient (d3CustConsentedId has Branch-A encounter encId + new Branch-B encounter): Branch-B encounter must not leak
+    const mixedBranchBApptId = 'e1000006-0000-4000-8000-000000000006';
+    const mixedBranchBEncId = 'e1000007-0000-4000-8000-000000000007';
+    await client.query(`
+      INSERT INTO public.appointments (id, tenant_id, branch_id, customer_id, user_name, phone, service_id, staff_id, appointment_date, appointment_time, duration_minutes, status)
+      VALUES ($1, $2, $3, $4, 'Synth Clinic Patient', '+905550001100', $5, $6, $7::date, '13:00'::time, 30, 'completed');
+    `, [mixedBranchBApptId, tenantId, branch2Id, d3CustConsentedId, serviceB2Id, staffB2Id, futureDate]);
+    await client.query(`
+      INSERT INTO public.clinic_encounters (id, tenant_id, appointment_id, customer_id, practitioner_staff_id, branch_id, status, reason_for_visit, created_by)
+      VALUES ($1, $2, $3, $4, $5, $6, 'completed', 'Branch-B Mixed Confidential', $7);
+    `, [mixedBranchBEncId, tenantId, mixedBranchBApptId, d3CustConsentedId, staffB2Id, branch2Id, ownerUid]);
+    await client.query(`
+      INSERT INTO public.clinic_encounter_notes (tenant_id, encounter_id, author_staff_id, version, subjective, note_status)
+      VALUES ($1, $2, $3, 1, 'Branch-B Secret Note', 'final');
+    `, [tenantId, mixedBranchBEncId, staffB2Id]);
+
+    for (const readerUid of [ownerUid, staffUid]) {
+      await setAuthUid(readerUid);
+      const profOk = (await client.query(`SELECT public.clinic_get_patient_profile($1) AS res;`, [d3CustConsentedId])).rows[0].res;
+      assert.equal(profOk.success, true);
+      assert.equal(profOk.patient_profile.blood_type, 'A+');
+
+      const mixedHist = (await client.query(`SELECT public.clinic_get_patient_history($1) AS res;`, [d3CustConsentedId])).rows[0].res;
+      assert.equal(mixedHist.success, true);
+      assert.ok(mixedHist.encounters.some((e) => e.id === encId), 'Branch-A encounter must be returned');
+      assert.ok(mixedHist.encounters.every((e) => e.branch_id === branchId), 'Mixed history must exclude Branch-B encounters');
+      assert.ok(!mixedHist.encounters.some((e) => e.id === mixedBranchBEncId), 'Branch-B encounter ID must not leak');
+    }
+
+    // Cross-tenant clinic read denied (even for an equally entitled, fully privileged clinic practitioner in Tenant B)
+    await setAuthUid(null);
+    await client.query(`
+      UPDATE public.subscriptions s
+      SET plan_id = 'clinic_starter',
+          plan_version_id = pv.id,
+          status = 'manual_active'
+      FROM public.plan_versions pv
+      JOIN public.plans p ON p.id = pv.plan_id
+      WHERE s.tenant_id = $1
+        AND p.code = 'clinic_starter'
+        AND pv.lifecycle_status = 'published';
+    `, [tenantBId]);
+
+    // ADIM036-VERTICAL-003: Negative anon HT public intake must be denied (0 rows written) when tenant lacks Health Tourism entitlement
+    await setAuthUid(null);
+    await client.query(`SET ROLE anon;`);
+    await assert.rejects(
+      async () => client.query(`
+        SELECT public.ht_create_public_lead('d1-salon-b', 'Blocked HT Patient', 'blocked.ht@example.test', '+447700900000', 'en', 'GB', 'SYNTH-BLOCKED-PASS');
+      `),
+      (err) => err && err.message.includes('FORBIDDEN'),
+      'Anon HT lead intake must be rejected when health_tourism_enabled is false'
+    );
+    await client.query(`RESET ROLE;`);
+    const blockedHtLeadCount = (await client.query(`SELECT count(*)::int AS cnt FROM public.ht_leads WHERE tenant_id = $1;`, [tenantBId])).rows[0].cnt;
+    assert.equal(blockedHtLeadCount, 0, 'Rejected anon HT intake must write 0 rows to ht_leads');
+    await client.query(`
+      INSERT INTO public.tenant_entitlement_overrides (tenant_id, feature_key, value_type, boolean_value, integer_value, reason, created_by)
+      VALUES
+        ($1, 'ht_lead_ops', 'boolean', true, NULL, 'ADIM-036 cross-tenant test', $2),
+        ($1, 'max_coordinators', 'integer', NULL, 2, 'ADIM-036 cross-tenant test', $2)
+      ON CONFLICT DO NOTHING;
+    `, [tenantBId, superAdminUid]);
+    await client.query(`
+      INSERT INTO public.clinic_staff_profiles (tenant_id, staff_id, practitioner_type, specialty, can_manage_patient_profiles, can_view_clinical_records, can_write_clinical_notes)
+      VALUES ($1, $2, 'doctor', 'Dermatology', true, true, true)
+      ON CONFLICT (staff_id) DO NOTHING;
+    `, [tenantBId, tenantBStaffId]);
+    await client.query(`
+      INSERT INTO public.ht_staff_profiles (tenant_id, staff_id, can_view_ht_leads, can_manage_ht_leads)
+      VALUES ($1, $2, true, true)
+      ON CONFLICT (staff_id) DO NOTHING;
+    `, [tenantBId, tenantBStaffId]);
+    await setAuthUid(tenantBStaffUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_get_patient_profile($1);`, [d3CustConsentedId]),
+      (err) => err && err.message.includes('NOT_FOUND')
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_get_patient_history($1);`, [d3CustConsentedId]),
+      (err) => err && err.message.includes('NOT_FOUND')
+    );
+
+    // 11e. Health Tourism: lead creation, passport redaction, coordinator/staff authority, quota & status transition matrix, WH handoff outbox, journey/quote/itinerary, and clinic acceptance
+    await setAuthUid(ownerUid);
+    const htCtxOwner = (await client.query(`SELECT public.ht_set_staff_profile($1, true, true) AS res;`, [ownerStaffId])).rows[0].res;
+    assert.equal(htCtxOwner.success, true);
+    const htCtxStaff1 = (await client.query(`SELECT public.ht_set_staff_profile($1, false, true) AS res;`, [staffId])).rows[0].res;
+    assert.equal(htCtxStaff1.success, true);
+    await assert.rejects(
+      async () => client.query(`SELECT public.ht_set_staff_profile($1, false, true);`, [staff2Id]),
+      (err) => err && err.message.includes('COORDINATOR_QUOTA_EXCEEDED')
+    );
+
+    const agRes = (await client.query(`SELECT public.ht_create_referring_agency('Synth Health Partners', 'SYNTH-AG', 'agency@synth.test', '+49123456') AS res;`)).rows[0].res;
+    assert.equal(agRes.success, true);
+    const agencyId = agRes.agency_id;
+
+    // Anon creates synthetic HT lead with passport (passport must be stored in DB only, never returned via ht_get_lead / ht_list_leads)
+    await setAuthUid(null);
+    await client.query(`SET ROLE anon;`);
+    const pubLeadRes = (await client.query(`
+      SELECT public.ht_create_public_lead('d1-salon', 'Synth Int Patient', 'ht.synth@example.test', '+447700900111', 'en', 'GB', 'SYNTH-PASS-9999', 'agency_referral', $1) AS res;
+    `, [agencyId])).rows[0].res;
+    await client.query(`RESET ROLE;`);
+    assert.equal(pubLeadRes.success, true);
+    const htLeadId = pubLeadRes.lead_id;
+
+    await setAuthUid(ownerUid);
+    const assignRes = (await client.query(`SELECT public.ht_assign_coordinator($1, $2) AS res;`, [htLeadId, ownerStaffId])).rows[0].res;
+    assert.equal(assignRes.success, true);
+    const getLeadRes = (await client.query(`SELECT public.ht_get_lead($1) AS res;`, [htLeadId])).rows[0].res;
+    assert.equal(getLeadRes.success, true);
+    assert.equal(getLeadRes.lead.coordinator_name, 'D1 Owner');
+    assert.equal('passport_number' in getLeadRes.lead, false, 'passport_number must NEVER be returned by ht_get_lead');
+    assert.equal('passport_last_four' in getLeadRes.lead, false, 'passport_last_four must NEVER be returned by ht_get_lead');
+
+    const listLeadsRes = (await client.query(`SELECT public.ht_list_leads('new', 10, 0, NULL, 'agency_referral') AS res;`)).rows[0].res;
+    assert.equal(listLeadsRes.success, true);
+    assert.equal(listLeadsRes.total, 1);
+    assert.equal('passport_number' in listLeadsRes.leads[0], false);
+
+    // View-only HT staff (staffId) denied mutating status, cross-tenant staff denied reading lead
+    await setAuthUid(staffUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.ht_update_lead_status($1, 'contacted', 'Denied manage');`, [htLeadId]),
+      (err) => err && err.message.includes('FORBIDDEN')
+    );
+    await setAuthUid(tenantBStaffUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.ht_get_lead($1);`, [htLeadId]),
+      (err) => err && err.message.includes('NOT_FOUND')
+    );
+
+    // Invalid transition new -> handoff_pending fails; valid sequence new -> contacted -> qualified -> handoff_pending succeeds
+    await setAuthUid(ownerUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.ht_update_lead_status($1, 'handoff_pending', 'Skip fail');`, [htLeadId]),
+      (err) => err && err.message.includes('INVALID_TRANSITION')
+    );
+    assert.equal((await client.query(`SELECT public.ht_update_lead_status($1, 'contacted', 'Synth step 1') AS res;`, [htLeadId])).rows[0].res.status, 'contacted');
+    assert.equal((await client.query(`SELECT public.ht_update_lead_status($1, 'qualified', 'Synth step 2') AS res;`, [htLeadId])).rows[0].res.status, 'qualified');
+    assert.equal((await client.query(`SELECT public.ht_update_lead_status($1, 'handoff_pending', 'Ready for handoff') AS res;`, [htLeadId])).rows[0].res.status, 'handoff_pending');
+
+    const waHandoff = (await client.query(`SELECT public.ht_enqueue_whatsapp_handoff($1, NULL, 'synth_coord_handoff') AS res;`, [htLeadId])).rows[0].res;
+    assert.equal(waHandoff.success, true);
+    assert.equal(waHandoff.channel, 'whatsapp');
+    await setAuthUid(null);
+    const waOutbox = (await client.query(`SELECT (metadata->>'no_real_send')::boolean AS no_real_send FROM public.communication_outbox WHERE id = $1;`, [waHandoff.outbox_id])).rows[0];
+    assert.equal(waOutbox.no_real_send, true);
+
+    // Request handoff on linked AI conversation so handoff_state='requested' for clinic acceptance
+    await setServiceRole();
+    const htConvRes = (await client.query(`SELECT public.ht_create_ai_conversation($1, 'en', $2) AS res;`, [tenantId, htLeadId])).rows[0].res;
+    assert.equal(htConvRes.success, true);
+    await setAuthUid(ownerUid);
+    const handoffReq = (await client.query(`SELECT public.ht_request_handoff($1, 'synth_clinic_ready') AS res;`, [htConvRes.conversation_id])).rows[0].res;
+    assert.equal(handoffReq.handoff_state, 'requested');
+
+    // Treatment journey, quote validation (rejects non-array items & sum mismatch, enforces max_active_journeys=1), itinerary event
+    const j1Res = (await client.query(`SELECT public.ht_create_treatment_journey('Synth Dental Trip', $1, NULL, $2, 'dental', $3::date, $4::date) AS res;`, [htLeadId, ownerStaffId, futureDate, futureDate])).rows[0].res;
+    assert.equal(j1Res.success, true);
+    const journeyId = j1Res.journey_id;
+    await assert.rejects(
+      async () => client.query(`SELECT public.ht_create_treatment_journey('Second Journey Exceeds Cap', $1);`, [htLeadId]),
+      (err) => err && err.message.includes('QUOTA_EXCEEDED')
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT public.ht_create_or_update_journey_quote($1, 'EUR', 100000, '{"bad":"object"}'::jsonb);`, [journeyId]),
+      (err) => err && err.message.includes('INVALID_INPUT')
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT public.ht_create_or_update_journey_quote($1, 'EUR', 99999, '[{"description":"Package","category":"clinical","amount_minor_units":50000}]'::jsonb);`, [journeyId]),
+      (err) => err && err.message.includes('INVALID_INPUT')
+    );
+    const quoteOk = (await client.query(`SELECT public.ht_create_or_update_journey_quote($1, 'EUR', 150000, '[{"description":"Consult + Transfer","category":"clinical","amount_minor_units":150000}]'::jsonb) AS res;`, [journeyId])).rows[0].res;
+    assert.equal(quoteOk.success, true);
+    const itinOk = (await client.query(`SELECT public.ht_add_journey_itinerary_event($1, 'airport_pickup', 'Synth Arrival', now() + interval '5 days') AS res;`, [journeyId])).rows[0].res;
+    assert.equal(itinOk.success, true);
+
+    // Clinic acceptance: query available slots via ht_get_clinic_acceptance_slots then convert qualified handoff_pending HT lead into customer + clinic_patient_profile + pending appointment
+    const acceptOpts = (await client.query(`SELECT public.ht_get_clinic_acceptance_options($1, $2, $3) AS res;`, [htLeadId, branchId, serviceId])).rows[0].res;
+    assert.equal(acceptOpts.lead_id, htLeadId);
+    assert.ok(acceptOpts.branches.some((b) => b.id === branchId));
+
+    const acceptSlots = (await client.query(`SELECT public.ht_get_clinic_acceptance_slots($1, $2, $3, $4, $5::date) AS res;`, [htLeadId, branchId, serviceId, ownerStaffId, futureDate])).rows[0].res;
+    assert.ok(Array.isArray(acceptSlots.available_slots) && acceptSlots.available_slots.length > 0, 'ht_get_clinic_acceptance_slots must return at least one open slot');
+    const chosenSlotTime = acceptSlots.available_slots[0].time || acceptSlots.available_slots[0];
+
+    // ADIM036-RESOURCE-005: Pre-check that second practitioner (staff2Id) has no staff conflict at chosenSlotTime before HT acceptance consumes capacity-1 resourceId
+    const staff2PreSlot = (await client.query(`
+      SELECT public.evaluate_booking_slot($1, $2, $3, $4, $5::date, $6::time) AS res;
+    `, [tenantId, branchId, serviceId, staff2Id, futureDate, chosenSlotTime])).rows[0].res;
+    assert.equal(staff2PreSlot.allowed, true, 'Second practitioner must be free at chosenSlotTime before shared resource is consumed');
+
+    const acceptRes = (await client.query(`SELECT public.ht_accept_lead_into_clinic($1, $2, $3, $4, $5::date, $6::time) AS res;`, [htLeadId, branchId, serviceId, ownerStaffId, futureDate, chosenSlotTime])).rows[0].res;
+    assert.equal(acceptRes.already_converted, false);
+    assert.ok(acceptRes.customer_id);
+    assert.ok(acceptRes.patient_profile_id);
+    assert.ok(acceptRes.appointment_id);
+    await setAuthUid(null);
+    const convLeadRow = (await client.query(`SELECT status FROM public.ht_leads WHERE id = $1;`, [htLeadId])).rows[0];
+    const convApptRow = (await client.query(`SELECT status FROM public.appointments WHERE id = $1;`, [acceptRes.appointment_id])).rows[0];
+    const convArRows = (await client.query(`SELECT resource_id, quantity FROM public.appointment_resources WHERE appointment_id = $1;`, [acceptRes.appointment_id])).rows;
+    assert.equal(convLeadRow.status, 'converted');
+    assert.equal(convApptRow.status, 'pending');
+    assert.equal(convArRows.length, 1, 'ht_accept_lead_into_clinic must persist appointment_resources row atomically');
+    assert.equal(convArRows[0].resource_id, resourceId);
+    assert.equal(convArRows[0].quantity, 1);
+
+    // ADIM036-RESOURCE-005 negative: second HT acceptance & public booking for second practitioner sharing capacity-1 resource must fail with resource_unavailable and 0 extra mutations
+    await client.query(`SET ROLE anon;`);
+    const pubLead2Res = (await client.query(`
+      SELECT public.ht_create_public_lead('d1-salon', 'Synth Int Patient 2', 'ht.synth2@example.test', '+447700900222', 'en', 'GB', 'SYNTH-PASS-8888', 'direct', NULL) AS res;
+    `)).rows[0].res;
+    await client.query(`RESET ROLE;`);
+    assert.equal(pubLead2Res.success, true);
+    const htLead2Id = pubLead2Res.lead_id;
+
+    await setAuthUid(ownerUid);
+    await client.query(`SELECT public.ht_update_lead_status($1, 'contacted', 'Step 1');`, [htLead2Id]);
+    await client.query(`SELECT public.ht_update_lead_status($1, 'qualified', 'Step 2');`, [htLead2Id]);
+    await client.query(`SELECT public.ht_update_lead_status($1, 'handoff_pending', 'Step 3');`, [htLead2Id]);
+    await setServiceRole();
+    const htConv2Res = (await client.query(`SELECT public.ht_create_ai_conversation($1, 'en', $2) AS res;`, [tenantId, htLead2Id])).rows[0].res;
+    await setAuthUid(ownerUid);
+    await client.query(`SELECT public.ht_request_handoff($1, 'synth_clinic_ready_2');`, [htConv2Res.conversation_id]);
+
+    await setAuthUid(null);
+    const countsBeforeOverlap = (await client.query(`
+      SELECT
+        (SELECT count(*)::int FROM public.appointments WHERE tenant_id = $1) AS appts,
+        (SELECT count(*)::int FROM public.customers WHERE tenant_id = $1) AS custs,
+        (SELECT count(*)::int FROM public.clinic_patient_profiles WHERE tenant_id = $1) AS profiles,
+        (SELECT count(*)::int FROM public.appointment_resources WHERE tenant_id = $1) AS resources;
+    `, [tenantId])).rows[0];
+
+    await setAuthUid(ownerUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.ht_accept_lead_into_clinic($1, $2, $3, $4, $5::date, $6::time);`, [htLead2Id, branchId, serviceId, staff2Id, futureDate, chosenSlotTime]),
+      (err) => err && err.message.includes('INVALID_APPOINTMENT_SLOT:resource_unavailable'),
+      'Second HT acceptance on shared capacity-1 resource must be rejected with resource_unavailable'
+    );
+
+    await setAuthUid(null);
+    await client.query(`SET ROLE anon;`);
+    const pubOverlapRes = (await client.query(`
+      SELECT public.create_public_booking(
+        'd1-salon', $1, $2, $3::date, $4::time,
+        'Synth Public Overlap', 'pub.overlap@example.test', '+905550007788',
+        true, false, false, 'idemp-ht-res-overlap', $5, NULL, 'fp-ht-res-overlap'
+      ) AS res;
+    `, [serviceId, staff2Id, futureDate, chosenSlotTime, branchId])).rows[0].res;
+    await client.query(`RESET ROLE;`);
+    assert.equal(pubOverlapRes.success, false, 'Public booking on shared capacity-1 resource consumed by HT acceptance must fail');
+    assert.equal(pubOverlapRes.reason_code, 'resource_unavailable');
+
+    const countsAfterOverlap = (await client.query(`
+      SELECT
+        (SELECT count(*)::int FROM public.appointments WHERE tenant_id = $1) AS appts,
+        (SELECT count(*)::int FROM public.customers WHERE tenant_id = $1) AS custs,
+        (SELECT count(*)::int FROM public.clinic_patient_profiles WHERE tenant_id = $1) AS profiles,
+        (SELECT count(*)::int FROM public.appointment_resources WHERE tenant_id = $1) AS resources;
+    `, [tenantId])).rows[0];
+    assert.deepEqual(countsAfterOverlap, countsBeforeOverlap, 'Rejected HT/public overlapping bookings must cause zero extra DB mutations');
+
+    const lead2StatusAfter = (await client.query(`SELECT status FROM public.ht_leads WHERE id = $1;`, [htLead2Id])).rows[0].status;
+    assert.equal(lead2StatusAfter, 'handoff_pending', 'Rejected second HT lead must remain in handoff_pending status');
+
+    // ADIM036-ACCEPT-007: Branch-A-only staff calling ht_accept_lead_into_clinic with Branch-B must be rejected with FORBIDDEN and 0 mutations
+    await setAuthUid(ownerUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.ht_accept_lead_into_clinic($1, $2, $3, $4, $5::date, '14:00'::time);`, [htLead2Id, branch2Id, serviceB2Id, staffB2Id, futureDate]),
+      (err) => err && err.message.includes('FORBIDDEN'),
+      'Branch-A-only staff must be denied HT clinic acceptance on Branch B'
+    );
+    await setAuthUid(null);
+    const countsAfterBranchDeny = (await client.query(`
+      SELECT
+        (SELECT count(*)::int FROM public.appointments WHERE tenant_id = $1) AS appts,
+        (SELECT count(*)::int FROM public.customers WHERE tenant_id = $1) AS custs,
+        (SELECT count(*)::int FROM public.clinic_patient_profiles WHERE tenant_id = $1) AS profiles,
+        (SELECT count(*)::int FROM public.appointment_resources WHERE tenant_id = $1) AS resources;
+    `, [tenantId])).rows[0];
+    assert.deepEqual(countsAfterBranchDeny, countsBeforeOverlap, 'Branch-denied HT acceptance must cause zero mutations');
+    assert.equal((await client.query(`SELECT status FROM public.ht_leads WHERE id = $1;`, [htLead2Id])).rows[0].status, 'handoff_pending');
+
+    // ADIM036-PHI-008: Encounter start, SOAP note write, and completion must enforce current staff_branches membership
+    const phi8ApptStartId = 'e1000008-0000-4000-8000-000000000008';
+    const phi8ApptOpenId = 'e1000009-0000-4000-8000-000000000009';
+    await client.query(`
+      INSERT INTO public.appointments (id, tenant_id, branch_id, customer_id, user_name, phone, service_id, staff_id, appointment_date, appointment_time, duration_minutes, status)
+      VALUES
+        ($1, $3, $4, $5, 'Synth Clinic Patient', '+905550001100', $6, $7, $8::date, '14:30'::time, 30, 'confirmed'),
+        ($2, $3, $4, $5, 'Synth Clinic Patient', '+905550001100', $6, $7, $8::date, '15:30'::time, 30, 'confirmed');
+    `, [phi8ApptStartId, phi8ApptOpenId, tenantId, branchId, d3CustConsentedId, serviceId, staffId, futureDate]);
+
+    await setAuthUid(staffUid);
+    const phi8StartOk = (await client.query(`SELECT public.clinic_start_encounter($1, 'Pre-branch-removal') AS res;`, [phi8ApptOpenId])).rows[0].res;
+    assert.equal(phi8StartOk.success, true);
+    const phi8EncId = phi8StartOk.encounter_id;
+
+    // Revoke staffId's branch assignment after encounter creation
+    await setAuthUid(null);
+    await client.query(`DELETE FROM public.staff_branches WHERE tenant_id = $1 AND staff_id = $2 AND branch_id = $3;`, [tenantId, staffId, branchId]);
+
+    const phi8CountsBefore = (await client.query(`
+      SELECT
+        (SELECT count(*)::int FROM public.clinic_encounters WHERE tenant_id = $1) AS encounters,
+        (SELECT count(*)::int FROM public.clinic_encounter_notes WHERE tenant_id = $1) AS notes,
+        (SELECT count(*)::int FROM public.appointments WHERE tenant_id = $1) AS appts,
+        (SELECT count(*)::int FROM public.audit_events WHERE tenant_id = $1::text) AS audits,
+        (SELECT count(*)::int FROM public.communication_outbox WHERE tenant_id = $1::text) AS outbox;
+    `, [tenantId])).rows[0];
+
+    await setAuthUid(staffUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_start_encounter($1, 'Revoked branch start');`, [phi8ApptStartId]),
+      (err) => err && err.message.includes('FORBIDDEN'),
+      'clinic_start_encounter must fail with FORBIDDEN after branch membership removal'
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_save_encounter_note($1, 'S', 'O', 'A', 'P', 'final');`, [phi8EncId]),
+      (err) => err && err.message.includes('FORBIDDEN'),
+      'clinic_save_encounter_note must fail with FORBIDDEN after branch membership removal'
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT public.clinic_complete_encounter_and_appointment($1);`, [phi8EncId]),
+      (err) => err && err.message.includes('FORBIDDEN'),
+      'clinic_complete_encounter_and_appointment must fail with FORBIDDEN after branch membership removal'
+    );
+
+    await setAuthUid(null);
+    const phi8CountsAfter = (await client.query(`
+      SELECT
+        (SELECT count(*)::int FROM public.clinic_encounters WHERE tenant_id = $1) AS encounters,
+        (SELECT count(*)::int FROM public.clinic_encounter_notes WHERE tenant_id = $1) AS notes,
+        (SELECT count(*)::int FROM public.appointments WHERE tenant_id = $1) AS appts,
+        (SELECT count(*)::int FROM public.audit_events WHERE tenant_id = $1::text) AS audits,
+        (SELECT count(*)::int FROM public.communication_outbox WHERE tenant_id = $1::text) AS outbox;
+    `, [tenantId])).rows[0];
+    assert.deepEqual(phi8CountsAfter, phi8CountsBefore, 'Revoked-branch encounter calls must produce zero mutations across encounter/note/appt/audit/outbox');
+
+    // Restore staffId branch assignment for ADIM036-COMM-009 commercial expiry test
+    await client.query(`INSERT INTO public.staff_branches (tenant_id, staff_id, branch_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING;`, [tenantId, staffId, branchId]);
+
+    // ADIM036-COMM-009: Expired or NULL trial_end / grace_until must block ALL clinic & HT mutation RPCs with zero mutations
+    const comm9CountsBefore = (await client.query(`
+      SELECT
+        (SELECT count(*)::int FROM public.clinic_patient_profiles WHERE tenant_id = $1) AS profiles,
+        (SELECT count(*)::int FROM public.clinic_encounters WHERE tenant_id = $1) AS encounters,
+        (SELECT count(*)::int FROM public.clinic_encounter_notes WHERE tenant_id = $1) AS notes,
+        (SELECT count(*)::int FROM public.appointments WHERE tenant_id = $1) AS appts,
+        (SELECT count(*)::int FROM public.appointment_resources WHERE tenant_id = $1) AS resources,
+        (SELECT count(*)::int FROM public.ht_leads WHERE tenant_id = $1 AND status = 'converted') AS converted_leads,
+        (SELECT count(*)::int FROM public.audit_events WHERE tenant_id = $1::text) AS audits,
+        (SELECT count(*)::int FROM public.communication_outbox WHERE tenant_id = $1::text) AS outbox;
+    `, [tenantId])).rows[0];
+    const comm9ProfileBefore = (await client.query(`
+      SELECT blood_type, allergies FROM public.clinic_patient_profiles WHERE tenant_id = $1 AND customer_id = $2;
+    `, [tenantId, d3CustConsentedId])).rows[0];
+
+    // ADIM036-COMM-001 (override regression): verify active boolean & integer overrides are granted while eligible,
+    // and strictly suppressed to default_deny when trialing/past_due has NULL or expired trial_end/grace_until.
+    const activeOverridesCheck = (await client.query(`
+      SELECT feature_key, boolean_value, integer_value, is_unlimited, source
+      FROM public.resolve_effective_tenant_entitlements($1)
+      WHERE feature_key IN ('ht_lead_ops', 'max_coordinators');
+    `, [tenantId])).rows;
+    const activeOvrMap = Object.fromEntries(activeOverridesCheck.map((r) => [r.feature_key, r]));
+    assert.equal(activeOvrMap.ht_lead_ops.boolean_value, true);
+    assert.equal(activeOvrMap.ht_lead_ops.source, 'tenant_override');
+    assert.equal(Number(activeOvrMap.max_coordinators.integer_value), 2);
+    assert.equal(activeOvrMap.max_coordinators.is_unlimited, false);
+    assert.equal(activeOvrMap.max_coordinators.source, 'tenant_override');
+
+    const expiredSubStates = [
+      { status: 'trialing', trialEndSql: 'NULL', graceUntilSql: 'NULL' },
+      { status: 'trialing', trialEndSql: "now() - interval '1 hour'", graceUntilSql: 'NULL' },
+      { status: 'past_due', trialEndSql: 'NULL', graceUntilSql: 'NULL' },
+      { status: 'past_due', trialEndSql: 'NULL', graceUntilSql: "now() - interval '1 hour'" },
+    ];
+    for (const st of expiredSubStates) {
+      await setAuthenticatedRole(null);
+      await client.query(`
+        UPDATE public.subscriptions
+        SET status = $2,
+            trial_end = ${st.trialEndSql},
+            grace_until = ${st.graceUntilSql}
+        WHERE tenant_id = $1;
+      `, [tenantId, st.status]);
+
+      const deniedEntRows = (await client.query(`
+        SELECT feature_key, boolean_value, integer_value, is_unlimited, source
+        FROM public.resolve_effective_tenant_entitlements($1)
+        WHERE feature_key IN ('ht_lead_ops', 'max_coordinators');
+      `, [tenantId])).rows;
+      const deniedByKey = Object.fromEntries(deniedEntRows.map((r) => [r.feature_key, r]));
+      assert.equal(deniedByKey.ht_lead_ops.boolean_value, false, `COMM-001 (${st.status}): active ht_lead_ops override must be denied`);
+      assert.equal(deniedByKey.ht_lead_ops.source, 'default_deny', `COMM-001 (${st.status}): ht_lead_ops source must be default_deny`);
+      assert.equal(Number(deniedByKey.max_coordinators.integer_value), 0, `COMM-001 (${st.status}): active max_coordinators override must be 0`);
+      assert.equal(deniedByKey.max_coordinators.is_unlimited, false, `COMM-001 (${st.status}): max_coordinators is_unlimited must be false`);
+      assert.equal(deniedByKey.max_coordinators.source, 'default_deny', `COMM-001 (${st.status}): max_coordinators source must be default_deny`);
+
+      await setAuthenticatedRole(ownerUid);
+      await assert.rejects(
+        async () => client.query(`SELECT public.clinic_upsert_patient_profile($1, '1991-05-20'::date, 'female', 'Tamper', '+905551112233', 'sibling', 'O-', 'Tampered', 'Tampered');`, [d3CustConsentedId]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `clinic_upsert_patient_profile must fail when subscription is ${st.status}`
+      );
+      await assert.rejects(
+        async () => client.query(`SELECT public.ht_accept_lead_into_clinic($1, $2, $3, $4, $5::date, '16:00'::time);`, [htLead2Id, branchId, serviceId, ownerStaffId, futureDate]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `ht_accept_lead_into_clinic must fail when subscription is ${st.status}`
+      );
+
+      await setAuthUid(staffUid);
+      await assert.rejects(
+        async () => client.query(`SELECT public.clinic_start_encounter($1, 'Expired sub start');`, [phi8ApptStartId]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `clinic_start_encounter must fail when subscription is ${st.status}`
+      );
+      await assert.rejects(
+        async () => client.query(`SELECT public.clinic_save_encounter_note($1, 'S', 'O', 'A', 'P', 'final');`, [phi8EncId]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `clinic_save_encounter_note must fail when subscription is ${st.status}`
+      );
+      await assert.rejects(
+        async () => client.query(`SELECT public.clinic_complete_encounter_and_appointment($1);`, [phi8EncId]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `clinic_complete_encounter_and_appointment must fail when subscription is ${st.status}`
+      );
+    }
+
+    await setAuthUid(null);
+    const comm9CountsAfter = (await client.query(`
+      SELECT
+        (SELECT count(*)::int FROM public.clinic_patient_profiles WHERE tenant_id = $1) AS profiles,
+        (SELECT count(*)::int FROM public.clinic_encounters WHERE tenant_id = $1) AS encounters,
+        (SELECT count(*)::int FROM public.clinic_encounter_notes WHERE tenant_id = $1) AS notes,
+        (SELECT count(*)::int FROM public.appointments WHERE tenant_id = $1) AS appts,
+        (SELECT count(*)::int FROM public.appointment_resources WHERE tenant_id = $1) AS resources,
+        (SELECT count(*)::int FROM public.ht_leads WHERE tenant_id = $1 AND status = 'converted') AS converted_leads,
+        (SELECT count(*)::int FROM public.audit_events WHERE tenant_id = $1::text) AS audits,
+        (SELECT count(*)::int FROM public.communication_outbox WHERE tenant_id = $1::text) AS outbox;
+    `, [tenantId])).rows[0];
+    assert.deepEqual(comm9CountsAfter, comm9CountsBefore, 'Ineligible subscription mutation attempts must produce zero DB mutations');
+    const comm9ProfileAfter = (await client.query(`
+      SELECT blood_type, allergies FROM public.clinic_patient_profiles WHERE tenant_id = $1 AND customer_id = $2;
+    `, [tenantId, d3CustConsentedId])).rows[0];
+    assert.deepEqual(comm9ProfileAfter, comm9ProfileBefore, 'Ineligible subscription must not mutate patient PHI');
+
+    // ADIM036-COMM-010 / COMM-011 / COMM-012: Restore active subscription for test setup, then verify expired or NULL trial_end / grace_until blocks ALL HT mutation RPCs (including ht_create_ai_conversation & ht_set_staff_profile) with FORBIDDEN and zero mutations
+    await setAuthenticatedRole(null);
+    await client.query(`
+      UPDATE public.subscriptions
+      SET status = 'manual_active',
+          trial_end = NULL,
+          grace_until = NULL
+      WHERE tenant_id = $1;
+    `, [tenantId]);
+
+    await setServiceRole();
+    const htConv3Res = (await client.query(`SELECT public.ht_create_ai_conversation($1, 'en', $2) AS res;`, [tenantId, htLead2Id])).rows[0].res;
+    assert.equal(htConv3Res.success, true);
+
+    await setAuthenticatedRole(null);
+    const comm10CountsBefore = (await client.query(`
+      SELECT
+        (SELECT count(*)::int FROM public.ht_referring_agencies WHERE tenant_id = $1) AS agencies,
+        (SELECT count(*)::int FROM public.ht_leads WHERE tenant_id = $1) AS leads,
+        (SELECT count(*)::int FROM public.ht_ai_conversations WHERE tenant_id = $1) AS convs,
+        (SELECT count(*)::int FROM public.ht_ai_messages m JOIN public.ht_ai_conversations c ON c.id = m.conversation_id WHERE c.tenant_id = $1) AS msgs,
+        (SELECT count(*)::int FROM public.ht_staff_profiles WHERE tenant_id = $1) AS staff_profiles,
+        (SELECT count(*)::int FROM public.ht_journey_quotes WHERE tenant_id = $1) AS quotes,
+        (SELECT count(*)::int FROM public.ht_journey_itinerary_events WHERE tenant_id = $1) AS itineraries,
+        (SELECT count(*)::int FROM public.audit_events WHERE tenant_id = $1::text) AS audits,
+        (SELECT count(*)::int FROM public.communication_outbox WHERE tenant_id = $1::text) AS outbox;
+    `, [tenantId])).rows[0];
+    const comm10LeadBefore = (await client.query(`
+      SELECT status, referring_agency_id, assigned_coordinator_staff_id, lead_score, ai_summary, handoff_state, updated_at
+      FROM public.ht_leads WHERE id = $1;
+    `, [htLead2Id])).rows[0];
+    const comm10ConvBefore = (await client.query(`
+      SELECT handoff_state, updated_at FROM public.ht_ai_conversations WHERE id = $1;
+    `, [htConv3Res.conversation_id])).rows[0];
+    const comm10JourneyBefore = (await client.query(`
+      SELECT status, updated_at FROM public.ht_treatment_journeys WHERE id = $1;
+    `, [journeyId])).rows[0];
+    const comm10StaffProfileBefore = (await client.query(`
+      SELECT staff_id, tenant_id, can_manage_ht_leads, can_view_ht_leads, created_at, updated_at
+      FROM public.ht_staff_profiles WHERE staff_id = $1;
+    `, [ownerStaffId])).rows[0];
+
+    for (const st of expiredSubStates) {
+      await setAuthenticatedRole(null);
+      await client.query(`
+        UPDATE public.subscriptions
+        SET status = $2,
+            trial_end = ${st.trialEndSql},
+            grace_until = ${st.graceUntilSql}
+        WHERE tenant_id = $1;
+      `, [tenantId, st.status]);
+
+      await setAuthenticatedRole(ownerUid);
+      await assert.rejects(
+        async () => client.query(`SELECT public.ht_set_staff_profile($1, true, true);`, [ownerStaffId]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `ht_set_staff_profile (enable) must fail with FORBIDDEN when subscription is ${st.status}`
+      );
+      await assert.rejects(
+        async () => client.query(`SELECT public.ht_set_staff_profile($1, false, false);`, [ownerStaffId]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `ht_set_staff_profile (disable) must fail with FORBIDDEN when subscription is ${st.status}`
+      );
+      await assert.rejects(
+        async () => client.query(`SELECT public.ht_create_referring_agency('Expired Sub Agency', 'EXP-AG', 'exp@synth.test', '+49111222');`),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `ht_create_referring_agency must fail with FORBIDDEN when subscription is ${st.status}`
+      );
+      await assert.rejects(
+        async () => client.query(`SELECT public.ht_update_lead_agency_attribution($1, $2);`, [htLead2Id, agencyId]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `ht_update_lead_agency_attribution must fail with FORBIDDEN when subscription is ${st.status}`
+      );
+      await assert.rejects(
+        async () => client.query(`SELECT public.ht_update_lead_status($1, 'qualified', 'Expired sub status');`, [htLead2Id]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `ht_update_lead_status must fail with FORBIDDEN when subscription is ${st.status}`
+      );
+      await assert.rejects(
+        async () => client.query(`SELECT public.ht_assign_coordinator($1, $2);`, [htLead2Id, ownerStaffId]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `ht_assign_coordinator must fail with FORBIDDEN when subscription is ${st.status}`
+      );
+      await assert.rejects(
+        async () => client.query(`SELECT public.ht_score_lead($1, 5::smallint);`, [htLead2Id]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `ht_score_lead must fail with FORBIDDEN when subscription is ${st.status}`
+      );
+      await assert.rejects(
+        async () => client.query(`SELECT public.ht_update_ai_summary($1, 'Expired sub AI summary');`, [htLead2Id]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `ht_update_ai_summary must fail with FORBIDDEN when subscription is ${st.status}`
+      );
+      await assert.rejects(
+        async () => client.query(`SELECT public.ht_request_handoff($1, 'expired_sub_staff');`, [htConv3Res.conversation_id]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `ht_request_handoff (staff) must fail with FORBIDDEN when subscription is ${st.status}`
+      );
+      await assert.rejects(
+        async () => client.query(`SELECT public.ht_acknowledge_handoff($1);`, [htLead2Id]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `ht_acknowledge_handoff must fail with FORBIDDEN when subscription is ${st.status}`
+      );
+      await assert.rejects(
+        async () => client.query(`SELECT public.ht_enqueue_whatsapp_handoff($1, $2, 'expired_sub_wa');`, [htLead2Id, htConv3Res.conversation_id]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `ht_enqueue_whatsapp_handoff must fail with FORBIDDEN when subscription is ${st.status}`
+      );
+      await assert.rejects(
+        async () => client.query(`SELECT public.ht_create_or_update_journey_quote($1, 'EUR', 120000, '[{"description":"Expired","category":"clinical","amount_minor_units":120000}]'::jsonb);`, [journeyId]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `ht_create_or_update_journey_quote must fail with FORBIDDEN when subscription is ${st.status}`
+      );
+      await assert.rejects(
+        async () => client.query(`SELECT public.ht_add_journey_itinerary_event($1, 'custom', 'Expired Event', now() + interval '6 days');`, [journeyId]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `ht_add_journey_itinerary_event must fail with FORBIDDEN when subscription is ${st.status}`
+      );
+
+      await setAuthUid(null);
+      await setServiceRole();
+      await assert.rejects(
+        async () => client.query(`SELECT public.ht_create_ai_conversation($1, 'en', $2);`, [tenantId, htLead2Id]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `ht_create_ai_conversation must fail with FORBIDDEN when subscription is ${st.status}`
+      );
+      await assert.rejects(
+        async () => client.query(`SELECT public.ht_request_handoff($1, 'expired_sub_service');`, [htConv3Res.conversation_id]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        `ht_request_handoff (service_role) must fail with FORBIDDEN when subscription is ${st.status}`
+      );
+    }
+
+    await setAuthenticatedRole(null);
+    const comm10CountsAfter = (await client.query(`
+      SELECT
+        (SELECT count(*)::int FROM public.ht_referring_agencies WHERE tenant_id = $1) AS agencies,
+        (SELECT count(*)::int FROM public.ht_leads WHERE tenant_id = $1) AS leads,
+        (SELECT count(*)::int FROM public.ht_ai_conversations WHERE tenant_id = $1) AS convs,
+        (SELECT count(*)::int FROM public.ht_ai_messages m JOIN public.ht_ai_conversations c ON c.id = m.conversation_id WHERE c.tenant_id = $1) AS msgs,
+        (SELECT count(*)::int FROM public.ht_staff_profiles WHERE tenant_id = $1) AS staff_profiles,
+        (SELECT count(*)::int FROM public.ht_journey_quotes WHERE tenant_id = $1) AS quotes,
+        (SELECT count(*)::int FROM public.ht_journey_itinerary_events WHERE tenant_id = $1) AS itineraries,
+        (SELECT count(*)::int FROM public.audit_events WHERE tenant_id = $1::text) AS audits,
+        (SELECT count(*)::int FROM public.communication_outbox WHERE tenant_id = $1::text) AS outbox;
+    `, [tenantId])).rows[0];
+    assert.deepEqual(comm10CountsAfter, comm10CountsBefore, 'Ineligible subscription HT mutation attempts must produce zero DB mutations');
+
+    const comm10LeadAfter = (await client.query(`
+      SELECT status, referring_agency_id, assigned_coordinator_staff_id, lead_score, ai_summary, handoff_state, updated_at
+      FROM public.ht_leads WHERE id = $1;
+    `, [htLead2Id])).rows[0];
+    assert.deepEqual(comm10LeadAfter, comm10LeadBefore, 'Ineligible subscription must not mutate ht_leads');
+
+    const comm10ConvAfter = (await client.query(`
+      SELECT handoff_state, updated_at FROM public.ht_ai_conversations WHERE id = $1;
+    `, [htConv3Res.conversation_id])).rows[0];
+    assert.deepEqual(comm10ConvAfter, comm10ConvBefore, 'Ineligible subscription must not mutate ht_ai_conversations');
+
+    const comm10JourneyAfter = (await client.query(`
+      SELECT status, updated_at FROM public.ht_treatment_journeys WHERE id = $1;
+    `, [journeyId])).rows[0];
+    assert.deepEqual(comm10JourneyAfter, comm10JourneyBefore, 'Ineligible subscription must not mutate ht_treatment_journeys');
+
+    const comm10StaffProfileAfter = (await client.query(`
+      SELECT staff_id, tenant_id, can_manage_ht_leads, can_view_ht_leads, created_at, updated_at
+      FROM public.ht_staff_profiles WHERE staff_id = $1;
+    `, [ownerStaffId])).rows[0];
+    assert.deepEqual(comm10StaffProfileAfter, comm10StaffProfileBefore, 'Ineligible subscription must not mutate ht_staff_profiles');
+
+    // ADIM036-COMM-013: Explicit NULL p_at must resolve v_effective_at := COALESCE(p_at, now()) across restriction, override & subscription predicates
+    await setAuthenticatedRole(null);
+    await client.query(`
+      UPDATE public.subscriptions
+      SET status = 'manual_active',
+          trial_end = NULL,
+          grace_until = NULL
+      WHERE tenant_id = $1;
+    `, [tenantId]);
+
+    const comm13RestId = (await client.query(`
+      INSERT INTO public.platform_system_restrictions (tenant_id, feature_key, is_restricted, reason, starts_at, expires_at)
+      VALUES ($1, 'clinic_workspace', true, 'ADIM036-COMM-013 explicit NULL p_at test', now() - interval '5 minutes', now() + interval '1 hour')
+      RETURNING id;
+    `, [tenantId])).rows[0].id;
+
+    try {
+      const comm13EntRows = (await client.query(`
+        SELECT feature_key, boolean_value, source
+        FROM public.resolve_effective_tenant_entitlements($1, NULL)
+        WHERE feature_key IN ('clinic_workspace', 'ht_lead_ops');
+      `, [tenantId])).rows;
+      const comm13ByKey = Object.fromEntries(comm13EntRows.map((r) => [r.feature_key, r]));
+      assert.equal(comm13ByKey.clinic_workspace.boolean_value, false, 'COMM-013: clinic_workspace under active restriction with explicit NULL p_at must be false');
+      assert.equal(comm13ByKey.clinic_workspace.source, 'platform_restriction', 'COMM-013: clinic_workspace source with explicit NULL p_at must be platform_restriction');
+      assert.equal(comm13ByKey.ht_lead_ops.boolean_value, true, 'COMM-013: unrestricted active override with explicit NULL p_at must remain true');
+      assert.equal(comm13ByKey.ht_lead_ops.source, 'tenant_override', 'COMM-013: unrestricted active override source with explicit NULL p_at must be tenant_override');
+
+      await setAuthenticatedRole(ownerUid);
+      const comm13VertCtx = (await client.query(`SELECT public.resolve_tenant_vertical_context($1, NULL) AS res;`, [tenantId])).rows[0].res;
+      assert.equal(comm13VertCtx.success, true);
+      assert.equal(comm13VertCtx.eligible, true);
+      assert.equal(comm13VertCtx.verticals.clinic_enabled, false, 'COMM-013: resolve_tenant_vertical_context with explicit NULL p_at must return clinic_enabled=false under restriction');
+    } finally {
+      await setAuthenticatedRole(null);
+      await client.query(`DELETE FROM public.platform_system_restrictions WHERE id = $1;`, [comm13RestId]);
+    }
+
+    console.log('[PASS] Phase 5 Vertical Commercial Core, Clinic Domain & Health Tourism (ADIM-036 Faz E1) verified on PG17');
+
+    console.log('\nALL ADIM-033 + ADIM-034 + ADIM-035 + ADIM-036 DISPOSABLE PG17 TESTS PASSED.');
   } finally {
     if (client) {
       try { await client.end(); } catch {}
@@ -1500,3 +2499,33 @@ async function runPgTests() {
 }
 
 await runPgTests();
+
+function runAdim036BehavioralSuites() {
+  const rootDir = process.cwd();
+  const tsxCli = path.join(rootDir, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  const suites = [
+    'services/verticalCommercialService.test.ts',
+    'services/clinicService.test.ts',
+    'services/clinicUiPolicy.test.ts',
+    'utils/healthTourismService.test.ts',
+    'pages/clinic/ClinicWorkspacePage.test.tsx',
+    'pages/health-tourism/HtCoordinatorWorkspacePage.test.tsx',
+  ];
+
+  console.log('\n── Running ADIM-036 Behavioral Service, Policy & Workspace Tests ──');
+  for (const relPath of suites) {
+    const absPath = path.join(rootDir, relPath);
+    const result = spawnSync(process.execPath, [tsxCli, absPath], {
+      cwd: rootDir,
+      stdio: 'inherit',
+      env: process.env,
+    });
+    if (result.error) {
+      throw result.error;
+    }
+    assert.equal(result.status, 0, `${relPath} must exit with code 0 (got ${result.status})`);
+  }
+  console.log(`[PASS] All ${suites.length} ADIM-036 behavioral suites passed.`);
+}
+
+runAdim036BehavioralSuites();
