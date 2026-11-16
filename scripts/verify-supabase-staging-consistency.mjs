@@ -102,7 +102,14 @@ const CANDIDATE_MIGRATIONS = [
   '20260904_self_service_token_security_and_ratelimit.sql'
 ];
 
-const ALL_EXPECTED_MIGRATIONS = [...CANONICAL_MIGRATIONS, ...CANDIDATE_MIGRATIONS].sort();
+const V2_MIGRATIONS = [
+  '20260905_p2a_atomic_tenant_provisioning_rpc.sql',
+  '20260906_p2a_publish_commercial_contract_alignment.sql',
+  '20260907_p2a_owner_onboarding_contracts.sql',
+  '20260908_authenticated_owner_branch_mutations_rpc.sql'
+];
+
+const ALL_EXPECTED_MIGRATIONS = [...CANONICAL_MIGRATIONS, ...CANDIDATE_MIGRATIONS, ...V2_MIGRATIONS].sort();
 
 // Check actual migration files on disk
 const migrationsDir = join(ROOT, 'supabase', 'migrations');
@@ -124,7 +131,12 @@ if (existsSync(migrationsDir)) {
     'Missing or unguarded candidate: ' + CANDIDATE_MIGRATIONS.filter(m => !diskSet.has(m)).join(', ')
   );
   check(
-    `Migration files on disk match ${CANONICAL_MIGRATIONS.length} canonical + ${CANDIDATE_MIGRATIONS.length} candidate (${ALL_EXPECTED_MIGRATIONS.length} total)`,
+    `All ${V2_MIGRATIONS.length} V2 ported migrations exist on disk`,
+    V2_MIGRATIONS.every(m => diskSet.has(m)),
+    'Missing V2: ' + V2_MIGRATIONS.filter(m => !diskSet.has(m)).join(', ')
+  );
+  check(
+    `Migration files on disk match ${CANONICAL_MIGRATIONS.length} canonical + ${CANDIDATE_MIGRATIONS.length} candidate + ${V2_MIGRATIONS.length} V2 (${ALL_EXPECTED_MIGRATIONS.length} total)`,
     diskFiles.length === ALL_EXPECTED_MIGRATIONS.length &&
     diskFiles.every((f, i) => f === ALL_EXPECTED_MIGRATIONS[i]),
     `Unexpected/missing diff on disk (${diskFiles.length} files): [${diskFiles.join(', ')}]`
@@ -137,7 +149,7 @@ if (existsSync(migrationsDir)) {
 const manifest = readSafe('supabase/MIGRATION_APPLY_MANIFEST.md');
 if (manifest) {
   check(
-    `MIGRATION_APPLY_MANIFEST.md lists all ${CANONICAL_MIGRATIONS.length} canonical + ${CANDIDATE_MIGRATIONS.length} candidate migrations`,
+    `MIGRATION_APPLY_MANIFEST.md lists all ${CANONICAL_MIGRATIONS.length} canonical + ${CANDIDATE_MIGRATIONS.length} candidate + ${V2_MIGRATIONS.length} V2 migrations`,
     ALL_EXPECTED_MIGRATIONS.every(m => manifest.includes(m)),
     'Missing: ' + ALL_EXPECTED_MIGRATIONS.filter(m => !manifest.includes(m)).join(', ')
   );
