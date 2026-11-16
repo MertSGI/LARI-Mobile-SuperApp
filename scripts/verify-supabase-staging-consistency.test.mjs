@@ -74,7 +74,7 @@ async function runPgTests() {
     await client.query(bootstrapSql);
 
     const migrationFiles = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
-    assert.equal(migrationFiles.length, 75, `Expected 75 total migrations, got ${migrationFiles.length}`);
+    assert.equal(migrationFiles.length, 82, `Expected 82 total migrations, got ${migrationFiles.length}`);
 
     const bridgeSql = fs.readFileSync(
       path.join(testsDir, 'fixtures', 'p2a_historical_replay_bridge_before_migration_38.sql'),
@@ -876,10 +876,10 @@ async function runPgTests() {
     const ord = (await client.query(`SELECT public.pos_create_order($1, 'TRY', NULL, 'Mixed cart') AS res;`, [branchId])).rows[0].res;
     assert.equal(ord.success, true);
 
-    // Package item cleanly fails before Faz D3 provisions service_package_definitions
+    // Unknown/foreign package cleanly fails with CROSS_TENANT_VIOLATION after Faz D3 provisioned service_package_definitions
     await assert.rejects(
       async () => client.query(`SELECT public.pos_add_cart_item($1, 'package', 1, NULL, NULL, $2);`, [ord.order_id, crypto.randomUUID()]),
-      (err) => err && err.message.includes('FEATURE_NOT_AVAILABLE')
+      (err) => err && err.message.includes('CROSS_TENANT_VIOLATION')
     );
 
     // Foreign performing_staff_id rejected
@@ -1124,7 +1124,370 @@ async function runPgTests() {
     await setAuthUid(null);
     console.log('[PASS] Phase 6 POS, Inventory, Suppliers/PO & Staff Commissions-Tips verified on PG17');
 
-    console.log('\nALL ADIM-033 + ADIM-034 DISPOSABLE PG17 TESTS PASSED.');
+    // 10. Test ADIM-035 / Faz D3: 20260920..20260926 (Comms Outbox, Payment Intents, Customer 360, Deposit/No-Show, Loyalty, Packages, Wallet/Gift Cards)
+    const setServiceRole = async () => {
+      await client.query(`RESET ROLE;`);
+      await client.query(`SELECT set_config('request.jwt.claim.sub', '', false);`);
+      await client.query(`SELECT set_config('request.jwt.claim.role', 'service_role', false);`);
+      await client.query(`SET ROLE service_role;`);
+    };
+    const setAuthenticatedRole = async (uid) => {
+      await client.query(`RESET ROLE;`);
+      await client.query(`SELECT set_config('request.jwt.claim.sub', $1, false);`, [uid || '']);
+      await client.query(`SELECT set_config('request.jwt.claim.role', $1, false);`, [uid ? 'authenticated' : '']);
+      if (uid) {
+        await client.query(`SET ROLE authenticated;`);
+      }
+    };
+    const setAuthenticatedNullRoleClaim = async (uid) => {
+      await client.query(`RESET ROLE;`);
+      await client.query(`SELECT set_config('request.jwt.claim.sub', $1, false);`, [uid || '']);
+      await client.query(`SELECT set_config('request.jwt.claim.role', '', false);`);
+      if (uid) {
+        await client.query(`SET ROLE authenticated;`);
+      }
+    };
+
+    // Seed dedicated Faz D3 customer + completed appointment (>65 days ago for 60d reactivation cohort)
+    await setAuthUid(null);
+    const d3CustConsentedId = 'd3000001-0000-4000-8000-000000000001';
+    const d3CustNoConsentId = 'd3000002-0000-4000-8000-000000000002';
+    const d3ApptDoneId = 'd3000003-0000-4000-8000-000000000003';
+    const d3ApptPendingId = 'd3000004-0000-4000-8000-000000000004';
+    const d3ApptNoConsentId = 'd3000005-0000-4000-8000-000000000005';
+    await client.query(`
+      INSERT INTO public.customers (id, tenant_id, name, email, phone)
+      VALUES
+        ($1, $3, 'D3 VIP Customer', 'd3vip@example.test', '+905559990001'),
+        ($2, $3, 'D3 Silent Customer', 'd3silent@example.test', '+905559990002');
+    `, [d3CustConsentedId, d3CustNoConsentId, tenantId]);
+    await client.query(`
+      INSERT INTO public.consent_ledger (tenant_id, customer_id, consent_type, is_granted, created_at)
+      VALUES ($1, $2, 'marketing', true, now() - interval '70 days');
+    `, [tenantId.toString(), d3CustConsentedId.toString()]);
+    await client.query(`
+      INSERT INTO public.appointments (id, tenant_id, branch_id, customer_id, user_name, phone, service_id, staff_id, appointment_date, appointment_time, duration_minutes, status)
+      VALUES
+        ($1, $4, $5, $6, 'D3 VIP Customer', '+905559990001', $8, $9, (CURRENT_DATE - 68), '11:00', 60, 'completed'),
+        ($2, $4, $5, $6, 'D3 VIP Customer', '+905559990001', $8, $9, (CURRENT_DATE + 5), '14:00', 60, 'confirmed'),
+        ($3, $4, $5, $7, 'D3 Silent Customer', '+905559990002', $8, $9, (CURRENT_DATE - 75), '12:00', 60, 'completed');
+    `, [d3ApptDoneId, d3ApptPendingId, d3ApptNoConsentId, tenantId, branchId, d3CustConsentedId, d3CustNoConsentId, serviceId, staffId]);
+
+    // 10a. 20260920: Communications outbox RPCs
+    await setAuthUid(staffUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.enqueue_communication_outbox($1, 'email', 'd3vip@example.test', 'tpl_1', '{"body":"hi"}'::jsonb, 'outbox-auth-deny');`, [tenantId]),
+      (err) => err && err.code === '42501'
+    );
+    await setServiceRole();
+    const obx1 = (await client.query(`SELECT public.enqueue_communication_outbox($1, 'email', 'd3vip@example.test', 'tpl_1', '{"body":"hello"}'::jsonb, 'outbox-key-1') AS res;`, [tenantId])).rows[0].res;
+    assert.equal(obx1.success, true);
+    assert.equal(obx1.status, 'queued');
+    const obxReplay = (await client.query(`SELECT public.enqueue_communication_outbox($1, 'email', 'd3vip@example.test', 'tpl_1', '{"body":"hello"}'::jsonb, 'outbox-key-1') AS res;`, [tenantId])).rows[0].res;
+    assert.equal(obxReplay.idempotent_duplicate, true);
+    const obxConflict = (await client.query(`SELECT public.enqueue_communication_outbox($1, 'email', 'd3vip@example.test', 'tpl_1', '{"body":"tampered"}'::jsonb, 'outbox-key-1') AS res;`, [tenantId])).rows[0].res;
+    assert.equal(obxConflict.success, false);
+    assert.equal(obxConflict.error, 'IDEMPOTENCY_CONFLICT');
+    const cbUnmatched = (await client.query(`SELECT public.record_delivery_callback('mock_sms', 'msg-unmatched-1', 'delivered', now(), 'cb-replay-1', '{"ok":true}') AS res;`)).rows[0].res;
+    assert.equal(cbUnmatched.success, false);
+    assert.equal(cbUnmatched.classification, 'UNMATCHED_PROVIDER_REFERENCE');
+    const cbDup = (await client.query(`SELECT public.record_delivery_callback('mock_sms', 'msg-unmatched-1', 'delivered', now(), 'cb-replay-1', '{"ok":true}') AS res;`)).rows[0].res;
+    assert.equal(cbDup.success, true);
+    assert.equal(cbDup.duplicate, true);
+    assert.equal(cbDup.classification, 'DUPLICATE_EXACT');
+
+    // 10b. 20260921: Payment intents + verified event binding
+    const pi1 = (await client.query(`SELECT public.create_payment_intent($1, 'appointment_deposit', 25000, 'TRY', 'pi-d3-key-001', $2::text, '{}'::jsonb) AS res;`, [tenantId, d3ApptPendingId])).rows[0].res;
+    assert.equal(pi1.success, true);
+    const piConflict = (await client.query(`SELECT public.create_payment_intent($1, 'appointment_deposit', 99999, 'TRY', 'pi-d3-key-001', $2::text, '{}'::jsonb) AS res;`, [tenantId, d3ApptPendingId])).rows[0].res;
+    assert.equal(piConflict.success, false);
+    assert.equal(piConflict.error, 'IDEMPOTENCY_CONFLICT');
+    const bindPi = (await client.query(`SELECT public.bind_payment_intent_provider($1, 'mock_psp', 'MOCK-REF-1') AS res;`, [pi1.intent_id])).rows[0].res;
+    assert.equal(bindPi.success, true);
+    const pve = (await client.query(`SELECT public.process_verified_payment_event('mock_psp', 'evt-d3-1', 'payment.succeeded', now(), 'hash-abc', $1, 'MOCK-REF-1', 'succeeded') AS res;`, [pi1.intent_id])).rows[0].res;
+    assert.equal(pve.success, true);
+    const pveNoIntent = (await client.query(`SELECT public.process_verified_payment_event('mock_psp', 'evt-d3-null-intent', 'payment.succeeded', now(), 'hash-null', NULL, 'MOCK-REF-NONE', 'succeeded') AS res;`)).rows[0].res;
+    assert.equal(pveNoIntent.success, true);
+    const pveNoIntentDup = (await client.query(`SELECT public.process_verified_payment_event('mock_psp', 'evt-d3-null-intent', 'payment.succeeded', now(), 'hash-null', NULL, 'MOCK-REF-NONE', 'succeeded') AS res;`)).rows[0].res;
+    assert.equal(pveNoIntentDup.success, true);
+    assert.equal(pveNoIntentDup.duplicate, true);
+    assert.equal(pveNoIntentDup.classification, 'IDEMPOTENT_SUCCESS');
+
+    // 10c. 20260922: Customer 360 + Segmentation ACL + NULL role bypass defense
+    await setAuthUid(null);
+    const segId = 'd3000006-0000-4000-8000-000000000006';
+    await client.query(`INSERT INTO public.customer_segments (id, tenant_id, name, segment_type) VALUES ($1, $2, 'VIP Lazer', 'manual');`, [segId, tenantId]);
+
+    // Deactivated users_profile and non-staff customer with NULL claim role must all fail
+    await setAuthenticatedNullRoleClaim(inactiveStaffUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.get_customer_360_view($1, $2);`, [tenantId, d3CustConsentedId]),
+      (err) => err && err.code === '42501'
+    );
+    await setAuthenticatedNullRoleClaim(customerUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.assign_customer_to_segment($1, $2, $3, 'cust');`, [tenantId, segId, d3CustConsentedId]),
+      (err) => err && err.code === '42501'
+    );
+    await setAuthenticatedNullRoleClaim(staffUid);
+    const assignedSeg = (await client.query(`SELECT public.assign_customer_to_segment($1, $2, $3, 'staff-d3') AS ok;`, [tenantId, segId, d3CustConsentedId])).rows[0].ok;
+    assert.equal(assignedSeg, true);
+    const c360 = (await client.query(`SELECT public.get_customer_360_view($1, $2) AS res;`, [tenantId, d3CustConsentedId])).rows[0].res;
+    assert.equal(c360.name, 'D3 VIP Customer');
+    assert.equal(c360.segments.length, 1);
+    const c360Missing = (await client.query(`SELECT public.get_customer_360_view($1, 'd3000099-0000-4000-8000-000000000099') AS res;`, [tenantId])).rows[0].res;
+    assert.equal(c360Missing, null);
+    const listedSegs = (await client.query(`SELECT * FROM public.list_tenant_customer_segments($1);`, [tenantId])).rows;
+    assert.equal(listedSegs.length, 1);
+    assert.equal(listedSegs[0].name, 'VIP Lazer');
+    assert.equal(Number(listedSegs[0].member_count), 1);
+    const dynSeg = (await client.query(`SELECT public.evaluate_dynamic_customer_segments($1, $2) AS res;`, [tenantId, segId])).rows[0].res;
+    assert.equal(dynSeg.status, 'DYNAMIC_RULE_EVALUATION_NOT_IMPLEMENTED');
+
+    // Cross-tenant staff isolation on Customer 360
+    await setAuthenticatedRole(tenantBStaffUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.get_customer_360_view($1, $2);`, [tenantId, d3CustConsentedId]),
+      (err) => err && err.code === '42501'
+    );
+
+    // 10d. 20260923: Deposit & No-Show Policies (default empty policy + percentage fail-closed + fixed_amount)
+    await setAuthenticatedRole(staffUid);
+    const evalEmptyDep = (await client.query(`SELECT public.evaluate_booking_confirmation_deposit_policy($1, $2) AS res;`, [tenantId, serviceId])).rows[0].res;
+    assert.equal(evalEmptyDep.success, true);
+    assert.equal(evalEmptyDep.deposit_required, false);
+    assert.equal(evalEmptyDep.deposit_amount_minor_units, 0);
+    await assert.rejects(
+      async () => client.query(`SELECT public.admin_set_deposit_policy($1, $2, 'fixed_amount', 30000, 'TRY', true);`, [tenantId, serviceId]),
+      (err) => err && err.code === '42501'
+    );
+    await setAuthenticatedRole(ownerUid);
+    const depSetFixed = (await client.query(`SELECT public.admin_set_deposit_policy($1, $2, 'fixed_amount', 30000, 'TRY', true) AS res;`, [tenantId, serviceId])).rows[0].res;
+    assert.equal(depSetFixed.success, true);
+    const nsSet = (await client.query(`SELECT public.admin_set_no_show_policy($1, 12, 'forfeit_deposit', 15000, 24, true) AS res;`, [tenantId])).rows[0].res;
+    assert.equal(nsSet.success, true);
+
+    const evalFixed = (await client.query(`SELECT public.evaluate_booking_confirmation_deposit_policy($1, $2) AS res;`, [tenantId, serviceId])).rows[0].res;
+    assert.equal(evalFixed.success, true);
+    assert.equal(evalFixed.deposit_required, true);
+    assert.equal(evalFixed.deposit_amount_minor_units, 30000);
+    assert.equal(evalFixed.price_units_source_truth, 'CATALOG_PRICE_UNIT_UNRESOLVED');
+
+    // Percentage deposit policy fails closed explicitly
+    await client.query(`SELECT public.admin_set_deposit_policy($1, $2, 'percentage', 20, 'TRY', true);`, [tenantId, serviceId]);
+    const evalPct = (await client.query(`SELECT public.evaluate_booking_confirmation_deposit_policy($1, $2) AS res;`, [tenantId, serviceId])).rows[0].res;
+    assert.equal(evalPct.success, false);
+    assert.equal(evalPct.reason_code, 'PERCENTAGE_DEPOSIT_CALCULATION_UNAVAILABLE');
+
+    // 10e. 20260924: Loyalty & Reactivation (service_role earn, concurrent redeem race, ledger immutability, reactivation consent/60d)
+    await setAuthenticatedRole(ownerUid);
+    const unconfiguredLoyProf = (await client.query(`SELECT public.get_customer_loyalty_profile($1, $2) AS res;`, [tenantId, d3CustNoConsentId])).rows[0].res;
+    assert.equal(unconfiguredLoyProf.is_active, false);
+    assert.equal(unconfiguredLoyProf.current_balance, 0);
+
+    await setAuthenticatedRole(null);
+    await client.query(`
+      INSERT INTO public.tenant_loyalty_configs (tenant_id, is_active, points_per_completed_appointment, minimum_points_redemption)
+      VALUES ($1, true, 120, 50);
+    `, [tenantId]);
+
+    await setAuthenticatedRole(ownerUid);
+    const emptyLoyProf = (await client.query(`SELECT public.get_customer_loyalty_profile($1, $2) AS res;`, [tenantId, d3CustNoConsentId])).rows[0].res;
+    assert.equal(emptyLoyProf.is_active, true);
+    assert.equal(emptyLoyProf.current_balance, 0);
+    await assert.rejects(
+      async () => client.query(`SELECT public.earn_loyalty_points_for_appointment($1, $2, $3, NULL, 'earn-owner-deny');`, [tenantId, d3CustConsentedId, d3ApptDoneId]),
+      (err) => err && err.code === '42501'
+    );
+
+    await setServiceRole();
+    const earnPending = (await client.query(`SELECT public.earn_loyalty_points_for_appointment($1, $2, $3, NULL, 'earn-pending') AS res;`, [tenantId, d3CustConsentedId, d3ApptPendingId])).rows[0].res;
+    assert.equal(earnPending.success, false);
+    assert.equal(earnPending.reason, 'APPOINTMENT_NOT_COMPLETED');
+
+    const earnOk = (await client.query(`SELECT public.earn_loyalty_points_for_appointment($1, $2, $3, NULL, 'earn-done-1') AS res;`, [tenantId, d3CustConsentedId, d3ApptDoneId])).rows[0].res;
+    assert.equal(earnOk.success, true);
+    assert.equal(earnOk.points_awarded, 120);
+    assert.equal(earnOk.current_balance, 120);
+
+    const earnConflict = (await client.query(`SELECT public.earn_loyalty_points_for_appointment($1, $2, $3, NULL, 'earn-done-1') AS res;`, [tenantId, d3CustConsentedId, d3ApptPendingId])).rows[0].res;
+    assert.equal(earnConflict.success, false);
+    assert.equal(earnConflict.reason, 'APPOINTMENT_NOT_COMPLETED');
+
+    // Concurrent two-connection loyalty redeem race (balance 120, both try 80 -> one succeeds, one fails INSUFFICIENT_LOYALTY_BALANCE)
+    const loyC1 = pgInstance.getPgClient('postgres', '127.0.0.1');
+    const loyC2 = pgInstance.getPgClient('postgres', '127.0.0.1');
+    try {
+      await loyC1.connect();
+      await loyC2.connect();
+      await loyC1.query(`BEGIN; SELECT set_config('request.jwt.claim.role', 'service_role', true); SET LOCAL ROLE service_role;`);
+      const l1Res = (await loyC1.query(`SELECT public.redeem_loyalty_points_for_appointment($1, $2, $3, 80, 'loy-race-1') AS res;`, [tenantId, d3CustConsentedId, d3ApptPendingId])).rows[0].res;
+      assert.equal(l1Res.success, true);
+
+      await loyC2.query(`BEGIN; SELECT set_config('request.jwt.claim.role', 'service_role', true); SET LOCAL ROLE service_role;`);
+      const l2Promise = loyC2.query(`SELECT public.redeem_loyalty_points_for_appointment($1, $2, $3, 80, 'loy-race-2') AS res;`, [tenantId, d3CustConsentedId, d3ApptPendingId]);
+      await new Promise((r) => setTimeout(r, 80));
+      await loyC1.query(`COMMIT;`);
+      const l2Res = (await l2Promise).rows[0].res;
+      await loyC2.query(`COMMIT;`);
+      assert.equal(l2Res.success, false);
+      assert.equal(l2Res.reason, 'INSUFFICIENT_LOYALTY_BALANCE');
+    } finally {
+      try { await loyC1.end(); } catch {}
+      try { await loyC2.end(); } catch {}
+    }
+
+    await setAuthUid(null);
+    await assert.rejects(
+      async () => client.query(`DELETE FROM public.customer_loyalty_ledger WHERE tenant_id = $1;`, [tenantId]),
+      (err) => err && err.message.includes('LOYALTY_LEDGER_IMMUTABLE')
+    );
+
+    // Reactivation scan: rejects invalid 45d boundary; queues consented 60d & suppresses unconsented; idempotent second run
+    await setAuthenticatedRole(staffUid);
+    const badCohort = (await client.query(`SELECT public.scan_customer_reactivation_cohorts($1, 45) AS res;`, [tenantId])).rows[0].res;
+    assert.equal(badCohort.success, false);
+    assert.equal(badCohort.error, 'INVALID_COHORT_INACTIVITY_BOUNDARY');
+    const scan1 = (await client.query(`SELECT public.scan_customer_reactivation_cohorts($1, 60) AS res;`, [tenantId])).rows[0].res;
+    assert.equal(scan1.success, true);
+    assert.equal(scan1.queued_outbox_count, 1);
+    assert.equal(scan1.suppressed_count, 1);
+    const scan2 = (await client.query(`SELECT public.scan_customer_reactivation_cohorts($1, 60) AS res;`, [tenantId])).rows[0].res;
+    assert.equal(scan2.detected_customers, 0);
+
+    // 10f. 20260925: Service packages + POS package cart integration + concurrent credit race
+    await setAuthUid(null);
+    const pkgDefId = 'd3000007-0000-4000-8000-000000000007';
+    await client.query(`
+      INSERT INTO public.service_package_definitions (id, tenant_id, name, price_minor_units, currency, total_credits, validity_days, is_active)
+      VALUES ($1, $2, 'Lazer 2 Seans Paketi', 200000, 'TRY', 2, 90, true);
+    `, [pkgDefId, tenantId]);
+    await client.query(`
+      INSERT INTO public.service_package_eligibility (tenant_id, package_definition_id, service_id)
+      VALUES ($1, $2, $3);
+    `, [tenantId, pkgDefId, serviceId]);
+
+    // POS integration: valid package now adds to open TRY order
+    await setAuthenticatedRole(staffUid);
+    const ordPkg = (await client.query(`SELECT public.pos_create_order($1, 'TRY') AS res;`, [branchId])).rows[0].res;
+    const addPkgItem = (await client.query(`SELECT public.pos_add_cart_item($1, 'package', 1, NULL, NULL, $2) AS res;`, [ordPkg.order_id, pkgDefId])).rows[0].res;
+    assert.equal(addPkgItem.order_total_minor_units, 200000);
+
+    await setAuthenticatedRole(ownerUid);
+    const badGrant = (await client.query(`SELECT public.admin_grant_customer_package($1, $2, $3, 0) AS res;`, [tenantId, d3CustConsentedId, pkgDefId])).rows[0].res;
+    assert.equal(badGrant.success, false);
+    assert.equal(badGrant.reason_code, 'invalid_validity_days');
+    const pkgGrant = (await client.query(`SELECT public.admin_grant_customer_package($1, $2, $3, 30) AS res;`, [tenantId, d3CustConsentedId, pkgDefId])).rows[0].res;
+    assert.equal(pkgGrant.success, true);
+
+    const beginAsAuthenticated = async (conn, uid) => {
+      await conn.query('BEGIN');
+      await conn.query(`SELECT set_config('request.jwt.claim.sub', $1, true)`, [uid]);
+      await conn.query(`SELECT set_config('request.jwt.claim.role', 'authenticated', true)`);
+      await conn.query('SET LOCAL ROLE authenticated');
+    };
+
+    const pkgC1 = pgInstance.getPgClient('postgres', '127.0.0.1');
+    const pkgC2 = pgInstance.getPgClient('postgres', '127.0.0.1');
+    try {
+      await pkgC1.connect();
+      await pkgC2.connect();
+      await beginAsAuthenticated(pkgC1, staffUid);
+      const p1Res = (await pkgC1.query(`SELECT public.redeem_customer_package_credits($1, $2, $3, 2, $4, 'pkg-race-1') AS res;`, [tenantId, pkgGrant.customer_package_id, serviceId, d3ApptPendingId])).rows[0].res;
+      assert.equal(p1Res.success, true);
+      assert.equal(p1Res.remaining_credits, 0);
+      assert.equal(p1Res.package_status, 'exhausted');
+
+      await beginAsAuthenticated(pkgC2, staffUid);
+      const p2Promise = pkgC2.query(`SELECT public.redeem_customer_package_credits($1, $2, $3, 1, $4, 'pkg-race-2') AS res;`, [tenantId, pkgGrant.customer_package_id, serviceId, d3ApptPendingId]);
+      await new Promise((r) => setTimeout(r, 80));
+      await pkgC1.query(`COMMIT;`);
+      const p2Res = (await p2Promise).rows[0].res;
+      await pkgC2.query(`COMMIT;`);
+      assert.equal(p2Res.success, false);
+    } finally {
+      try { await pkgC1.end(); } catch {}
+      try { await pkgC2.end(); } catch {}
+    }
+
+    await setAuthUid(null);
+    await assert.rejects(
+      async () => client.query(`DELETE FROM public.customer_package_redemption_ledger WHERE tenant_id = $1;`, [tenantId]),
+      (err) => err && err.message.includes('REDEMPTION_LEDGER_IMMUTABLE')
+    );
+
+    // 10g. 20260926: Client Wallet & Gift Cards (owner-only stored value, concurrent debit race, SHA-256 gift card, immutable ledgers)
+    await setAuthenticatedRole(staffUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.transact_wallet_balance($1, $2, 5000, 'credit', 'TRY', NULL, 'wal-staff-deny');`, [tenantId, d3CustConsentedId]),
+      (err) => err && err.code === '42501'
+    );
+
+    await setAuthenticatedRole(ownerUid);
+    const walCredit = (await client.query(`SELECT public.transact_wallet_balance($1, $2, 10000, 'credit', 'TRY', NULL, 'wal-credit-1', 'Initial credit') AS res;`, [tenantId, d3CustConsentedId])).rows[0].res;
+    assert.equal(walCredit.success, true);
+    assert.equal(walCredit.balance_after_minor_units, 10000);
+
+    const walC1 = pgInstance.getPgClient('postgres', '127.0.0.1');
+    const walC2 = pgInstance.getPgClient('postgres', '127.0.0.1');
+    try {
+      await walC1.connect();
+      await walC2.connect();
+      await beginAsAuthenticated(walC1, ownerUid);
+      const w1Res = (await walC1.query(`SELECT public.transact_wallet_balance($1, $2, 6000, 'debit', 'TRY', $3, 'wal-debit-race-1') AS res;`, [tenantId, d3CustConsentedId, d3ApptPendingId])).rows[0].res;
+      assert.equal(w1Res.success, true);
+      assert.equal(w1Res.balance_after_minor_units, 4000);
+
+      await beginAsAuthenticated(walC2, ownerUid);
+      const w2Promise = walC2.query(`SELECT public.transact_wallet_balance($1, $2, 6000, 'debit', 'TRY', $3, 'wal-debit-race-2') AS res;`, [tenantId, d3CustConsentedId, d3ApptPendingId]);
+      await new Promise((r) => setTimeout(r, 80));
+      await walC1.query(`COMMIT;`);
+      const w2Res = (await w2Promise).rows[0].res;
+      await walC2.query(`COMMIT;`);
+      assert.equal(w2Res.success, false);
+      assert.equal(w2Res.reason_code, 'insufficient_funds');
+    } finally {
+      try { await walC1.end(); } catch {}
+      try { await walC2.end(); } catch {}
+    }
+
+    const walReplay = (await client.query(`SELECT public.transact_wallet_balance($1, $2, 6000, 'debit', 'TRY', $3, 'wal-debit-race-1') AS res;`, [tenantId, d3CustConsentedId, d3ApptPendingId])).rows[0].res;
+    assert.equal(walReplay.is_idempotent_replay, true);
+    const walConflict = (await client.query(`SELECT public.transact_wallet_balance($1, $2, 7000, 'debit', 'TRY', $3, 'wal-debit-race-1') AS res;`, [tenantId, d3CustConsentedId, d3ApptPendingId])).rows[0].res;
+    assert.equal(walConflict.success, false);
+    assert.equal(walConflict.reason_code, 'IDEMPOTENCY_CONFLICT');
+
+    await setAuthUid(null);
+    const gcHash = crypto.createHash('sha256').update('LARI-GIFT-2026').digest('hex');
+    await client.query(`
+      INSERT INTO public.gift_cards (tenant_id, code_hash, code_last_four, initial_balance_minor_units, current_balance_minor_units, currency, expires_at, status)
+      VALUES ($1, $2, '2026', 15000, 15000, 'TRY', now() + interval '30 days', 'active');
+    `, [tenantId, gcHash]);
+
+    await setAuthUid(staffUid);
+    const gcMissing = (await client.query(`SELECT public.redeem_gift_card($1, 'deadbeef', 1000, $2, NULL, 'gc-missing-1') AS res;`, [tenantId, d3CustConsentedId])).rows[0].res;
+    assert.equal(gcMissing.success, false);
+    assert.equal(gcMissing.reason_code, 'gift_card_not_found');
+
+    const gcOk = (await client.query(`SELECT public.redeem_gift_card($1, $2, 5000, $3, $4, 'gc-ok-1') AS res;`, [tenantId, gcHash, d3CustConsentedId, d3ApptPendingId])).rows[0].res;
+    assert.equal(gcOk.success, true);
+    assert.equal(gcOk.remaining_balance_minor_units, 10000);
+    const gcConflict = (await client.query(`SELECT public.redeem_gift_card($1, $2, 6000, $3, $4, 'gc-ok-1') AS res;`, [tenantId, gcHash, d3CustConsentedId, d3ApptPendingId])).rows[0].res;
+    assert.equal(gcConflict.success, false);
+    assert.equal(gcConflict.reason_code, 'IDEMPOTENCY_CONFLICT');
+
+    await setAuthUid(null);
+    await assert.rejects(
+      async () => client.query(`UPDATE public.client_wallet_ledger SET amount_minor_units = 1 WHERE tenant_id = $1;`, [tenantId]),
+      (err) => err && err.message.includes('WALLET_LEDGER_IMMUTABLE')
+    );
+    await assert.rejects(
+      async () => client.query(`UPDATE public.gift_card_redemptions SET redeemed_minor_units = 1 WHERE tenant_id = $1;`, [tenantId]),
+      (err) => err && err.message.includes('GIFT_CARD_REDEMPTIONS_IMMUTABLE')
+    );
+    console.log('[PASS] Phase 3/4 Customer 360, Comms, Payments, Deposit/No-Show, Loyalty, Packages & Wallet/Gift Cards verified on PG17');
+
+    console.log('\nALL ADIM-033 + ADIM-034 + ADIM-035 DISPOSABLE PG17 TESTS PASSED.');
   } finally {
     if (client) {
       try { await client.end(); } catch {}

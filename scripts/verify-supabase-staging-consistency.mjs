@@ -117,7 +117,14 @@ const V2_MIGRATIONS = [
   '20260916_phase6_product_inventory_foundation.sql',
   '20260917_phase6_node2_suppliers_po_receiving.sql',
   '20260918_phase6_node3_pos_mixed_cart_checkout.sql',
-  '20260919_phase6_node4_staff_commissions_tips.sql'
+  '20260919_phase6_node4_staff_commissions_tips.sql',
+  '20260920_phase3_communications_foundation.sql',
+  '20260921_phase3_provider_neutral_payment_foundation.sql',
+  '20260922_phase3_customer360_segmentation_foundation.sql',
+  '20260923_phase4_deposit_noshow_policy_foundation.sql',
+  '20260924_phase4_loyalty_reactivation_foundation.sql',
+  '20260925_phase4_packages_memberships_foundation.sql',
+  '20260926_phase4_giftcards_wallet_foundation.sql'
 ];
 
 const ALL_EXPECTED_MIGRATIONS = [...CANONICAL_MIGRATIONS, ...CANDIDATE_MIGRATIONS, ...V2_MIGRATIONS].sort();

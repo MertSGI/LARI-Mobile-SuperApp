@@ -83,6 +83,13 @@ All migrations in `supabase/migrations/` must be applied in the exact alphabetic
 73. **`20260917_phase6_node2_suppliers_po_receiving.sql`** — V2 Faz D2 (from `72911e4:20261001`): Suppliers (`suppliers`), purchase orders (`purchase_orders`), line items (`purchase_order_items`), and receiving audit/idempotency events (`purchase_order_receiving_events`), with `pos_create_supplier`, `pos_create_purchase_order`, `pos_approve_purchase_order`, `pos_cancel_purchase_order`, `pos_receive_purchase_order_items`, and `pos_get_purchase_order`.
 74. **`20260918_phase6_node3_pos_mixed_cart_checkout.sql`** — V2 Faz D2 (from `72911e4:20261002`): POS mixed cart orders (`pos_orders`), line items (`pos_order_items`), and multi-tender payments (`pos_order_payments`), plus `pos_create_order`, `pos_add_cart_item` (using canonical `services.price * 100` and `to_regclass('public.service_package_definitions')` guard), `pos_checkout_order`, and `pos_get_order`.
 75. **`20260919_phase6_node4_staff_commissions_tips.sql`** — V2 Faz D2 (from `72911e4:20261003`): Staff commission rules (`staff_commission_rules`), tip allocations (`pos_tip_allocations`), immutable internal earnings ledger (`staff_earnings_ledger`), `pos_set_staff_commission_rule` (`tenant_owner` only), `pos_set_tip_allocation`, hardened `pos_add_cart_item`, earnings-materializing `pos_checkout_order` (excluding tax/tip), and `pos_get_staff_earnings` (own staff or same-tenant `tenant_owner` only; no `super_admin` bypass).
+76. **`20260920_phase3_communications_foundation.sql`** — V2 Faz D3 (from `72911e4:20260918`): Evolves `communication_outbox`, adds `communication_delivery_callbacks`, advisory-locked `enqueue_communication_outbox`, `claim_outbox_batch`, `record_delivery_callback`, and sanitized `get_tenant_communication_outbox` while preserving `NO_NETWORK_SEND` / `synthetic_outbox_only`.
+77. **`20260921_phase3_provider_neutral_payment_foundation.sql`** — V2 Faz D3 (from `72911e4:20260919`): Provider-neutral `payment_intents`, `payments` / `payment_events` minor-unit & replay alignment, and server-only `create_payment_intent`, `bind_payment_intent_provider`, `process_verified_payment_event` (preserving `NO_GO`).
+78. **`20260922_phase3_customer360_segmentation_foundation.sql`** — V2 Faz D3 (from `72911e4:20260921`): Reuses canonical `customers` (`uq_customers_id_tenant`), `customer_memory`, and reconciles `customer_segments`, adds `customer_segment_members`, hardened `is_tenant_staff` / `is_staff_assigned_to_branch`, `get_customer_360_view`, segment membership RPCs, and explicit `DYNAMIC_RULE_EVALUATION_NOT_IMPLEMENTED`.
+79. **`20260923_phase4_deposit_noshow_policy_foundation.sql`** — V2 Faz D3 (from `72911e4:20260924`): `deposit_policies`, `no_show_policies`, `appointment_deposits` (composite FKs to `services`, `appointments`, `payment_intents`), `evaluate_booking_confirmation_deposit_policy` (fixed minor units; percentage fails closed with `CATALOG_PRICE_UNIT_UNRESOLVED`), `admin_set_deposit_policy`, and `admin_set_no_show_policy`.
+80. **`20260924_phase4_loyalty_reactivation_foundation.sql`** — V2 Faz D3 (from `72911e4:20260925`): `tenant_loyalty_configs`, append-only `customer_loyalty_ledger`, `customer_loyalty_balances`, `customer_reactivation_events`, `service_role`-only `earn_loyalty_points_for_appointment` and `redeem_loyalty_points_for_appointment` (advisory-locked with idempotency conflict checks), `get_customer_loyalty_profile`, and `scan_customer_reactivation_cohorts` (strict 60/90d cohorts, fail-closed `consent_ledger`, queued via `enqueue_communication_outbox`).
+81. **`20260925_phase4_packages_memberships_foundation.sql`** — V2 Faz D3 (from `72911e4:20260925`): `service_package_definitions`, `service_package_eligibility`, `customer_packages`, append-only `customer_package_redemption_ledger`, `membership_plans`, `customer_memberships`, `redeem_customer_package_credits` (advisory-locked + `FOR UPDATE` + idempotency conflict checks), and `admin_grant_customer_package`.
+82. **`20260926_phase4_giftcards_wallet_foundation.sql`** — V2 Faz D3 (from `72911e4:20260926`): `client_wallets`, append-only `client_wallet_ledger`, `gift_cards` (SHA-256 `code_hash` only), append-only `gift_card_redemptions`, `transact_wallet_balance` (`tenant_owner`/`super_admin`/`service_role`, advisory-locked + `FOR UPDATE` + idempotency conflict checks), and `redeem_gift_card`.
 
 ---
 
@@ -109,7 +116,7 @@ All migrations in `supabase/migrations/` must be applied in the exact alphabetic
 | `whatsapp_logs` | `001_initial_schema.sql` | — | `20260619_lari_rls_policy_draft.sql` |
 | `calendar_integrations` | `001_initial_schema.sql` | — | `20260619_lari_rls_policy_draft.sql` |
 | `ai_recommendations` | `001_initial_schema.sql` | — | `20260619_lari_rls_policy_draft.sql` |
-| `customer_segments` | `001_initial_schema.sql` | — | `20260619_lari_rls_policy_draft.sql` |
+| `customer_segments` | `001_initial_schema.sql` | `20260922` | `20260619_lari_rls_policy_draft.sql`, `20260922` |
 | `subscriptions` | `001_initial_schema.sql` | `002`, `004`, `20260601`, `20260621` | `20260619_lari_rls_policy_draft.sql` |
 | `payments` | `001_initial_schema.sql` | `002`, `004`, `20260601` | `20260619_lari_rls_policy_draft.sql` |
 | `audit_logs` | `001_initial_schema.sql` | — | `20260619_lari_rls_policy_draft.sql` |
@@ -180,6 +187,26 @@ All migrations in `supabase/migrations/` must be applied in the exact alphabetic
 | `staff_commission_rules` | `20260919_phase6_node4_staff_commissions_tips.sql` | — | `20260919_phase6_node4_staff_commissions_tips.sql` |
 | `pos_tip_allocations` | `20260919_phase6_node4_staff_commissions_tips.sql` | — | `20260919_phase6_node4_staff_commissions_tips.sql` |
 | `staff_earnings_ledger` | `20260919_phase6_node4_staff_commissions_tips.sql` | — | `20260919_phase6_node4_staff_commissions_tips.sql` |
+| `communication_delivery_callbacks` | `20260920_phase3_communications_foundation.sql` | — | `20260920_phase3_communications_foundation.sql` |
+| `payment_intents` | `20260921_phase3_provider_neutral_payment_foundation.sql` | — | `20260921_phase3_provider_neutral_payment_foundation.sql` |
+| `customer_segment_members` | `20260922_phase3_customer360_segmentation_foundation.sql` | — | `20260922_phase3_customer360_segmentation_foundation.sql` |
+| `deposit_policies` | `20260923_phase4_deposit_noshow_policy_foundation.sql` | — | `20260923_phase4_deposit_noshow_policy_foundation.sql` |
+| `no_show_policies` | `20260923_phase4_deposit_noshow_policy_foundation.sql` | — | `20260923_phase4_deposit_noshow_policy_foundation.sql` |
+| `appointment_deposits` | `20260923_phase4_deposit_noshow_policy_foundation.sql` | — | `20260923_phase4_deposit_noshow_policy_foundation.sql` |
+| `tenant_loyalty_configs` | `20260924_phase4_loyalty_reactivation_foundation.sql` | — | `20260924_phase4_loyalty_reactivation_foundation.sql` |
+| `customer_loyalty_ledger` | `20260924_phase4_loyalty_reactivation_foundation.sql` | — | `20260924_phase4_loyalty_reactivation_foundation.sql` |
+| `customer_loyalty_balances` | `20260924_phase4_loyalty_reactivation_foundation.sql` | — | `20260924_phase4_loyalty_reactivation_foundation.sql` |
+| `customer_reactivation_events` | `20260924_phase4_loyalty_reactivation_foundation.sql` | — | `20260924_phase4_loyalty_reactivation_foundation.sql` |
+| `service_package_definitions` | `20260925_phase4_packages_memberships_foundation.sql` | — | `20260925_phase4_packages_memberships_foundation.sql` |
+| `service_package_eligibility` | `20260925_phase4_packages_memberships_foundation.sql` | — | `20260925_phase4_packages_memberships_foundation.sql` |
+| `customer_packages` | `20260925_phase4_packages_memberships_foundation.sql` | — | `20260925_phase4_packages_memberships_foundation.sql` |
+| `customer_package_redemption_ledger` | `20260925_phase4_packages_memberships_foundation.sql` | — | `20260925_phase4_packages_memberships_foundation.sql` |
+| `membership_plans` | `20260925_phase4_packages_memberships_foundation.sql` | — | `20260925_phase4_packages_memberships_foundation.sql` |
+| `customer_memberships` | `20260925_phase4_packages_memberships_foundation.sql` | — | `20260925_phase4_packages_memberships_foundation.sql` |
+| `client_wallets` | `20260926_phase4_giftcards_wallet_foundation.sql` | — | `20260926_phase4_giftcards_wallet_foundation.sql` |
+| `client_wallet_ledger` | `20260926_phase4_giftcards_wallet_foundation.sql` | — | `20260926_phase4_giftcards_wallet_foundation.sql` |
+| `gift_cards` | `20260926_phase4_giftcards_wallet_foundation.sql` | — | `20260926_phase4_giftcards_wallet_foundation.sql` |
+| `gift_card_redemptions` | `20260926_phase4_giftcards_wallet_foundation.sql` | — | `20260926_phase4_giftcards_wallet_foundation.sql` |
 
 ---
 
@@ -282,4 +309,18 @@ After the migrations have successfully been applied:
 * **Trust Boundary & `EXTERNAL_HOLD` Classification**:
   * All 13 Phase 6 tables revoke direct `INSERT/UPDATE/DELETE` from `PUBLIC`, `anon`, and `authenticated`, routing mutations through `SECURITY DEFINER` RPCs enforcing active `staff` + `users_profile` (`role IN ('tenant_owner', 'staff')`) and `tenant_owner`-only commission rule authority.
   * Live physical POS terminal PSP capture (`card_terminal_adapter`), deferred customer wallet debit (`customer_wallet` until Faz D3), and automated bank/payroll payouts (`staff_earnings_ledger` is internal accounting only) are classified `EXTERNAL_HOLD`.
+
+---
+
+## 12. V2 Faz D3 — Customer 360, Deposit/No-Show, Loyalty/Reactivation, Packages/Memberships & Gift Cards/Wallet Port (ADIM-035)
+
+* **Conflict-Free Sequential Timestamps (`20260920..20260926`)**: Ported from historical V2 branch (`72911e4`: `20260918`, `20260919`, `20260921`, `20260924`, `20260925`, `20260926`) without modifying `20260901..20260919`.
+* **Server-Authoritative Ledger & Balance Invariants**:
+  * All direct table DML is revoked from `PUBLIC`, `anon`, and `authenticated` across Customer 360 segments, deposit/no-show policies, loyalty ledgers/balances, package credits/redemptions, client wallets, and gift cards.
+  * Loyalty point mutations (`earn_loyalty_points_for_appointment`, `redeem_loyalty_points_for_appointment`) are strictly restricted to `service_role`; wallet mutations (`transact_wallet_balance`) are restricted to `tenant_owner`, `super_admin`, and `service_role`.
+  * Append-only ledgers (`customer_loyalty_ledger`, `customer_package_redemption_ledger`, `client_wallet_ledger`, `gift_card_redemptions`) enforce immutability via `BEFORE UPDATE OR DELETE` triggers, advisory locking + `SELECT ... FOR UPDATE`, and payload-verified `IDEMPOTENCY_CONFLICT` checks.
+  * Zero client-side (`localStorage`) balance/wallet/loyalty writes are permitted; frontend services (`customer360Service.ts`, `loyaltyReactivationService.ts`, `customerCampaignService.ts`, `CustomerMemoryTab.tsx`) route exclusively through server RPCs and fail closed in local simulation mode.
+* **`EXTERNAL_HOLD` Classification**:
+  * Live payment capture for deposits, gift-card purchases, and package/membership billing remains `EXTERNAL_HOLD` (`LIVE_PAYMENT_PROVIDER_CREDENTIALS_REQUIRED`, `PRODUCTION = NO_GO`).
+  * Live marketing/reactivation SMS, WhatsApp, and email dispatch remains `EXTERNAL_HOLD` (`NO_NETWORK_SEND`; `scan_customer_reactivation_cohorts` queues via `enqueue_communication_outbox` with `synthetic_outbox_only`).
 
