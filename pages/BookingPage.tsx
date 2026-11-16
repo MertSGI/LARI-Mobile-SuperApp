@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Service, BUSINESS_HOURS, Staff } from '../types';
 import * as GeminiService from '../services/geminiService';
 import * as NotificationService from '../services/notificationService';
@@ -18,7 +19,24 @@ import { SalonBusinessProfile, BusinessBranch } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { canPreviewTenantSite } from '../utils/previewAuth';
 import SalonWebsiteView from '../components/SalonWebsiteView';
+import SalonWebsiteViewV2 from '../components/SalonWebsiteViewV2';
 import { getDataSourceMode } from '../services/dataSourceConfig';
+
+export const isUiV2Requested = (
+  windowSearch: string = '',
+  windowHash: string = '',
+  routerSearch: string = ''
+): boolean => {
+  const searchParams = new URLSearchParams(windowSearch);
+  const routerSearchParams = new URLSearchParams(routerSearch);
+  const hashSearch = windowHash.includes('?') ? windowHash.split('?')[1] : '';
+  const hashParams = new URLSearchParams(hashSearch);
+  return (
+    searchParams.get('ui') === 'v2' ||
+    routerSearchParams.get('ui') === 'v2' ||
+    hashParams.get('ui') === 'v2'
+  );
+};
 
 
 const generateTimeSlots = (): string[] => {
@@ -54,6 +72,7 @@ const BookingPage: React.FC = () => {
   const { t, language } = useLanguage();
   const { tenant, branding } = useTenant();
   const { currentUser } = useAuth();
+  const routerLocation = useLocation();
   const [step, setStep] = useState<number>(0);
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [servicesList, setServicesList] = useState<Service[]>([]);
@@ -134,6 +153,12 @@ const BookingPage: React.FC = () => {
   const requestedPreview = new URLSearchParams(window.location.hash.split('?')[1]).get('preview') === 'true';
   const urlSource = new URLSearchParams(window.location.hash.split('?')[1]).get('source') || undefined;
   const isAuthorizedPreview = requestedPreview && canPreviewTenantSite(currentUser, tenant?.id);
+  const isUiV2 = typeof window !== 'undefined' && isUiV2Requested(
+    window.location.search,
+    window.location.hash,
+    routerLocation.search
+  );
+  const WebsiteComponent = isUiV2 ? SalonWebsiteViewV2 : SalonWebsiteView;
 
   // Regenerate PII-free idempotency key when booking selection parameters change
   useEffect(() => {
@@ -898,7 +923,7 @@ isWaDelivered = waDelivered === true;
          </div>
       ) : (
       <div data-testid="public-booking-ready">
-        <SalonWebsiteView 
+        <WebsiteComponent
           tenant={tenant}
           businessProfile={businessProfile}
           staffList={staffList}
