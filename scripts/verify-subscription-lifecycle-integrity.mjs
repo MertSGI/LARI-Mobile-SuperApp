@@ -213,15 +213,19 @@ await runAsyncStep('7. Rejects customer/tenant mismatch between payload and data
     throw new Error(`Security violation: subscription changed status despite tenant mismatch!`);
   }
 
-  // Negative test: Unverified cancellation without customer/tenant reference rejected
+  // Negative test: Synthetic public cancellation aliases rejected fail-closed with PROVIDER_STATE_RECONCILIATION_REQUIRED
   const unverifiedCancelPayload = {
     eventType: 'subscription.cancelled',
     providerEventId: 'evt_unverified_canc_01',
     subscriptionReferenceCode: 'sub_ref_match_01'
   };
   const unverifiedCancel = await subscriptionLifecycleService.processVerifiedWebhook(unverifiedCancelPayload, storage, makeWebhookEnvelope(unverifiedCancelPayload));
-  if (unverifiedCancel.success || unverifiedCancel.errorCode !== 'UNVERIFIED_CANCELLATION') {
-    throw new Error(`Unverified cancellation without tenant reference was accepted: ${JSON.stringify(unverifiedCancel)}`);
+  if (unverifiedCancel.success || unverifiedCancel.errorCode !== 'PROVIDER_STATE_RECONCILIATION_REQUIRED') {
+    throw new Error(`Synthetic cancellation webhook bypassed reconciliation boundary: ${JSON.stringify(unverifiedCancel)}`);
+  }
+  const afterSynthCancel = storage.getSubscription('tenant_legitimate_01');
+  if (afterSynthCancel?.status !== 'trialing' || (await storage.hasProcessedEvent('evt_unverified_canc_01'))) {
+    throw new Error(`Synthetic cancellation webhook mutated subscription or claimed event!`);
   }
 
   // Negative test: Negative money parameters rejected with INVALID_MONEY
@@ -260,9 +264,9 @@ await runAsyncStep('7. Rejects customer/tenant mismatch between payload and data
     throw new Error(`Mismatched rawPayload envelope was accepted: ${JSON.stringify(rawMismatchWebhook)}`);
   }
 
-  // Negative test: Conflicting customerReferenceCode and tenantId rejected with TENANT_MISMATCH
+  // Negative test: Conflicting customerReferenceCode and tenantId on supported event rejected with TENANT_MISMATCH
   const conflictTenantPayload = {
-    eventType: 'subscription.cancelled',
+    eventType: 'subscription.past_due',
     providerEventId: 'evt_conflict_tenant_ref_01',
     subscriptionReferenceCode: 'sub_ref_match_01',
     customerReferenceCode: 'tenant_legitimate_01',
@@ -275,6 +279,48 @@ await runAsyncStep('7. Rejects customer/tenant mismatch between payload and data
   );
   if (conflictingTenantRefs.success || conflictingTenantRefs.errorCode !== 'TENANT_MISMATCH') {
     throw new Error(`Conflicting customerReferenceCode/tenantId was accepted: ${JSON.stringify(conflictingTenantRefs)}`);
+  }
+
+  // Negative test: Even with conflicting/missing tenant refs, synthetic cancellation aliases return PROVIDER_STATE_RECONCILIATION_REQUIRED without mutation
+  const synthCancelWithConflictTenant = {
+    eventType: 'subscription.cancelled',
+    providerEventId: 'evt_synth_cancel_conflict_tenant_01',
+    subscriptionReferenceCode: 'sub_ref_match_01',
+    customerReferenceCode: 'tenant_legitimate_01',
+    tenantId: 'tenant_attacker_99'
+  };
+  const synthCancelConflictRes = await subscriptionLifecycleService.processVerifiedWebhook(
+    synthCancelWithConflictTenant,
+    storage,
+    makeWebhookEnvelope(synthCancelWithConflictTenant)
+  );
+  if (
+    synthCancelConflictRes.success ||
+    synthCancelConflictRes.errorCode !== 'PROVIDER_STATE_RECONCILIATION_REQUIRED' ||
+    storage.getSubscription('tenant_legitimate_01')?.status !== 'trialing' ||
+    (await storage.hasProcessedEvent('evt_synth_cancel_conflict_tenant_01'))
+  ) {
+    throw new Error(`Expected mutation-free PROVIDER_STATE_RECONCILIATION_REQUIRED for synthetic cancellation, got ${JSON.stringify(synthCancelConflictRes)}`);
+  }
+
+  const synthExpiredWithDifferentTenant = {
+    eventType: 'subscription.expired',
+    providerEventId: 'evt_synth_expired_diff_tenant_01',
+    subscriptionReferenceCode: 'sub_ref_match_01',
+    customerReferenceCode: 'tenant_attacker_99'
+  };
+  const synthExpiredDiffTenantRes = await subscriptionLifecycleService.processVerifiedWebhook(
+    synthExpiredWithDifferentTenant,
+    storage,
+    makeWebhookEnvelope(synthExpiredWithDifferentTenant)
+  );
+  if (
+    synthExpiredDiffTenantRes.success ||
+    synthExpiredDiffTenantRes.errorCode !== 'PROVIDER_STATE_RECONCILIATION_REQUIRED' ||
+    storage.getSubscription('tenant_legitimate_01')?.status !== 'trialing' ||
+    (await storage.hasProcessedEvent('evt_synth_expired_diff_tenant_01'))
+  ) {
+    throw new Error(`Expected mutation-free PROVIDER_STATE_RECONCILIATION_REQUIRED for synthetic expiration, got ${JSON.stringify(synthExpiredDiffTenantRes)}`);
   }
 
   // Negative test: Conflicting eventType and status rejected with CONFLICTING_EVENT_STATUS
@@ -810,13 +856,13 @@ await runAsyncStep('8C. Enforces monotonic eventTimestamp watermark under atomic
   }
 
   // 3. Missing eventTimestamp when watermark exists rejected fail-closed
-  const missingTsCancel = {
-    eventType: 'subscription.cancelled',
+  const missingTsPastDue = {
+    eventType: 'subscription.past_due',
     providerEventId: 'evt_wm_missing_ts_unique',
     subscriptionReferenceCode: 'sub_ref_watermark_01',
     customerReferenceCode: 'tenant_watermark_01'
   };
-  const missingTsRes = await subscriptionLifecycleService.processVerifiedWebhook(missingTsCancel, storage, makeWebhookEnvelope(missingTsCancel));
+  const missingTsRes = await subscriptionLifecycleService.processVerifiedWebhook(missingTsPastDue, storage, makeWebhookEnvelope(missingTsPastDue));
   if (missingTsRes.success || missingTsRes.errorCode !== 'STALE_EVENT_OUT_OF_ORDER') {
     throw new Error(`Timestamp-less event bypassed watermark: ${JSON.stringify(missingTsRes)}`);
   }
@@ -855,7 +901,7 @@ await runAsyncStep('8C. Enforces monotonic eventTimestamp watermark under atomic
 
   // 6. Future eventTimestamp beyond clock skew (e.g. 2099) rejected fail-closed without poisoning watermark [FINDING-ADIM027-023]
   const futurePayload = {
-    eventType: 'subscription.cancelled',
+    eventType: 'subscription.past_due',
     providerEventId: 'evt_wm_future_2099',
     subscriptionReferenceCode: 'sub_ref_watermark_01',
     customerReferenceCode: 'tenant_watermark_01',
@@ -873,7 +919,7 @@ await runAsyncStep('8C. Enforces monotonic eventTimestamp watermark under atomic
   const directFutureAtomic = await storage.commitTransitionAtomic(
     {
       providerEventId: 'evt_wm_direct_future_lock',
-      eventType: 'subscription.cancelled',
+      eventType: 'subscription.past_due',
       tenantId: 'tenant_watermark_01',
       subscriptionReferenceCode: 'sub_ref_watermark_01',
       processedAt: new Date().toISOString(),
@@ -888,17 +934,28 @@ await runAsyncStep('8C. Enforces monotonic eventTimestamp watermark under atomic
     throw new Error(`Direct atomic commit failed to reject future 2099 timestamp: ${JSON.stringify(directFutureAtomic)}`);
   }
 
-  // Legitimate T4 event after rejected future timestamp still succeeds
+  // Legitimate T4 event after rejected future timestamp still succeeds with verified payment proof
+  storage.seedPayment({
+    id: 'pay_wm_t4',
+    tenantId: 'tenant_watermark_01',
+    subscriptionReferenceCode: 'sub_ref_watermark_01',
+    amountMinor: 249000,
+    currency: 'TRY',
+    status: 'paid'
+  });
   const t4 = '2026-10-10T14:00:00.000Z';
   const validT4 = {
-    eventType: 'subscription.cancelled',
+    eventType: 'payment.succeeded',
     providerEventId: 'evt_wm_valid_t4',
     subscriptionReferenceCode: 'sub_ref_watermark_01',
     customerReferenceCode: 'tenant_watermark_01',
+    paymentId: 'pay_wm_t4',
+    amountMinor: 249000,
+    currencyCode: 'TRY',
     eventTimestamp: t4
   };
   const validT4Res = await subscriptionLifecycleService.processVerifiedWebhook(validT4, storage, makeWebhookEnvelope(validT4));
-  if (!validT4Res.success || validT4Res.subscription?.status !== 'cancelled' || validT4Res.subscription?.lastWebhookEventAt !== t4) {
+  if (!validT4Res.success || validT4Res.subscription?.status !== 'active' || validT4Res.subscription?.lastWebhookEventAt !== t4) {
     throw new Error(`Valid T4 event failed after rejected future timestamp: ${JSON.stringify(validT4Res)}`);
   }
 });
@@ -1024,17 +1081,23 @@ await runAsyncStep('10. Correctly handles payment failure, cancellation and expi
     throw new Error(`Expected past_due status, got ${JSON.stringify(failRes)}`);
   }
 
-  // Step B: Cancellation transitions past_due -> cancelled
+  // Step B: Synthetic public cancellation rejected; authorized provider-state reconciliation transitions past_due -> cancelled
   const cancelPayload = {
     eventType: 'subscription.cancelled',
     providerEventId: 'evt_cancel_01',
     subscriptionReferenceCode: 'sub_ref_life_01',
     customerReferenceCode: 'tenant_life_01'
   };
-  const cancelRes = await subscriptionLifecycleService.processVerifiedWebhook(cancelPayload, storage, makeWebhookEnvelope(cancelPayload));
-  if (!cancelRes.success || cancelRes.subscription?.status !== 'cancelled') {
-    throw new Error(`Expected cancelled status, got ${JSON.stringify(cancelRes)}`);
+  const cancelWebhookRes = await subscriptionLifecycleService.processVerifiedWebhook(cancelPayload, storage, makeWebhookEnvelope(cancelPayload));
+  if (cancelWebhookRes.success || cancelWebhookRes.errorCode !== 'PROVIDER_STATE_RECONCILIATION_REQUIRED') {
+    throw new Error(`Expected PROVIDER_STATE_RECONCILIATION_REQUIRED for synthetic cancellation, got ${JSON.stringify(cancelWebhookRes)}`);
   }
+  const curPastDue = storage.getSubscription('tenant_life_01');
+  const cancelRes = subscriptionLifecycleService.reconcileSubscription(curPastDue, { status: 'CANCELLED' });
+  if (cancelRes.inSync || cancelRes.reconciledSub?.status !== 'cancelled') {
+    throw new Error(`Expected cancelled status via reconciliation, got ${JSON.stringify(cancelRes)}`);
+  }
+  await storage.saveSubscription(cancelRes.reconciledSub);
 });
 
 // 11. Plan upgrade (immediate) vs downgrade scheduling (period_end)

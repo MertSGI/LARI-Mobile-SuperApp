@@ -27,6 +27,25 @@ function normalizeRemoteReconcileStatus(rawStatus: unknown): SubscriptionStatus 
   return null;
 }
 
+function resolvePreservedPaidThroughDate(
+  existingDate?: string,
+  incomingDate?: string
+): string | undefined {
+  const cleanExisting = typeof existingDate === 'string' && existingDate.trim() ? existingDate.trim() : undefined;
+  const cleanIncoming = typeof incomingDate === 'string' && incomingDate.trim() ? incomingDate.trim() : undefined;
+  const existingMs = cleanExisting ? Date.parse(cleanExisting) : Number.NaN;
+  const incomingMs = cleanIncoming ? Date.parse(cleanIncoming) : Number.NaN;
+  const hasValidExisting = !Number.isNaN(existingMs);
+  const hasValidIncoming = !Number.isNaN(incomingMs);
+
+  if (hasValidExisting && hasValidIncoming) {
+    return existingMs >= incomingMs ? cleanExisting : cleanIncoming;
+  }
+  if (hasValidIncoming) return cleanIncoming;
+  if (hasValidExisting) return cleanExisting;
+  return undefined;
+}
+
 export interface WebhookEventRecord {
   providerEventId: string;
   eventType: string;
@@ -78,6 +97,9 @@ export interface StoredPaymentRecord {
   currency: string;
   status: 'paid' | 'partially_refunded' | 'refunded';
   refundedAmountMinor?: number;
+  targetPlanId?: string;
+  expectedAmountMinor?: number;
+  expectedCurrency?: string;
 }
 
 export interface TransitionResult {
@@ -138,6 +160,11 @@ const VALID_REFUND_SUCCESS_EVENT_TYPES = new Set([
   'refund.succeeded'
 ]);
 
+const SYNTHETIC_CANCELLATION_WEBHOOK_ALIASES = new Set([
+  'subscription.cancelled',
+  'subscription.expired'
+]);
+
 const LIFECYCLE_CANONICAL_OPERATIONS: Record<string, { canonical: string; targetStatus: SubscriptionStatus }> = {
   'subscription.created': { canonical: 'subscription.created', targetStatus: 'pending_checkout' },
   'subscription.active': { canonical: 'payment.succeeded', targetStatus: 'active' },
@@ -147,9 +174,7 @@ const LIFECYCLE_CANONICAL_OPERATIONS: Record<string, { canonical: string; target
   'subscription.order.success': { canonical: 'payment.succeeded', targetStatus: 'active' },
   'subscription.past_due': { canonical: 'subscription.past_due', targetStatus: 'past_due' },
   'subscription.failed': { canonical: 'subscription.past_due', targetStatus: 'past_due' },
-  'payment.failed': { canonical: 'subscription.past_due', targetStatus: 'past_due' },
-  'subscription.cancelled': { canonical: 'subscription.cancelled', targetStatus: 'cancelled' },
-  'subscription.expired': { canonical: 'subscription.cancelled', targetStatus: 'cancelled' }
+  'payment.failed': { canonical: 'subscription.past_due', targetStatus: 'past_due' }
 };
 
 /**
@@ -161,7 +186,7 @@ function resolveLifecycleOperation(parsedRaw: Record<string, any>): {
   valid: boolean;
   canonicalOperation?: string;
   targetStatus?: SubscriptionStatus;
-  errorCode?: 'UNKNOWN_EVENT_TYPE' | 'CONFLICTING_EVENT_TYPE';
+  errorCode?: 'UNKNOWN_EVENT_TYPE' | 'CONFLICTING_EVENT_TYPE' | 'PROVIDER_STATE_RECONCILIATION_REQUIRED';
   message?: string;
 } {
   const aliasFields = ['eventType', 'type', 'operationType'] as const;
@@ -178,6 +203,13 @@ function resolveLifecycleOperation(parsedRaw: Record<string, any>): {
         };
       }
       const normalized = rawVal.trim().toLowerCase();
+      if (SYNTHETIC_CANCELLATION_WEBHOOK_ALIASES.has(normalized)) {
+        return {
+          valid: false,
+          errorCode: 'PROVIDER_STATE_RECONCILIATION_REQUIRED',
+          message: `Unsupported synthetic cancellation webhook event in ${field} (${rawVal}); use authorized provider state reconciliation.`
+        };
+      }
       const mapped = LIFECYCLE_CANONICAL_OPERATIONS[normalized];
       if (!mapped) {
         return {
@@ -475,6 +507,9 @@ export interface CommitTransitionOptions {
     expectedSubscriptionRef: string;
     expectedAmountMinor: number;
     expectedCurrency: string;
+    expectedTargetPlanId?: string;
+    expectedCheckoutAmountMinor?: number;
+    expectedCheckoutCurrency?: string;
   };
 }
 
@@ -540,6 +575,16 @@ export class InMemoryStorageAdapter implements StorageAdapter {
   }
 
   async savePayment(payment: StoredPaymentRecord): Promise<void> {
+    const existing = this.payments.get(payment.id);
+    if (existing) {
+      if (
+        (existing.targetPlanId !== undefined && payment.targetPlanId !== existing.targetPlanId) ||
+        (existing.expectedAmountMinor !== undefined && payment.expectedAmountMinor !== existing.expectedAmountMinor) ||
+        (existing.expectedCurrency !== undefined && payment.expectedCurrency !== existing.expectedCurrency)
+      ) {
+        throw new Error(`Immutable checkout payment binding for '${payment.id}' cannot be modified.`);
+      }
+    }
     this.payments.set(payment.id, { ...payment });
   }
 
@@ -640,6 +685,17 @@ export class InMemoryStorageAdapter implements StorageAdapter {
       if (transitionOptions?.paymentVerification) {
         const pv = transitionOptions.paymentVerification;
         const lockedPayment = this.payments.get(pv.paymentId);
+        const targetPlanMismatch =
+          pv.expectedTargetPlanId !== undefined &&
+          (typeof lockedPayment?.targetPlanId !== 'string' ||
+            lockedPayment.targetPlanId.trim() !== pv.expectedTargetPlanId);
+        const checkoutAmountMismatch =
+          pv.expectedCheckoutAmountMinor !== undefined &&
+          lockedPayment?.expectedAmountMinor !== pv.expectedCheckoutAmountMinor;
+        const checkoutCurrencyMismatch =
+          pv.expectedCheckoutCurrency !== undefined &&
+          (typeof lockedPayment?.expectedCurrency !== 'string' ||
+            lockedPayment.expectedCurrency.trim().toUpperCase() !== pv.expectedCheckoutCurrency);
         if (
           !lockedPayment ||
           lockedPayment.tenantId !== pv.expectedTenantId ||
@@ -647,7 +703,10 @@ export class InMemoryStorageAdapter implements StorageAdapter {
           lockedPayment.status !== 'paid' ||
           (lockedPayment.refundedAmountMinor || 0) > 0 ||
           lockedPayment.currency !== pv.expectedCurrency ||
-          lockedPayment.amountMinor !== pv.expectedAmountMinor
+          lockedPayment.amountMinor !== pv.expectedAmountMinor ||
+          targetPlanMismatch ||
+          checkoutAmountMismatch ||
+          checkoutCurrencyMismatch
         ) {
           return {
             success: false,
@@ -831,7 +890,7 @@ export const subscriptionLifecycleService = {
       paused: ['active', 'cancelled'],
       suspended: ['active', 'cancelled'],
       comped: ['active', 'cancelled'],
-      manual_active: ['active', 'cancelled', 'expired'],
+      manual_active: ['pending_checkout', 'active', 'cancelled', 'expired'],
       cancelled: [], // Terminal
       expired: [], // Terminal
       none: ['pending_checkout', 'trialing', 'active']
@@ -864,10 +923,7 @@ export const subscriptionLifecycleService = {
       ) {
         return 'past_due';
       }
-      if (trimmedEvent === 'subscription.cancelled' || trimmedEvent === 'subscription.expired') {
-        return 'cancelled';
-      }
-      // Reject unknown non-empty event types strictly before inspecting providerStatus
+      // Reject unknown or synthetic cancellation event types strictly before inspecting providerStatus
       return null;
     }
 
@@ -1226,7 +1282,17 @@ export const subscriptionLifecycleService = {
       }
     }
 
-    // Unverified cancellation prevention: cancellation requires verified customer/tenant reference matching subscription owner
+    // Unverified cancellation / manual transition prevention: requires verified customer/tenant reference matching owner
+    if (existingSub.status === 'manual_active' && targetStatus === 'pending_checkout') {
+      if (!payloadCustomer || payloadCustomer !== existingSub.tenantId) {
+        return {
+          success: false,
+          errorCode: 'UNVERIFIED_MANUAL_TRANSITION',
+          message: 'Manual-to-online checkout transition webhook requires verified customer/tenant reference matching subscription owner.'
+        };
+      }
+    }
+
     if (targetStatus === 'cancelled') {
       if (!payloadCustomer || payloadCustomer !== existingSub.tenantId) {
         return {
@@ -1245,6 +1311,9 @@ export const subscriptionLifecycleService = {
           expectedSubscriptionRef: string;
           expectedAmountMinor: number;
           expectedCurrency: string;
+          expectedTargetPlanId?: string;
+          expectedCheckoutAmountMinor?: number;
+          expectedCheckoutCurrency?: string;
         }
       | undefined;
 
@@ -1349,12 +1418,106 @@ export const subscriptionLifecycleService = {
         };
       }
 
+      const isScheduledUpgradeActiveTransition =
+        existingSub.planChangeStatus === 'upgrade_pending' &&
+        typeof existingSub.scheduledPlanId === 'string' &&
+        existingSub.scheduledPlanId.trim().length > 0;
+
+      let expectedTargetPlanId: string | undefined;
+      let expectedCheckoutAmountMinor: number | undefined;
+      let expectedCheckoutCurrency: string | undefined;
+
+      if (isScheduledUpgradeActiveTransition) {
+        const scheduledTargetPlanId = existingSub.scheduledPlanId!.trim();
+        const targetPlan = planService.getPlan(scheduledTargetPlanId);
+        if (!targetPlan || targetPlan.isActive === false) {
+          return {
+            success: false,
+            errorCode: 'INVALID_TARGET_PLAN',
+            message: `Scheduled target plan '${scheduledTargetPlanId}' is invalid or inactive.`
+          };
+        }
+
+        const paymentTargetPlanId =
+          typeof storedPayment.targetPlanId === 'string' ? storedPayment.targetPlanId.trim() : '';
+        if (!paymentTargetPlanId || paymentTargetPlanId !== scheduledTargetPlanId) {
+          return {
+            success: false,
+            errorCode: 'PAYMENT_PLAN_MISMATCH',
+            message: `Payment ${verifiedPaymentId} is not bound to scheduled target plan '${scheduledTargetPlanId}'.`
+          };
+        }
+
+        const catalogCurrency = (targetPlan.currency || 'TRY').trim().toUpperCase();
+        const paymentExpectedCurrency =
+          typeof storedPayment.expectedCurrency === 'string'
+            ? storedPayment.expectedCurrency.trim().toUpperCase()
+            : '';
+        if (
+          !paymentExpectedCurrency ||
+          paymentExpectedCurrency !== catalogCurrency ||
+          storedPayment.currency !== paymentExpectedCurrency ||
+          proofCurrency !== paymentExpectedCurrency
+        ) {
+          return {
+            success: false,
+            errorCode: 'CURRENCY_MISMATCH',
+            message: `Payment ${verifiedPaymentId} currency (${storedPayment.currency}) does not match expected checkout currency (${catalogCurrency}) for plan '${scheduledTargetPlanId}'.`
+          };
+        }
+
+        const paymentExpectedAmountMinor = storedPayment.expectedAmountMinor;
+        if (
+          typeof paymentExpectedAmountMinor !== 'number' ||
+          !validatePaymentMoney(paymentExpectedAmountMinor, paymentExpectedCurrency).valid
+        ) {
+          return {
+            success: false,
+            errorCode: 'PAYMENT_AMOUNT_MISMATCH',
+            message: `Payment ${verifiedPaymentId} is missing a valid expectedAmountMinor binding for plan '${scheduledTargetPlanId}'.`
+          };
+        }
+
+        const allowedPlanMinorAmounts = new Set<number>();
+        if (typeof targetPlan.monthlyPrice === 'number' && targetPlan.monthlyPrice > 0) {
+          allowedPlanMinorAmounts.add(Math.round(targetPlan.monthlyPrice * 100));
+        }
+        if (typeof targetPlan.annualPrice === 'number' && targetPlan.annualPrice > 0) {
+          allowedPlanMinorAmounts.add(Math.round(targetPlan.annualPrice * 100));
+        }
+        if (allowedPlanMinorAmounts.size > 0 && !allowedPlanMinorAmounts.has(paymentExpectedAmountMinor)) {
+          return {
+            success: false,
+            errorCode: 'PAYMENT_AMOUNT_MISMATCH',
+            message: `Payment ${verifiedPaymentId} expectedAmountMinor (${paymentExpectedAmountMinor}) does not match catalog price for plan '${scheduledTargetPlanId}'.`
+          };
+        }
+
+        if (
+          storedPayment.amountMinor !== paymentExpectedAmountMinor ||
+          proofAmountMinor !== paymentExpectedAmountMinor
+        ) {
+          return {
+            success: false,
+            errorCode: 'PAYMENT_AMOUNT_MISMATCH',
+            message: `Payment ${verifiedPaymentId} amount (${storedPayment.amountMinor}) does not match expected checkout amount (${paymentExpectedAmountMinor}) for plan '${scheduledTargetPlanId}'.`
+          };
+        }
+
+        expectedTargetPlanId = scheduledTargetPlanId;
+        expectedCheckoutAmountMinor = paymentExpectedAmountMinor;
+        expectedCheckoutCurrency = paymentExpectedCurrency;
+      }
+
       activePaymentVerification = {
         paymentId: verifiedPaymentId,
         expectedTenantId: existingSub.tenantId,
         expectedSubscriptionRef: payload.subscriptionReferenceCode,
         expectedAmountMinor: proofAmountMinor,
-        expectedCurrency: proofCurrency
+        expectedCurrency: proofCurrency,
+        expectedTargetPlanId,
+        expectedCheckoutAmountMinor,
+        expectedCheckoutCurrency
       };
     }
 
@@ -1375,16 +1538,35 @@ export const subscriptionLifecycleService = {
       }
     }
 
+    const promotedPlanId =
+      targetStatus === 'active' &&
+      existingSub.planChangeStatus === 'upgrade_pending' &&
+      typeof existingSub.scheduledPlanId === 'string' &&
+      existingSub.scheduledPlanId.trim()
+        ? existingSub.scheduledPlanId.trim()
+        : existingSub.planId;
+    const isPromotingScheduledUpgrade =
+      targetStatus === 'active' &&
+      existingSub.planChangeStatus === 'upgrade_pending' &&
+      Boolean(existingSub.scheduledPlanId?.trim());
+
     const updatedSub: TenantSubscription = {
       ...existingSub,
       status: targetStatus,
+      planId: promotedPlanId,
+      scheduledPlanId: isPromotingScheduledUpgrade ? undefined : existingSub.scheduledPlanId,
+      planChangeStatus: isPromotingScheduledUpgrade ? 'none' : existingSub.planChangeStatus,
       paidThroughDate:
-        targetStatus === 'active' && typeof signedPaidPeriodRaw === 'string'
-          ? signedPaidPeriodRaw
+        targetStatus === 'active'
+          ? resolvePreservedPaidThroughDate(
+              existingSub.paidThroughDate,
+              typeof signedPaidPeriodRaw === 'string' ? signedPaidPeriodRaw : undefined
+            )
           : existingSub.paidThroughDate,
       currentPeriodEnd:
         targetStatus === 'active' && typeof parsedRaw.currentPeriodEnd === 'string'
-          ? parsedRaw.currentPeriodEnd
+          ? resolvePreservedPaidThroughDate(existingSub.currentPeriodEnd, parsedRaw.currentPeriodEnd) ||
+            parsedRaw.currentPeriodEnd
           : existingSub.currentPeriodEnd,
       lastPaymentStatus:
         targetStatus === 'active'
@@ -2076,6 +2258,187 @@ export const subscriptionLifecycleService = {
       discrepancyType: 'none',
       resolutionApplied: 'none',
       reconciledSub: { ...localSub }
+    };
+  },
+
+  resolvePreservedPaidThroughDate(existingDate?: string, incomingDate?: string): string | undefined {
+    return resolvePreservedPaidThroughDate(existingDate, incomingDate);
+  },
+
+  prepareManualToOnlineCheckoutTransition(
+    currentSub: TenantSubscription,
+    options: {
+      targetPlanId?: string;
+      paymentProvider?: TenantSubscription['paymentProvider'];
+      providerSubscriptionId?: string;
+    } = {}
+  ): {
+    success: boolean;
+    errorCode?: string;
+    message?: string;
+    subscription?: TenantSubscription;
+  } {
+    if (!currentSub || !currentSub.tenantId || !currentSub.tenantId.trim()) {
+      return {
+        success: false,
+        errorCode: 'INVALID_SUBSCRIPTION',
+        message: 'Valid subscription with tenantId is required.'
+      };
+    }
+
+    if (currentSub.status !== 'manual_active') {
+      return {
+        success: false,
+        errorCode: 'INVALID_STATE_TRANSITION',
+        message: `Manual-to-online transition requires status manual_active, got ${currentSub.status}.`
+      };
+    }
+
+    if (!this.isValidTransition(currentSub.status, 'pending_checkout')) {
+      return {
+        success: false,
+        errorCode: 'INVALID_STATE_TRANSITION',
+        message: 'Transition from manual_active to pending_checkout is not permitted.'
+      };
+    }
+
+    if (options.targetPlanId !== undefined && !options.targetPlanId.trim()) {
+      return {
+        success: false,
+        errorCode: 'INVALID_TARGET_PLAN',
+        message: 'Target planId cannot be empty or whitespace.'
+      };
+    }
+
+    const cleanCurrentPlanId = currentSub.planId?.trim() || '';
+    const cleanTargetPlanId = options.targetPlanId !== undefined ? options.targetPlanId.trim() : cleanCurrentPlanId;
+    if (!cleanTargetPlanId) {
+      return {
+        success: false,
+        errorCode: 'MISSING_PLAN_ID',
+        message: 'Target planId is required for checkout transition.'
+      };
+    }
+
+    const resolvedTargetPlan = planService.getPlan(cleanTargetPlanId);
+    if (!resolvedTargetPlan || resolvedTargetPlan.isActive === false) {
+      return {
+        success: false,
+        errorCode: 'INVALID_TARGET_PLAN',
+        message: `Target planId '${cleanTargetPlanId}' is not active in the plan catalog.`
+      };
+    }
+
+    const isDifferentTargetPlan = cleanTargetPlanId.toLowerCase() !== cleanCurrentPlanId.toLowerCase();
+    if (isDifferentTargetPlan && cleanTargetPlanId.toLowerCase() === 'standart') {
+      return {
+        success: false,
+        errorCode: 'INVALID_TARGET_PLAN',
+        message: `Legacy plan '${cleanTargetPlanId}' cannot be newly assigned during online checkout transition.`
+      };
+    }
+
+    const preservedPaidThroughDate = resolvePreservedPaidThroughDate(
+      currentSub.paidThroughDate,
+      currentSub.currentPeriodEnd
+    );
+
+    const nextSub: TenantSubscription = {
+      ...currentSub,
+      status: 'pending_checkout',
+      planId: cleanCurrentPlanId || cleanTargetPlanId,
+      scheduledPlanId: isDifferentTargetPlan ? cleanTargetPlanId : currentSub.scheduledPlanId,
+      planChangeStatus: isDifferentTargetPlan ? 'upgrade_pending' : currentSub.planChangeStatus ?? 'none',
+      paymentProvider: options.paymentProvider || 'iyzico',
+      providerSubscriptionId: options.providerSubscriptionId?.trim() || currentSub.providerSubscriptionId,
+      paidThroughDate: preservedPaidThroughDate,
+      manualActivationReason: currentSub.manualActivationReason?.trim() || 'legacy_manual_active',
+      cancelAtPeriodEnd: false
+    };
+
+    return {
+      success: true,
+      subscription: nextSub
+    };
+  },
+
+  rollbackManualCheckoutToManualActive(
+    currentSub: TenantSubscription,
+    reason: string
+  ): {
+    success: boolean;
+    errorCode?: string;
+    message?: string;
+    subscription?: TenantSubscription;
+  } {
+    if (!currentSub || !currentSub.tenantId || !currentSub.tenantId.trim()) {
+      return {
+        success: false,
+        errorCode: 'INVALID_SUBSCRIPTION',
+        message: 'Valid subscription with tenantId is required for rollback.'
+      };
+    }
+
+    const cleanReason = typeof reason === 'string' ? reason.trim() : '';
+    if (!cleanReason) {
+      return {
+        success: false,
+        errorCode: 'MISSING_ROLLBACK_REASON',
+        message: 'Explicit non-empty rollback reason is required.'
+      };
+    }
+
+    if (currentSub.status !== 'pending_checkout') {
+      return {
+        success: false,
+        errorCode: 'INVALID_STATE_TRANSITION',
+        message: `Rollback to manual_active is only allowed from pending_checkout, got ${currentSub.status}.`
+      };
+    }
+
+    if (currentSub.lastPaymentStatus === 'paid') {
+      return {
+        success: false,
+        errorCode: 'CHECKOUT_ALREADY_SETTLED',
+        message: 'Cannot rollback checkout after online payment has settled.'
+      };
+    }
+
+    const hasManualOrigin = Boolean(
+      (currentSub.manualActivationReason && currentSub.manualActivationReason.trim()) ||
+      (currentSub.paymentReferenceNote && currentSub.paymentReferenceNote.trim())
+    );
+    if (!hasManualOrigin) {
+      return {
+        success: false,
+        errorCode: 'NOT_A_MANUAL_ORIGIN_CHECKOUT',
+        message: 'Cannot rollback non-manual checkout to manual_active.'
+      };
+    }
+
+    const existingNotes = currentSub.setupNotes?.trim();
+    const rollbackNote = `rollback_to_manual_active: ${cleanReason}`;
+    const mergedNotes = existingNotes ? `${existingNotes} | ${rollbackNote}` : rollbackNote;
+
+    const restoredProvider: TenantSubscription['paymentProvider'] =
+      currentSub.paymentProvider === 'iyzico' || currentSub.paymentProvider === 'stripe'
+        ? 'offline_payment'
+        : currentSub.paymentProvider || 'offline_payment';
+
+    const restoredSub: TenantSubscription = {
+      ...currentSub,
+      status: 'manual_active',
+      planId: currentSub.planId,
+      scheduledPlanId: undefined,
+      planChangeStatus: 'none',
+      paymentProvider: restoredProvider,
+      providerSubscriptionId: undefined,
+      setupNotes: mergedNotes
+    };
+
+    return {
+      success: true,
+      subscription: restoredSub
     };
   }
 };
