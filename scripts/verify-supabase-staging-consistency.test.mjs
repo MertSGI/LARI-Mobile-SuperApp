@@ -2484,7 +2484,212 @@ async function runPgTests() {
       await client.query(`DELETE FROM public.platform_system_restrictions WHERE id = $1;`, [comm13RestId]);
     }
 
+    // ADIM036-HT-READ-015: Acceptance read RPCs must require eligible=true, clinic_enabled=true, and health_tourism_enabled=true
+    try {
+      await setAuthenticatedRole(ownerUid);
+      const htReadBaselineList = (await client.query(`SELECT * FROM public.ht_list_pending_clinic_acceptance();`)).rows;
+      const htReadLeadRow = htReadBaselineList.find((r) => r.lead_id === htLead2Id);
+      assert.ok(htReadLeadRow, 'Baseline eligible dual-vertical tenant must list pending HT lead');
+      assert.equal(htReadLeadRow.full_name, 'Synth Int Patient 2');
+      assert.equal(htReadLeadRow.email, 'ht.synth2@example.test');
+      assert.equal(htReadLeadRow.phone, '+447700900222');
+
+      const htReadBaselineOpts = (await client.query(
+        `SELECT public.ht_get_clinic_acceptance_options($1, $2, $3) AS res;`,
+        [htLead2Id, branchId, serviceId]
+      )).rows[0].res;
+      assert.ok(Array.isArray(htReadBaselineOpts.branches) && htReadBaselineOpts.branches.length > 0);
+      assert.ok(Array.isArray(htReadBaselineOpts.services) && htReadBaselineOpts.services.length > 0);
+      assert.ok(Array.isArray(htReadBaselineOpts.practitioners) && htReadBaselineOpts.practitioners.length > 0);
+
+      const htReadBaselineSlots = (await client.query(
+        `SELECT public.ht_get_clinic_acceptance_slots($1, $2, $3, $4, $5::date) AS res;`,
+        [htLead2Id, branchId, serviceId, ownerStaffId, futureDate]
+      )).rows[0].res;
+      assert.ok(Array.isArray(htReadBaselineSlots.available_slots) && htReadBaselineSlots.available_slots.length > 0);
+
+      // 1) Ineligible trialing/past_due (NULL or expired trial_end / grace_until) -> all 3 read RPCs fail with FORBIDDEN
+      for (const st of expiredSubStates) {
+        await setAuthenticatedRole(null);
+        await client.query(`
+          UPDATE public.subscriptions
+          SET status = $2,
+              trial_end = ${st.trialEndSql},
+              grace_until = ${st.graceUntilSql}
+          WHERE tenant_id = $1;
+        `, [tenantId, st.status]);
+
+        await setAuthenticatedRole(ownerUid);
+        await assert.rejects(
+          async () => client.query(`SELECT * FROM public.ht_list_pending_clinic_acceptance();`),
+          (err) => err && err.message.includes('FORBIDDEN'),
+          `HT-READ-015: ht_list_pending_clinic_acceptance must fail with FORBIDDEN when subscription is ${st.status} (trial_end=${st.trialEndSql}, grace_until=${st.graceUntilSql})`
+        );
+        await assert.rejects(
+          async () => client.query(`SELECT public.ht_get_clinic_acceptance_options($1, $2, $3);`, [htLead2Id, branchId, serviceId]),
+          (err) => err && err.message.includes('FORBIDDEN'),
+          `HT-READ-015: ht_get_clinic_acceptance_options must fail with FORBIDDEN when subscription is ${st.status} (trial_end=${st.trialEndSql}, grace_until=${st.graceUntilSql})`
+        );
+        await assert.rejects(
+          async () => client.query(`SELECT public.ht_get_clinic_acceptance_slots($1, $2, $3, $4, $5::date);`, [htLead2Id, branchId, serviceId, ownerStaffId, futureDate]),
+          (err) => err && err.message.includes('FORBIDDEN'),
+          `HT-READ-015: ht_get_clinic_acceptance_slots must fail with FORBIDDEN when subscription is ${st.status} (trial_end=${st.trialEndSql}, grace_until=${st.graceUntilSql})`
+        );
+      }
+
+      // 2) Eligible subscription with ht_lead_ops removed -> health_tourism_enabled=false -> all 3 read RPCs return no lead PII, options, or slots (FORBIDDEN)
+      await setAuthenticatedRole(null);
+      await client.query(`
+        UPDATE public.subscriptions
+        SET status = 'manual_active',
+            trial_end = NULL,
+            grace_until = NULL
+        WHERE tenant_id = $1;
+      `, [tenantId]);
+      await client.query(`
+        DELETE FROM public.tenant_entitlement_overrides
+        WHERE tenant_id = $1 AND feature_key = 'ht_lead_ops';
+      `, [tenantId]);
+
+      await setAuthenticatedRole(ownerUid);
+      const noHtVertCtx = (await client.query(`SELECT public.resolve_tenant_vertical_context($1) AS res;`, [tenantId])).rows[0].res;
+      assert.equal(noHtVertCtx.eligible, true);
+      assert.equal(noHtVertCtx.verticals.clinic_enabled, true);
+      assert.equal(noHtVertCtx.verticals.health_tourism_enabled, false);
+
+      await assert.rejects(
+        async () => client.query(`SELECT * FROM public.ht_list_pending_clinic_acceptance();`),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        'HT-READ-015: ht_list_pending_clinic_acceptance must fail with FORBIDDEN and return no lead PII when ht_lead_ops is removed'
+      );
+      await assert.rejects(
+        async () => client.query(`SELECT public.ht_get_clinic_acceptance_options($1, $2, $3);`, [htLead2Id, branchId, serviceId]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        'HT-READ-015: ht_get_clinic_acceptance_options must fail with FORBIDDEN and return no options when ht_lead_ops is removed'
+      );
+      await assert.rejects(
+        async () => client.query(`SELECT public.ht_get_clinic_acceptance_slots($1, $2, $3, $4, $5::date);`, [htLead2Id, branchId, serviceId, ownerStaffId, futureDate]),
+        (err) => err && err.message.includes('FORBIDDEN'),
+        'HT-READ-015: ht_get_clinic_acceptance_slots must fail with FORBIDDEN and return no slots when ht_lead_ops is removed'
+      );
+
+      // 3) Eligible subscription with ht_lead_ops active but clinic_workspace restricted -> clinic_enabled=false -> all 3 read RPCs fail with FORBIDDEN
+      await setAuthenticatedRole(null);
+      await client.query(`
+        INSERT INTO public.tenant_entitlement_overrides (tenant_id, feature_key, value_type, boolean_value, integer_value, reason, created_by)
+        VALUES ($1, 'ht_lead_ops', 'boolean', true, NULL, 'ADIM-036 synth test', $2)
+        ON CONFLICT DO NOTHING;
+      `, [tenantId, superAdminUid]);
+      const htReadClinicRestId = (await client.query(`
+        INSERT INTO public.platform_system_restrictions (tenant_id, feature_key, is_restricted, reason, starts_at, expires_at)
+        VALUES ($1, 'clinic_workspace', true, 'ADIM036-HT-READ-015 clinic_workspace restriction test', now() - interval '5 minutes', now() + interval '1 hour')
+        RETURNING id;
+      `, [tenantId])).rows[0].id;
+      try {
+        await setAuthenticatedRole(ownerUid);
+        await assert.rejects(
+          async () => client.query(`SELECT * FROM public.ht_list_pending_clinic_acceptance();`),
+          (err) => err && err.message.includes('FORBIDDEN'),
+          'HT-READ-015: ht_list_pending_clinic_acceptance must fail with FORBIDDEN when clinic_workspace is restricted'
+        );
+        await assert.rejects(
+          async () => client.query(`SELECT public.ht_get_clinic_acceptance_options($1, $2, $3);`, [htLead2Id, branchId, serviceId]),
+          (err) => err && err.message.includes('FORBIDDEN'),
+          'HT-READ-015: ht_get_clinic_acceptance_options must fail with FORBIDDEN when clinic_workspace is restricted'
+        );
+        await assert.rejects(
+          async () => client.query(`SELECT public.ht_get_clinic_acceptance_slots($1, $2, $3, $4, $5::date);`, [htLead2Id, branchId, serviceId, ownerStaffId, futureDate]),
+          (err) => err && err.message.includes('FORBIDDEN'),
+          'HT-READ-015: ht_get_clinic_acceptance_slots must fail with FORBIDDEN when clinic_workspace is restricted'
+        );
+      } finally {
+        await setAuthenticatedRole(null);
+        await client.query(`DELETE FROM public.platform_system_restrictions WHERE id = $1;`, [htReadClinicRestId]);
+      }
+    } finally {
+      await setAuthenticatedRole(null);
+      await client.query(`
+        UPDATE public.subscriptions
+        SET status = 'manual_active',
+            trial_end = NULL,
+            grace_until = NULL
+        WHERE tenant_id = $1;
+      `, [tenantId]);
+      await client.query(`
+        INSERT INTO public.tenant_entitlement_overrides (tenant_id, feature_key, value_type, boolean_value, integer_value, reason, created_by)
+        VALUES ($1, 'ht_lead_ops', 'boolean', true, NULL, 'ADIM-036 synth test', $2)
+        ON CONFLICT DO NOTHING;
+      `, [tenantId, superAdminUid]);
+    }
+
     console.log('[PASS] Phase 5 Vertical Commercial Core, Clinic Domain & Health Tourism (ADIM-036 Faz E1) verified on PG17');
+
+    // ADIM036-ONBOARDING-014: Fresh pending_onboarding tenant can create branches up to assigned max_branches quota,
+    // excess branch fails with commercial_quota_exceeded, public booking & general commercial eligibility remain closed,
+    // and package_branch_server_authority_tests.sql passes on the full 93-migration chain.
+    await setAuthenticatedRole(null);
+    const onb014OwnerUid = '99999999-aaaa-4aaa-8aaa-999999999014';
+    await client.query(`INSERT INTO auth.users (id, email) VALUES ($1, 'onb014@example.test') ON CONFLICT DO NOTHING;`, [onb014OwnerUid]);
+    await setAuthenticatedRole(onb014OwnerUid);
+    const onb014Prov = (await client.query(`
+      SELECT public.provision_tenant_for_authenticated_owner(
+        'Onboarding 014 Salon',
+        'Onboarding 014',
+        'Hair Salon',
+        'Istanbul',
+        '+905551110014',
+        'baslangic',
+        'idemp-adim036-onb-014'
+      ) AS res;
+    `)).rows[0].res;
+    assert.equal(onb014Prov.success, true);
+    assert.equal(onb014Prov.subscription_status, 'pending_onboarding');
+    const onb014TenantId = onb014Prov.tenant_id;
+    const onb014Slug = onb014Prov.slug;
+
+    await setAuthenticatedRole(null);
+    const onb014Elig = (await client.query(`SELECT public.resolve_tenant_commercial_eligibility($1) AS res;`, [onb014TenantId])).rows[0].res;
+    assert.equal(onb014Elig.eligible, false, 'pending_onboarding commercial eligibility must remain false');
+    assert.equal(onb014Elig.reason_code, 'commercial_status_not_eligible');
+
+    const onb014EntCount = (await client.query(`
+      SELECT count(*)::int AS cnt
+      FROM public.resolve_effective_tenant_entitlements($1, now())
+      WHERE source = 'plan_version'
+         OR boolean_value = true
+         OR (integer_value IS NOT NULL AND integer_value > 0 AND is_unlimited = false AND source != 'default_deny');
+    `, [onb014TenantId])).rows[0].cnt;
+    assert.equal(onb014EntCount, 0, 'pending_onboarding effective plan entitlements must remain zero');
+
+    await client.query(`SET ROLE anon;`);
+    const onb014PubCheck = (await client.query(`SELECT public.can_accept_public_booking($1) AS res;`, [onb014Slug])).rows[0].res;
+    assert.equal(onb014PubCheck.allowed, false, 'pending_onboarding public booking eligibility must remain closed');
+    await client.query(`RESET ROLE;`);
+
+    await setAuthenticatedRole(onb014OwnerUid);
+    const onb014VertCtx = (await client.query(`SELECT public.resolve_tenant_vertical_context($1) AS res;`, [onb014TenantId])).rows[0].res;
+    assert.equal(onb014VertCtx.eligible, false, 'pending_onboarding vertical commercial context must remain closed');
+
+    const onb014Branch1 = (await client.query(`
+      SELECT public.create_tenant_branch($1, 'İlk Şube', 'ilk-sube') AS res;
+    `, [onb014TenantId])).rows[0].res;
+    assert.equal(onb014Branch1.success, true, 'pending_onboarding tenant must be allowed to create first branch within baslangic max_branches=1');
+    assert.equal(onb014Branch1.branch.is_primary, true);
+
+    await assert.rejects(
+      async () => client.query(`SELECT public.create_tenant_branch($1, 'İkinci Şube', 'ikinci-sube');`, [onb014TenantId]),
+      (err) => err && err.message.includes('commercial_quota_exceeded'),
+      'pending_onboarding tenant creating a branch above baslangic max_branches=1 must fail with commercial_quota_exceeded'
+    );
+
+    await setAuthenticatedRole(null);
+    const onb014BranchCount = (await client.query(`SELECT count(*)::int AS cnt FROM public.branches WHERE tenant_id = $1;`, [onb014TenantId])).rows[0].cnt;
+    assert.equal(onb014BranchCount, 1);
+
+    const packageBranchSql = fs.readFileSync(path.join(testsDir, 'package_branch_server_authority_tests.sql'), 'utf8');
+    await client.query(packageBranchSql);
+    await client.query(`RESET ROLE;`);
+    console.log('[PASS] ADIM036-ONBOARDING-014 pending_onboarding branch quota + package_branch_server_authority_tests.sql verified on PG17');
 
     console.log('\nALL ADIM-033 + ADIM-034 + ADIM-035 + ADIM-036 DISPOSABLE PG17 TESTS PASSED.');
   } finally {

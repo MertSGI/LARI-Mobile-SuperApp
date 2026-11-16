@@ -375,6 +375,7 @@ DECLARE
     v_caller_uid UUID := auth.uid();
     v_staff RECORD;
     v_csp RECORD;
+    v_vert_ctx JSONB;
 BEGIN
     IF v_caller_uid IS NULL THEN
         RAISE EXCEPTION 'UNAUTHENTICATED: Authentication required.';
@@ -396,6 +397,14 @@ BEGIN
 
     IF v_csp.staff_id IS NULL OR v_csp.can_manage_patient_profiles = false THEN
         RAISE EXCEPTION 'FORBIDDEN: Staff member lacks can_manage_patient_profiles permission.';
+    END IF;
+
+    v_vert_ctx := public.resolve_tenant_vertical_context(v_staff.tenant_id);
+    IF (v_vert_ctx->>'eligible')::boolean IS NOT TRUE
+       OR (v_vert_ctx->'verticals'->>'clinic_enabled')::boolean IS NOT TRUE
+       OR (v_vert_ctx->'verticals'->>'health_tourism_enabled')::boolean IS NOT TRUE THEN
+        RAISE EXCEPTION 'FORBIDDEN: Both Clinic and Health Tourism verticals must be eligible and enabled (%).',
+            COALESCE(v_vert_ctx->>'reason_code', 'INELIGIBLE');
     END IF;
 
     RETURN QUERY

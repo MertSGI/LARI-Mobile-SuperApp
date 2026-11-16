@@ -149,7 +149,8 @@ BEGIN
           AND (pr.expires_at IS NULL OR pr.expires_at > v_effective_at)
         ORDER BY pr.feature_key, pr.tenant_id NULLS LAST, pr.starts_at DESC
     ),
-    -- Level 2: Active Tenant Override (applied only when tenant is commercially eligible)
+    -- Level 2: Active Tenant Override (applied when tenant is commercially eligible,
+    -- or for structural/onboarding quota overrides on an active tenant with no subscription row yet)
     active_overrides AS (
         SELECT DISTINCT ON (o.feature_key)
             o.id AS ovr_id,
@@ -161,7 +162,19 @@ BEGIN
             o.json_value AS jval,
             o.is_unlimited AS unlim
         FROM public.tenant_entitlement_overrides o
-        WHERE v_is_eligible = true
+        WHERE (
+              v_is_eligible = true
+              OR (
+                  v_eligibility->>'reason_code' = 'commercial_subscription_missing'
+                  AND o.feature_key IN ('max_branches', 'max_services', 'max_staff')
+                  AND EXISTS (
+                      SELECT 1
+                      FROM public.tenants t
+                      WHERE t.id = p_tenant_id
+                        AND t.status IN ('active', 'manual_active')
+                  )
+              )
+          )
           AND o.tenant_id = p_tenant_id
           AND o.starts_at <= v_effective_at
           AND (o.expires_at IS NULL OR o.expires_at > v_effective_at)

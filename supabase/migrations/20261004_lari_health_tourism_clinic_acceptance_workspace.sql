@@ -20,6 +20,7 @@ DECLARE
     v_lead RECORD;
     v_caller_staff RECORD;
     v_csp RECORD;
+    v_vert_ctx JSONB;
     v_branches JSONB;
     v_services JSONB;
     v_practitioners JSONB;
@@ -73,6 +74,14 @@ BEGIN
         IF NOT v_branch_permitted THEN
             RAISE EXCEPTION 'FORBIDDEN: Caller is not permitted for the requested branch.';
         END IF;
+    END IF;
+
+    v_vert_ctx := public.resolve_tenant_vertical_context(v_lead.tenant_id);
+    IF (v_vert_ctx->>'eligible')::boolean IS NOT TRUE
+       OR (v_vert_ctx->'verticals'->>'clinic_enabled')::boolean IS NOT TRUE
+       OR (v_vert_ctx->'verticals'->>'health_tourism_enabled')::boolean IS NOT TRUE THEN
+        RAISE EXCEPTION 'FORBIDDEN: Both Clinic and Health Tourism verticals must be eligible and enabled (%).',
+            COALESCE(v_vert_ctx->>'reason_code', 'INELIGIBLE');
     END IF;
 
     SELECT jsonb_agg(
@@ -175,6 +184,7 @@ DECLARE
     v_lead RECORD;
     v_caller_staff RECORD;
     v_csp RECORD;
+    v_vert_ctx JSONB;
     v_service_duration INT;
     v_slots JSONB := '[]'::jsonb;
     v_branch_permitted BOOLEAN;
@@ -229,6 +239,14 @@ BEGIN
 
     IF NOT v_branch_permitted THEN
         RAISE EXCEPTION 'FORBIDDEN: Caller is not permitted for the requested branch.';
+    END IF;
+
+    v_vert_ctx := public.resolve_tenant_vertical_context(v_lead.tenant_id);
+    IF (v_vert_ctx->>'eligible')::boolean IS NOT TRUE
+       OR (v_vert_ctx->'verticals'->>'clinic_enabled')::boolean IS NOT TRUE
+       OR (v_vert_ctx->'verticals'->>'health_tourism_enabled')::boolean IS NOT TRUE THEN
+        RAISE EXCEPTION 'FORBIDDEN: Both Clinic and Health Tourism verticals must be eligible and enabled (%).',
+            COALESCE(v_vert_ctx->>'reason_code', 'INELIGIBLE');
     END IF;
 
     SELECT COALESCE(duration, 30) INTO v_service_duration
