@@ -35,9 +35,12 @@ export function resolveMobileDeepLink(rawUrl: string): DeepLinkResolution {
   if (url.protocol === 'randevulari:') return resolvePath(`/${url.hostname}${url.pathname}`);
   if (url.protocol !== 'https:') return reject('MALICIOUS_SCHEME');
   const host = url.hostname.toLowerCase();
-  if (host !== 'randevulari.com' && !host.endsWith('.randevulari.com')) return reject('UNTRUSTED_EXTERNAL_HOST');
-  if (host !== 'randevulari.com') {
-    const tenantSlug = host.slice(0, -('.randevulari.com'.length));
+  const isTrHost = host === 'randevulari.com' || host.endsWith('.randevulari.com');
+  const isGlobalHost = host === 'lari.app' || host.endsWith('.lari.app');
+  if (!isTrHost && !isGlobalHost) return reject('UNTRUSTED_EXTERNAL_HOST');
+  const rootDomain = isTrHost ? 'randevulari.com' : 'lari.app';
+  if (host !== rootDomain && host !== `www.${rootDomain}` && host !== `app.${rootDomain}`) {
+    const tenantSlug = host.slice(0, -(`.${rootDomain}`.length));
     if (tenantSlug.includes('.') || !SLUG.test(tenantSlug) || url.pathname !== '/' || url.search || url.hash) return reject('INVALID_SLUG');
     return accept(`/m/storefront/${tenantSlug}`, { tenantSlug, whiteLabelStorefrontLock: true });
   }

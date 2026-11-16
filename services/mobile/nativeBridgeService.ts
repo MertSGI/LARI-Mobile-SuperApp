@@ -44,7 +44,7 @@ export async function requireBiometricReauth(params: { tenantId: string; staffOr
   if (cached && cached.expiresAtMs > now) return { verified: true, method: 'session_reauth', verifiedAt: new Date(cached.verifiedAtMs).toISOString(), expiresAt: new Date(cached.expiresAtMs).toISOString() };
   if (cached) sessions.delete(key);
   let verified = false; let method: BiometricVerifyResult['method'] = 'device_pin'; const biometric = plugins().NativeBiometric ?? plugins().Biometrics;
-  if (biometric?.verifyIdentity) { try { const r = await biometric.verifyIdentity({ reason: params.scope, title: 'Kimlik doğrulama' }); verified = r?.verified !== false; method = r?.method === 'face_id' || r?.method === 'touch_id' ? r.method : 'device_pin'; } catch { verified = false; } }
+  if (biometric?.verifyIdentity) { try { const r = await biometric.verifyIdentity({ reason: params.scope, title: 'Kimlik doğrulama' }); verified = r?.verified === true; method = r?.method === 'face_id' || r?.method === 'touch_id' ? r.method : 'device_pin'; } catch { verified = false; } }
   else verified = Boolean(params.pinOrBiometricToken?.trim());
   const ttl = params.ttlSeconds ?? 300; const expiry = now + Math.max(0, ttl) * 1000;
   if (!verified || ttl <= 0) return { verified: false, method, verifiedAt: new Date(now).toISOString(), expiresAt: new Date(now).toISOString(), reasonCode: 'BIOMETRIC_REAUTH_REQUIRED' };

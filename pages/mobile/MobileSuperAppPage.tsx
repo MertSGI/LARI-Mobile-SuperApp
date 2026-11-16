@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { Role } from '../../types';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   MobilePersonaType,
   MobileShellMode,
@@ -26,10 +27,20 @@ import MobilePartnerCustomer360Page from './partner/MobilePartnerCustomer360Page
 export const MobileSuperAppPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const location = useLocation();
+  const { currentUser } = useAuth();
 
   const initialModeParam = searchParams.get('mode');
   const initialSlugParam = searchParams.get('slug');
   const initialPersonaParam = searchParams.get('persona') as MobilePersonaType | null;
+  const isLocalSandboxHost =
+    typeof window !== 'undefined' &&
+    ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
+  const effectiveRole: Role | 'guest' = currentUser?.role
+    ? currentUser.role
+    : isLocalSandboxHost || initialModeParam === 'partner'
+      ? 'tenant_owner'
+      : 'guest';
 
   const [requestedMode, setRequestedMode] = useState<MobileShellMode>(
     initialModeParam === 'partner' ? 'b2b_partner' : 'b2c_customer'
@@ -40,16 +51,13 @@ export const MobileSuperAppPage: React.FC = () => {
     initialPersonaParam ||
       (initialModeParam === 'partner' ? 'salon_partner' : 'salon_customer')
   );
-  const [userRole, setUserRole] = useState<Role | 'guest'>(
-    initialModeParam === 'partner' ? 'tenant_owner' : 'tenant_owner'
-  );
   const [activeTabId, setActiveTabId] = useState<string>(
     initialModeParam === 'partner' ? 'partner_agenda' : initialSlugParam ? 'storefront' : 'explore'
   );
   const [bookingListing, setBookingListing] =
     useState<MobileDiscoveryListingItem | null>(null);
 
-  const tenantId = 'ten-atelier-nisantasi';
+  const tenantId = currentUser?.tenantId || 'ten-atelier-nisantasi';
   const tenantSlug = initialSlugParam || (location.pathname.startsWith('/m/storefront/') ? location.pathname.split('/')[3] : null);
 
   useEffect(() => {
@@ -63,7 +71,7 @@ export const MobileSuperAppPage: React.FC = () => {
   const shellState = useMemo(
     () =>
       resolveMobileShellState({
-        userRole,
+        userRole: effectiveRole,
         requestedMode,
         requestedPersona,
         verticals: {
@@ -77,7 +85,7 @@ export const MobileSuperAppPage: React.FC = () => {
         whiteLabelLockedTenantSlug: tenantSlug,
         activeLanguage: 'tr',
       }),
-    [userRole, requestedMode, requestedPersona, tenantSlug]
+    [effectiveRole, requestedMode, requestedPersona, tenantSlug]
   );
 
   const handleSelectTab = (tab: MobileTabDescriptor) => {
@@ -161,8 +169,8 @@ export const MobileSuperAppPage: React.FC = () => {
         return (
           <MobileProfileSettingsPage
             tenantId={tenantId}
-            userId="usr-mobile-demo"
-            userRole={userRole === 'guest' ? 'customer' : userRole}
+            userId={currentUser?.id || 'usr-mobile-demo'}
+            userRole={effectiveRole === 'guest' ? 'customer' : effectiveRole}
           />
         );
       case 'partner_agenda':
@@ -170,14 +178,14 @@ export const MobileSuperAppPage: React.FC = () => {
         return (
           <MobilePartnerAgendaAndInboxPage
             tenantId={tenantId}
-            userRole={userRole}
+            userRole={effectiveRole}
           />
         );
       case 'partner_pos':
         return (
           <MobilePartnerPosAndInventoryPage
             tenantId={tenantId}
-            userRole={userRole}
+            userRole={effectiveRole}
           />
         );
       case 'clinic_phi':

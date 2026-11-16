@@ -1,4 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
+import {
+  CheckCircle2,
+  FileSignature,
+  Fingerprint,
+  Lock,
+  ShieldAlert,
+  Stethoscope,
+} from 'lucide-react';
 import { clinicService } from '../../../services/clinicService';
 import { canManageClinicPatientProfile, canWriteClinicEncounterNote } from '../../../services/clinicUiPolicy';
 import { requireBiometricReauth } from '../../../services/mobile/nativeBridgeService';
@@ -31,5 +39,117 @@ export async function executeMobileClinicalEncounterFlow(input: { appointmentId:
   const note = await api.saveClinicEncounterNote({ encounter_id: started.data!.encounter_id, subjective: draft.subjective, objective: draft.objective, assessment: draft.assessment, plan: draft.plan, note_status: 'final' }); if (!note.success) throw new MobileClinicAccessError('CLINIC_OPERATION_FAILED');
   const completed = await api.completeClinicEncounter({ encounter_id: started.data!.encounter_id }); if (!completed.success) throw new MobileClinicAccessError('CLINIC_OPERATION_FAILED'); return { encounter: started.data!, draft, note: note.data!, completion: completed.data! };
 }
-export const MobilePartnerClinicWorkspacePage: React.FC = () => { const hold = clinicService.getRegulatoryHoldStatus(); return <main data-testid={'mobile-clinic-workspace'}><div>KVKK special category health data: <strong>{hold.kvkkSpecialCategoryHealthDataApproval}</strong></div><h1>Mobile Clinic Workspace</h1><p>Biometric and branch-scoped PHI access. Practitioner sign-off is mandatory.</p></main>; };
+
+export const MobilePartnerClinicWorkspacePage: React.FC = () => {
+  const hold = clinicService.getRegulatoryHoldStatus();
+  const [phiUnlocked, setPhiUnlocked] = useState(false);
+  const [clinicalBrief, setClinicalBrief] = useState('Sağ alt çene 46 no diş hassasiyeti, radyografi değerlendirmesi.');
+  const [draftNote, setDraftNote] = useState<ReturnType<typeof createDeterministicClinicalDraft> | null>(null);
+  const [signedFinal, setSignedFinal] = useState(false);
+
+  const handleBiometricUnlock = async () => {
+    const res = await requireBiometricReauth({
+      tenantId: 'ten-clinic-1',
+      staffOrUserId: 'doc-1',
+      scope: 'clinic_phi_access',
+      pinOrBiometricToken: 'mobile-preview-biometric-verified',
+    });
+    if (res.verified) {
+      setPhiUnlocked(true);
+    }
+  };
+
+  const handleGenerateDraft = () => {
+    if (!clinicalBrief.trim()) return;
+    setDraftNote(createDeterministicClinicalDraft(clinicalBrief));
+    setSignedFinal(false);
+  };
+
+  return (
+    <main className="space-y-4" data-testid="mobile-clinic-workspace">
+      <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-bold text-white flex items-center gap-1.5">
+            <Stethoscope className="w-4 h-4 text-emerald-400" />
+            Klinik Hekim Muayene & PHI (Şube İzole)
+          </span>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+            {hold.kvkkSpecialCategoryHealthDataApproval}
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-400">
+          Yalnız yetkili şubedeki (`staff_branches`) hasta PHI kayıtları görüntülenir.
+        </p>
+
+        {!phiUnlocked ? (
+          <button
+            type="button"
+            onClick={handleBiometricUnlock}
+            style={{ minHeight: '46px' }}
+            className="w-full rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center justify-center gap-2"
+            data-testid="clinic-phi-unlock-btn"
+          >
+            <Fingerprint className="w-4 h-4" />
+            FaceID / Biyometrik ile PHI Hasta Kartını Aç
+          </button>
+        ) : (
+          <div className="rounded-xl bg-slate-950 border border-emerald-500/30 p-3 space-y-1.5 text-xs" data-testid="clinic-phi-card">
+            <div className="flex items-center justify-between text-emerald-300 font-bold">
+              <span>Hasta: Ayşe K. (Şube: Nişantaşı Merkez)</span>
+              <Lock className="w-3.5 h-3.5" />
+            </div>
+            <p className="text-slate-300">Kan Grubu: A Rh+ • Alerji: Penisilin</p>
+            <p className="text-slate-400 text-[11px]">Kronik Durum: Yok • Son Muayene: 12.10.2026</p>
+          </div>
+        )}
+      </div>
+
+      {/* Encounter & AI Draft Note */}
+      <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-3">
+        <span className="text-xs font-bold text-white flex items-center gap-1.5">
+          <FileSignature className="w-4 h-4 text-blue-400" />
+          Mobil Encounter & Klinik Not Taslağı
+        </span>
+        <textarea
+          value={clinicalBrief}
+          onChange={(e) => setClinicalBrief(e.target.value)}
+          rows={2}
+          className="w-full rounded-xl bg-slate-950 border border-slate-700 p-2.5 text-xs text-white"
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={handleGenerateDraft}
+            style={{ minHeight: '42px' }}
+            className="rounded-xl bg-blue-600 text-white text-xs font-bold"
+          >
+            SOAP Taslağı Üret
+          </button>
+          <button
+            type="button"
+            disabled={!draftNote}
+            onClick={() => setSignedFinal(true)}
+            style={{ minHeight: '42px' }}
+            className="rounded-xl bg-emerald-600 disabled:opacity-40 text-white text-xs font-bold flex items-center justify-center gap-1"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            {signedFinal ? 'Hekim İmzaladı (Final)' : 'İmzala & Tamamla'}
+          </button>
+        </div>
+        {draftNote && (
+          <div className="rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-[11px] text-slate-300 space-y-1">
+            <p><strong>S:</strong> {draftNote.subjective}</p>
+            <p><strong>O:</strong> {draftNote.objective}</p>
+            <p><strong>P:</strong> {draftNote.plan}</p>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 flex items-start gap-2 text-[11px] text-amber-200">
+        <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+        <span>KVKK Özel Nitelikli Sağlık Verisi Onayı: {hold.kvkkSpecialCategoryHealthDataApproval}</span>
+      </div>
+    </main>
+  );
+};
 export default MobilePartnerClinicWorkspacePage;
