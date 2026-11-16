@@ -71,20 +71,52 @@ const Router = (import.meta as any).env.VITE_ROUTER_MODE === 'browser'
   ? BrowserRouter 
   : HashRouter;
 
+const isNativeMobileRuntime = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname;
+  const search = window.location.search || '';
+  const hash = window.location.hash || '';
+  const isCap = Boolean((window as any).Capacitor?.isNativePlatform?.());
+  return (
+    isCap ||
+    host === 'app.randevulari.com' ||
+    host === 'app.lari.app' ||
+    search.includes('app=1') ||
+    hash.includes('app=1')
+  );
+};
+
 const AppFlowSwitcher: React.FC = () => {
   const { tenant } = useTenant();
+  const nativeMobile = isNativeMobileRuntime();
+
+  // If running inside Native Mobile App (Capacitor / app.randevulari.com / ?app=1),
+  // never mount MarketingLayout or web SalonBookingLayout on root paths.
+  if (nativeMobile) {
+    return (
+      <Routes>
+        <Route path="/" element={<MobileSuperAppPage />} />
+        <Route path="/m" element={<MobileSuperAppPage />} />
+        <Route path="/m/*" element={<MobileSuperAppPage />} />
+        <Route path="*" element={<Navigate to="/m" replace />} />
+      </Routes>
+    );
+  }
+
   // If there's a tenant loaded, we're in "tenant mode" (except for admin routes which manage themselves)
   return (
     <Routes>
-      {/* 1. Marketing Routes */}
+      {/* 1. Marketing Routes (Redirected to Native Super-App when inside Mobile APK / app.randevulari.com) */}
       <Route element={<MarketingLayout />}>
         <Route path="/" element={
-          tenant && !['localhost', '127.0.0.1'].includes(window.location.hostname) && !window.location.hostname.includes('run.app')
-            ? <Navigate to="/book" replace /> 
-            : <MarketingHomePage />
+          nativeMobile
+            ? <Navigate to="/m" replace />
+            : tenant && !['localhost', '127.0.0.1'].includes(window.location.hostname) && !window.location.hostname.includes('run.app')
+              ? <Navigate to="/book" replace /> 
+              : <MarketingHomePage />
         } />
-        <Route path="/features" element={<FeaturesPage />} />
-        <Route path="/mobile-app" element={<MobileAppPage />} />
+        <Route path="/features" element={nativeMobile ? <Navigate to="/m" replace /> : <FeaturesPage />} />
+        <Route path="/mobile-app" element={nativeMobile ? <Navigate to="/m" replace /> : <MobileAppPage />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/register" element={<RegistrationPage />} />
         <Route path="/demo" element={<DemoLandingPage />} />
@@ -103,7 +135,7 @@ const AppFlowSwitcher: React.FC = () => {
 
       {/* 2.1 Salon Booking Routes */}
       <Route element={<SalonBookingLayout />}>
-        <Route path="/book" element={<BookingPage />} />
+        <Route path="/book" element={nativeMobile ? <Navigate to="/m" replace /> : <BookingPage />} />
         {/* Dedicated Pilot Customer route */}
         <Route path="/pilot/customer" element={<BookingPage />} />
         {/* AI Tool - Now part of the salon booking flow */}
@@ -177,6 +209,12 @@ const AppFlowSwitcher: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  const showWebDiagnostic =
+    typeof window !== 'undefined' &&
+    !isNativeMobileRuntime() &&
+    !window.location.pathname.startsWith('/m') &&
+    !window.location.hash.startsWith('#/m');
+
   return (
     <AppErrorBoundary>
       <ThemeProvider>
@@ -186,7 +224,7 @@ const App: React.FC = () => {
               <AuthProvider>
                 <Router>
                   <AppFlowSwitcher />
-                  <MockDiagnosticTool />
+                  {showWebDiagnostic && <MockDiagnosticTool />}
                 </Router>
               </AuthProvider>
             </TenantProvider>

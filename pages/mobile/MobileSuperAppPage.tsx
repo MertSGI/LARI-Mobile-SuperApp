@@ -10,10 +10,12 @@ import {
 } from '../../services/mobile/mobileShellPolicyService';
 import { MobileDiscoveryListingItem } from '../../services/mobile/mobileDiscoveryService';
 import MobileAppShell from '../../components/layouts/MobileAppShell';
+import MobileStoryOnboarding from '../../components/mobile/MobileStoryOnboarding';
 import MobileExploreMarketplacePage, {
   DEFAULT_MOBILE_MARKETPLACE_LISTINGS,
 } from './b2c/MobileExploreMarketplacePage';
 import MobileBookingBottomSheet from '../../components/mobile/b2c/MobileBookingBottomSheet';
+import { StorefrontSpecialistProfile } from '../../components/mobile/b2c/MobileStorefrontDetailDrawer';
 import MobileCustomerWalletPage from './b2c/MobileCustomerWalletPage';
 import MobileAIStyleVisualizerPage from './b2c/MobileAIStyleVisualizerPage';
 import MobileHealthTourismConciergePage from './b2c/MobileHealthTourismConciergePage';
@@ -31,16 +33,26 @@ export const MobileSuperAppPage: React.FC = () => {
 
   const initialModeParam = searchParams.get('mode');
   const initialSlugParam = searchParams.get('slug');
-  const initialPersonaParam = searchParams.get('persona') as MobilePersonaType | null;
-  const isLocalSandboxHost =
-    typeof window !== 'undefined' &&
-    ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  const initialPersonaParam = searchParams.get(
+    'persona'
+  ) as MobilePersonaType | null;
+  const explicitRoleParam = searchParams.get('role');
 
-  const effectiveRole: Role | 'guest' = currentUser?.role
-    ? currentUser.role
-    : isLocalSandboxHost || initialModeParam === 'partner'
-      ? 'tenant_owner'
-      : 'guest';
+  const isLocalOrNativePreviewHost =
+    typeof window !== 'undefined' &&
+    (['localhost', '127.0.0.1', 'app.randevulari.com', 'app.lari.app'].includes(
+      window.location.hostname
+    ) ||
+      Boolean((window as any).Capacitor?.isNativePlatform?.()));
+
+  const effectiveRole: Role | 'guest' =
+    explicitRoleParam === 'guest'
+      ? 'guest'
+      : currentUser?.role
+        ? currentUser.role
+        : isLocalOrNativePreviewHost || initialModeParam === 'partner'
+          ? 'tenant_owner'
+          : 'guest';
 
   const [requestedMode, setRequestedMode] = useState<MobileShellMode>(
     initialModeParam === 'partner' ? 'b2b_partner' : 'b2c_customer'
@@ -52,13 +64,30 @@ export const MobileSuperAppPage: React.FC = () => {
       (initialModeParam === 'partner' ? 'salon_partner' : 'salon_customer')
   );
   const [activeTabId, setActiveTabId] = useState<string>(
-    initialModeParam === 'partner' ? 'partner_agenda' : initialSlugParam ? 'storefront' : 'explore'
+    initialModeParam === 'partner'
+      ? 'partner_agenda'
+      : initialSlugParam
+        ? 'storefront'
+        : 'explore'
   );
   const [bookingListing, setBookingListing] =
     useState<MobileDiscoveryListingItem | null>(null);
+  const [bookingSpecialistName, setBookingSpecialistName] = useState<
+    string | undefined
+  >(undefined);
+  const [bookingServiceNames, setBookingServiceNames] = useState<
+    string[] | undefined
+  >(undefined);
+  const [attachedAiStyleNote, setAttachedAiStyleNote] = useState<
+    string | undefined
+  >(undefined);
 
   const tenantId = currentUser?.tenantId || 'ten-atelier-nisantasi';
-  const tenantSlug = initialSlugParam || (location.pathname.startsWith('/m/storefront/') ? location.pathname.split('/')[3] : null);
+  const tenantSlug =
+    initialSlugParam ||
+    (location.pathname.startsWith('/m/storefront/')
+      ? location.pathname.split('/')[3]
+      : null);
 
   useEffect(() => {
     if (tenantSlug) {
@@ -132,6 +161,16 @@ export const MobileSuperAppPage: React.FC = () => {
     }
   };
 
+  const handleOpenBooking = (
+    listing: MobileDiscoveryListingItem,
+    specialist?: StorefrontSpecialistProfile,
+    serviceNames?: string[]
+  ) => {
+    setBookingListing(listing);
+    setBookingSpecialistName(specialist?.name);
+    setBookingServiceNames(serviceNames);
+  };
+
   const renderBody = () => {
     switch (activeTabId) {
       case 'explore':
@@ -155,13 +194,34 @@ export const MobileSuperAppPage: React.FC = () => {
                 completedAtIso: '2026-11-01T14:00:00Z',
               },
             ]}
-            onOpenBookingSheet={(listing) => setBookingListing(listing)}
+            onOpenBookingSheet={handleOpenBooking}
+            onOneTapRebook={() => {
+              const first = DEFAULT_MOBILE_MARKETPLACE_LISTINGS[0];
+              handleOpenBooking({
+                ...first,
+                distanceKm: 0.4,
+                estimatedTravelMinutes: 5,
+              });
+            }}
           />
         );
       case 'wallet':
         return <MobileCustomerWalletPage tenantId={tenantId} />;
       case 'ai_style':
-        return <MobileAIStyleVisualizerPage tenantId={tenantId} />;
+        return (
+          <MobileAIStyleVisualizerPage
+            tenantId={tenantId}
+            onAttachStyleToBooking={(note) => {
+              setAttachedAiStyleNote(note);
+              const first = DEFAULT_MOBILE_MARKETPLACE_LISTINGS[0];
+              handleOpenBooking({
+                ...first,
+                distanceKm: 0.4,
+                estimatedTravelMinutes: 5,
+              });
+            }}
+          />
+        );
       case 'ht_concierge':
         return <MobileHealthTourismConciergePage tenantId={tenantId} />;
       case 'profile':
@@ -195,7 +255,12 @@ export const MobileSuperAppPage: React.FC = () => {
       case 'customer_360':
         return <MobilePartnerCustomer360Page />;
       default:
-        return <MobileExploreMarketplacePage whiteLabelLockedTenantSlug={tenantSlug} />;
+        return (
+          <MobileExploreMarketplacePage
+            whiteLabelLockedTenantSlug={tenantSlug}
+            onOpenBookingSheet={handleOpenBooking}
+          />
+        );
     }
   };
 
@@ -212,13 +277,31 @@ export const MobileSuperAppPage: React.FC = () => {
         }
         branchDisplayName="Nişantaşı Merkez"
       >
+        {/* Top Interactive Story Reels & Full-Screen Onboarding Launcher */}
+        <div className="-mx-3.5 -mt-4 mb-3">
+          <MobileStoryOnboarding
+            onNavigateExperience={({ mode, persona, tabId }) => {
+              if (mode) setRequestedMode(mode);
+              if (persona) setRequestedPersona(persona);
+              if (tabId) setActiveTabId(tabId);
+            }}
+          />
+        </div>
+
         {renderBody()}
       </MobileAppShell>
 
       {bookingListing && (
         <MobileBookingBottomSheet
           listing={bookingListing}
-          onClose={() => setBookingListing(null)}
+          preselectedSpecialistName={bookingSpecialistName}
+          preselectedServiceNames={bookingServiceNames}
+          attachedStyleNote={attachedAiStyleNote}
+          onClose={() => {
+            setBookingListing(null);
+            setBookingSpecialistName(undefined);
+            setBookingServiceNames(undefined);
+          }}
         />
       )}
     </>

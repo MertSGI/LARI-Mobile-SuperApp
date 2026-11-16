@@ -90,10 +90,20 @@ async function run() {
       const pageErrors = [];
       page.on('pageerror', (err) => pageErrors.push(err.message));
 
-      // A) B2C Mobile Super-App Launch (/m)
-      await page.goto(`${url}/#/m`, { waitUntil: 'networkidle' });
+      // A) Native App Boot Redirect (`/?app=1` -> `/m`) & B2C Mobile Super-App Launch
+      await page.goto(`${url}/?app=1#/`, { waitUntil: 'networkidle' });
       await page.waitForSelector('[data-testid="lari-mobile-app-shell"]');
+      await page.waitForSelector('[data-testid="mobile-story-reels-strip"]');
       await page.waitForSelector('[data-testid="mobile-explore-marketplace-page"]');
+      await page.waitForSelector('[data-testid="interactive-radar-map-card"]');
+      await page.waitForSelector('[data-testid="flash-slots-strip"]');
+
+      // A.2) Open Full-Screen Storefront Detail Drawer & verify tabs
+      await page.click('[data-testid="open-storefront-btn-atelier-nisantasi"]');
+      await page.waitForSelector('[data-testid="mobile-storefront-detail-drawer"]');
+      await page.click('[data-testid="storefront-tab-specialists"]');
+      await page.click('[data-testid="storefront-tab-portfolio"]');
+      await page.click('[data-testid="close-storefront-drawer-btn"]');
 
       // Check zero horizontal overflow
       const overflowB2c = await page.evaluate(
@@ -101,25 +111,39 @@ async function run() {
       );
       assert.equal(overflowB2c, false, `Horizontal overflow detected on ${vp.name} B2C`);
 
-      // B) Switch to Wallet & Offline QR
+      // B) Switch to Wallet, Live Companion, Care Passport & Stamp Card
       await page.click('[data-testid="mobile-tab-wallet"]');
+      await page.waitForSelector('[data-testid="live-appointment-companion-card"]');
       await page.waitForSelector('[data-testid="wallet-qr-pass-card"]');
+      await page.click('[data-testid="wallet-subtab-passport"]');
+      await page.waitForSelector('[data-testid="wallet-care-passport-panel"]');
+      await page.click('[data-testid="wallet-subtab-loyalty"]');
+      await page.waitForSelector('[data-testid="wallet-stamp-card"]');
 
-      // C) Switch to HT Patient Concierge Persona
+      // B.2) Switch to AI Style Studio & verify Before/After Slider
+      await page.click('[data-testid="mobile-tab-ai_style"]');
+      await page.waitForSelector('[data-testid="ai-before-after-viewfinder"]');
+      await page.waitForSelector('[data-testid="ai-comparison-slider"]');
+
+      // C) Switch to HT Patient Concierge Persona & Post-Op Recovery Check-in
       await page.click('[data-testid="persona-pill-ht_patient"]');
       await page.waitForSelector('[data-testid="mobile-ht-concierge-page"]');
       await page.waitForSelector('[data-testid="ht-itinerary-timeline"]');
+      await page.waitForSelector('[data-testid="ht-postop-recovery-card"]');
 
-      // D) Switch to Partner Mode & POS
+      // D) Switch to Partner Mode, Commission Card & POS
       await page.click('[data-testid="mobile-mode-toggle-btn"]');
       await page.waitForSelector('[data-testid="mobile-partner-agenda-page"]');
+      await page.waitForSelector('[data-testid="partner-daily-commission-card"]');
       await page.click('[data-testid="mobile-tab-partner_pos"]');
       await page.waitForSelector('[data-testid="mobile-partner-pos-page"]');
       await page.click('[data-testid="partner-pos-cash-checkout-btn"]');
 
-      // E) Switch to Clinic Practitioner PHI Persona
+      // E) Switch to Clinic Practitioner PHI Persona & Touch Consultation Canvas
       await page.click('[data-testid="persona-pill-clinic_practitioner"]');
       await page.waitForSelector('[data-testid="mobile-clinic-workspace"]');
+      await page.waitForSelector('[data-testid="clinic-touch-drawing-studio"]');
+      await page.waitForSelector('[data-testid="clinic-consultation-canvas"]');
 
       // F) White-Label Storefront Lock (/m?slug=atelier-nisantasi)
       await page.goto(`${url}/#/m?slug=atelier-nisantasi`, { waitUntil: 'networkidle' });

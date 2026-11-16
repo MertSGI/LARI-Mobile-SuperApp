@@ -303,6 +303,15 @@ export const MobileHealthTourismConciergePage: React.FC<
     useState<MobileHtIntakePayload['treatmentCategory']>('dental_implant_veneers');
   const [quoteAccepted, setQuoteAccepted] = useState(false);
   const [handoffRequested, setHandoffRequested] = useState(false);
+  const [recoveryDaySelected, setRecoveryDaySelected] = useState<
+    'day1' | 'day3' | 'day7' | 'day30'
+  >('day3');
+  const [recoveryPhotoSubmitted, setRecoveryPhotoSubmitted] = useState(false);
+  const [preOpChecks, setPreOpChecks] = useState<Record<string, boolean>>({
+    fasting_8h: true,
+    blood_thinners: true,
+    passport_qr: false,
+  });
 
   const state = evaluateMobileHtPatientConcierge({
     tenantId,
@@ -558,6 +567,103 @@ export const MobileHealthTourismConciergePage: React.FC<
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* Pre-Op Preparation & Post-Op Recovery Photo Check-In (App-Exclusive) */}
+      <div
+        className="rounded-3xl bg-slate-900 border border-slate-800 p-4 space-y-3"
+        data-testid="ht-postop-recovery-card"
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-black text-white flex items-center gap-1.5">
+            <Camera className="w-4 h-4 text-emerald-400" />
+            Pre-Op Hazırlık & Gün Gün Post-Op Doktor Takibi
+          </span>
+          <span className="text-[10px] font-bold text-emerald-300">
+            Canlı Asistan
+          </span>
+        </div>
+
+        <div className="space-y-1.5">
+          {[
+            {
+              key: 'fasting_8h',
+              label: 'Operasyondan 8 saat önce yeme/içmeyi durdurma sayacı',
+            },
+            {
+              key: 'blood_thinners',
+              label: 'Kan sulandırıcı / takviye kısıtlama onayı',
+            },
+            {
+              key: 'passport_qr',
+              label: 'IST Havalimanı Gate 14 VIP Karşılama Kodu Hazır',
+            },
+          ].map((chk) => (
+            <button
+              key={chk.key}
+              type="button"
+              onClick={() =>
+                setPreOpChecks((p) => ({ ...p, [chk.key]: !p[chk.key] }))
+              }
+              className={`w-full rounded-xl p-2 border text-left text-[11px] font-semibold flex items-center justify-between ${
+                preOpChecks[chk.key]
+                  ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
+                  : 'bg-slate-950 border-slate-800 text-slate-300'
+              }`}
+            >
+              <span>{chk.label}</span>
+              <CheckCircle2
+                className={`w-4 h-4 ${
+                  preOpChecks[chk.key] ? 'text-emerald-400' : 'text-slate-600'
+                }`}
+              />
+            </button>
+          ))}
+        </div>
+
+        <div className="pt-2 border-t border-slate-800 space-y-2">
+          <span className="text-[11px] font-bold text-cyan-300 block">
+            Operasyon Sonrası Uzaktan Hekim Fotoğraf Kontrolü:
+          </span>
+          <div className="grid grid-cols-4 gap-1.5">
+            {(
+              [
+                { id: 'day1', label: '1. Gün' },
+                { id: 'day3', label: '3. Gün' },
+                { id: 'day7', label: '7. Gün' },
+                { id: 'day30', label: '30. Gün' },
+              ] as const
+            ).map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => {
+                  setRecoveryDaySelected(d.id);
+                  setRecoveryPhotoSubmitted(false);
+                }}
+                className={`py-1.5 rounded-lg text-[10px] font-bold border ${
+                  recoveryDaySelected === d.id
+                    ? 'bg-cyan-600 text-white border-cyan-400'
+                    : 'bg-slate-950 text-slate-400 border-slate-800'
+                }`}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setRecoveryPhotoSubmitted(true)}
+            style={{ minHeight: '42px' }}
+            className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center justify-center gap-1.5"
+            data-testid="ht-submit-recovery-photo-btn"
+          >
+            <Camera className="w-3.5 h-3.5" />
+            {recoveryPhotoSubmitted
+              ? `${recoveryDaySelected.toUpperCase()} İyileşme Fotoğrafı Hekime İletildi ✓`
+              : `${recoveryDaySelected.toUpperCase()} Kontrol Fotoğrafı Çek & Hekime Gönder`}
+          </button>
         </div>
       </div>
 
