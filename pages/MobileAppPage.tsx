@@ -96,7 +96,13 @@ const MobileAppPage: React.FC = () => {
                  {language === 'tr' ? 'Örnek ekranları test edebilir veya ücretsiz denemeye başlayabilirsiniz.' : 'You can test sample screens or start a free trial.'}
              </p>
              <div className="flex flex-col sm:flex-row justify-center gap-4 relative z-10 flex-wrap">
-                 <Link to="/register?planId=professional" className="inline-block w-full sm:w-auto bg-white text-blue-600 px-8 py-3.5 md:py-4 rounded-xl font-bold shadow-md hover:shadow-xl transition transform hover:-translate-y-1 text-sm md:text-base text-center shrink-0">
+                 <Link to="/m" className="inline-block w-full sm:w-auto bg-white text-blue-600 px-8 py-3.5 md:py-4 rounded-xl font-bold shadow-md hover:shadow-xl transition transform hover:-translate-y-1 text-sm md:text-base text-center shrink-0">
+                     {language === 'tr' ? '📱 Mobil Super-App Önizle' : '📱 Preview Mobile Super-App'}
+                 </Link>
+                 <Link to="/m?mode=partner" className="inline-block w-full sm:w-auto bg-indigo-500/40 border border-indigo-200/50 text-white hover:bg-indigo-500/60 px-8 py-3.5 md:py-4 rounded-xl font-bold shadow-sm transition text-sm md:text-base text-center shrink-0">
+                     {language === 'tr' ? '💼 LARİ Partner Cep Modu' : '💼 LARİ Partner Mobile'}
+                 </Link>
+                 <Link to="/register?planId=professional" className="inline-block w-full sm:w-auto bg-blue-500/30 border border-blue-200/50 text-white hover:bg-blue-500/50 px-8 py-3.5 md:py-4 rounded-xl font-bold shadow-sm transition text-sm md:text-base text-center shrink-0">
                      {language === 'tr' ? '14 Gün Ücretsiz Başla' : 'Start 14-Day Free'}
                  </Link>
                  <Link to="/pilot/customer" className="inline-block w-full sm:w-auto bg-blue-500/30 border border-blue-200/50 text-white hover:bg-blue-500/50 px-8 py-3.5 md:py-4 rounded-xl font-bold shadow-sm transition text-sm md:text-base text-center shrink-0">

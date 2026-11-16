@@ -1,0 +1,11 @@
+import React from 'react';
+import { customer360Service } from '../../../services/customer360Service';
+import { loyaltyReactivationService } from '../../../services/loyaltyReactivationService';
+import { requireBiometricReauth } from '../../../services/mobile/nativeBridgeService';
+
+export type Customer360Deps = { biometric?: typeof requireBiometricReauth; customer360?: Pick<typeof customer360Service, 'getCustomer360ViewSafe' | 'listSegmentsSafe'>; loyalty?: Pick<typeof loyaltyReactivationService, 'scanReactivationCohorts' | 'grantCustomerPackage'> };
+export async function loadMobileCustomer360(input: { tenantId: string; customerId: string; staffOrUserId: string; biometricToken?: string }, deps: Customer360Deps = {}) { const auth = await (deps.biometric ?? requireBiometricReauth)({ tenantId: input.tenantId, staffOrUserId: input.staffOrUserId, scope: 'customer_360_pii', pinOrBiometricToken: input.biometricToken }); if (!auth.verified) throw new Error('BIOMETRIC_REAUTH_REQUIRED'); const svc = deps.customer360 ?? customer360Service; const [view, segments] = await Promise.all([svc.getCustomer360ViewSafe(input.tenantId, input.customerId), svc.listSegmentsSafe(input.tenantId)]); if (!view.success || !segments.success) throw new Error('CUSTOMER_360_FETCH_FAILED'); const highlighted = segments.data!.filter(s => ['vip', 'churn-risk', 'at-risk'].includes(s.name.toLowerCase())); return { auth, view: view.data, segments: highlighted }; }
+export async function scanMobileReactivationCohorts(tenantId: string, days: 60 | 90, deps: Customer360Deps = {}) { return (deps.loyalty ?? loyaltyReactivationService).scanReactivationCohorts(tenantId, days); }
+export async function grantMobileCustomerPackage(input: Parameters<typeof loyaltyReactivationService.grantCustomerPackage>[0], deps: Customer360Deps = {}) { return (deps.loyalty ?? loyaltyReactivationService).grantCustomerPackage(input); }
+export const MobilePartnerCustomer360Page: React.FC = () => <main data-testid={'mobile-customer-360'}><h1>Customer 360</h1><p>VIP, Churn-Risk and At-Risk segments, reactivation cohorts and one-tap package grants. PII requires biometric reauthentication.</p></main>;
+export default MobilePartnerCustomer360Page;

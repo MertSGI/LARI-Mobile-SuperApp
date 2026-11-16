@@ -51,6 +51,7 @@ import CustomerPortalPage from './pages/customer/CustomerPortalPage';
 import AppointmentSelfServicePage from './pages/AppointmentSelfServicePage';
 
 import MobileAppPage from './pages/MobileAppPage';
+import MobileSuperAppPage from './pages/mobile/MobileSuperAppPage';
 
 // Diagnostic tools
 import { MockDiagnosticTool } from './components/MockDiagnosticTool';
@@ -157,6 +158,10 @@ const AppFlowSwitcher: React.FC = () => {
         </ProtectedRoute>
       } />
       
+      {/* 4.5 Mobile Super-App Routes (B2C + B2B Dual Mode) */}
+      <Route path="/m" element={<MobileSuperAppPage />} />
+      <Route path="/m/*" element={<MobileSuperAppPage />} />
+
       {/* Catch-all route to prevent white screens on unknown paths */}
       <Route path="*" element={
         <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-900 border-t-4 border-red-500">

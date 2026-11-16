@@ -2,12 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0f172a" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="LARİ" />
-    <link rel="apple-touch-icon" href="https://picsum.photos/seed/icon192/192/192" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
     <title>LARİ | Randevulu İşletmeler İçin Web Sitesi ve Randevu Sistemi</title>
     <meta name="description" content="LARİ, randevu ile çalışan tüm işletmeler (kuaförler, klinikler, stüdyolar) için mini web sitesi, online randevu, müşteri paneli ve raporlama sunan abonelikli SaaS platformudur." />
@@ -36,18 +36,32 @@
     <script>
       console.log('[HTML BOOT] index.html loaded');
 
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(registrations => {
-          registrations.forEach(registration => registration.unregister());
-          console.log('[DEV] All service workers unregistered');
-        });
-      }
+      const isDevHost = window.location.hostname === 'localhost'
+        || window.location.hostname === '127.0.0.1'
+        || window.location.hostname.endsWith('.localhost');
+      const mobileServiceWorkerEnabled = window.location.hash.startsWith('#/m')
+        || localStorage.getItem('lari_enable_mobile_sw') === 'true';
 
-      if (window.caches) {
-        caches.keys().then(keys => {
-          keys.forEach(key => caches.delete(key));
-          console.log('[DEV] All caches cleared');
-        });
+      if ('serviceWorker' in navigator) {
+        if (isDevHost && !mobileServiceWorkerEnabled) {
+          navigator.serviceWorker.getRegistrations().then(registrations => {
+            registrations.forEach(registration => registration.unregister());
+            console.log('[DEV] Mobile service workers unregistered');
+          });
+
+          if (window.caches) {
+            caches.keys().then(keys => {
+              keys.forEach(key => caches.delete(key));
+              console.log('[DEV] Mobile caches cleared');
+            });
+          }
+        } else {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').catch(error => {
+              console.error('[SERVICE WORKER REGISTRATION ERROR]', error);
+            });
+          });
+        }
       }
 
       window.addEventListener('error', function (event) {

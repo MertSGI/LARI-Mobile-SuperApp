@@ -347,3 +347,14 @@ After the migrations have successfully been applied:
   * Live payment capture for deposits, gift-card purchases, and package/membership billing remains `EXTERNAL_HOLD` (`LIVE_PAYMENT_PROVIDER_CREDENTIALS_REQUIRED`, `PRODUCTION = NO_GO`).
   * Live marketing/reactivation SMS, WhatsApp, and email dispatch remains `EXTERNAL_HOLD` (`NO_NETWORK_SEND`; `scan_customer_reactivation_cohorts` queues via `enqueue_communication_outbox` with `synthetic_outbox_only`).
 
+
+---
+
+## 13. Mobile Super-App Push Infrastructure (Faz M9 / ADIM-054)
+
+* **Conflict-Free Timestamp (`20261020`)**: Leaves `20260901..20261007` untouched and reserves `20261008..20261019` for parallel `ADIM-037..039` work on the primary PC.
+* **Security & RLS Invariants**:
+  * `mobile_device_push_tokens` and `mobile_notification_preferences` enable RLS and revoke all direct `PUBLIC/anon/authenticated` DML.
+  * `register_mobile_push_token` and `revoke_mobile_push_token` are `SECURITY DEFINER` RPCs enforcing `SET search_path = public, pg_temp` and `auth.uid()` scoping.
+* **`EXTERNAL_HOLD` Classification**:
+  * Live FCM (`FCM_SERVICE_ACCOUNT_JSON`) and APNs (`APNS_PRIVATE_KEY`) dispatch remains `EXTERNAL_HOLD` (`LIVE_PUSH_CREDENTIALS_REQUIRED`); `supabase/functions/mobile-push-dispatch/index.ts` and `services/mobile/mobilePushNotificationService.ts` fail closed to `OUTBOX_QUEUED_EXTERNAL_HOLD` with zero network/paid dispatch.

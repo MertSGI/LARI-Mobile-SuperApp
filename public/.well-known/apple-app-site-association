@@ -1,0 +1,9 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [{
+      "appID": "TEAMID.com.randevulari.app",
+      "paths": ["/booking/*", "/s/*", "/appointment/manage/*", "/m/*", "/*"]
+    }]
+  }
+}
