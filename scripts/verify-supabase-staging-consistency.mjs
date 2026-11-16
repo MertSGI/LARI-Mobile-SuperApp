@@ -113,7 +113,11 @@ const V2_MIGRATIONS = [
   '20260912_phase3_resource_capacity_foundation.sql',
   '20260913_phase3_reporting_analytics_foundation.sql',
   '20260914_phase3_custom_domain_verification_foundation.sql',
-  '20260915_phase5_scheduling_buffer_parity_hardening.sql'
+  '20260915_phase5_scheduling_buffer_parity_hardening.sql',
+  '20260916_phase6_product_inventory_foundation.sql',
+  '20260917_phase6_node2_suppliers_po_receiving.sql',
+  '20260918_phase6_node3_pos_mixed_cart_checkout.sql',
+  '20260919_phase6_node4_staff_commissions_tips.sql'
 ];
 
 const ALL_EXPECTED_MIGRATIONS = [...CANONICAL_MIGRATIONS, ...CANDIDATE_MIGRATIONS, ...V2_MIGRATIONS].sort();

@@ -74,7 +74,7 @@ async function runPgTests() {
     await client.query(bootstrapSql);
 
     const migrationFiles = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
-    assert.equal(migrationFiles.length, 71, `Expected 71 total migrations, got ${migrationFiles.length}`);
+    assert.equal(migrationFiles.length, 75, `Expected 75 total migrations, got ${migrationFiles.length}`);
 
     const bridgeSql = fs.readFileSync(
       path.join(testsDir, 'fixtures', 'p2a_historical_replay_bridge_before_migration_38.sql'),
@@ -662,7 +662,469 @@ async function runPgTests() {
     assert.equal(liveResolve.resolved, false, 'Simulated domain must NOT resolve as live tenant');
     console.log('[PASS] Custom domain EXTERNAL_HOLD invariant verified');
 
-    console.log('\nALL ADIM-033 DISPOSABLE PG17 TESTS PASSED.');
+    // 9. Test ADIM-034 Phase 6 (20260916..20260919): POS, Product Inventory, Suppliers/PO & Staff Commissions/Tips
+    const posOverloads = (await client.query(`
+      SELECT p.proname, count(*)::int AS cnt
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.proname IN ('pos_add_cart_item', 'pos_checkout_order')
+      GROUP BY p.proname;
+    `)).rows;
+    assert.equal(posOverloads.length, 2);
+    assert.ok(posOverloads.every((r) => r.cnt === 1), 'pos_add_cart_item and pos_checkout_order must each have 1 overload');
+
+    // Setup owner staff record + second staff + tenant B staff for Phase 6 tests
+    const ownerStaffId = '11111111-2222-3333-4444-555555555551';
+    const tenantBStaffUid = 'bbbbbbbb-9999-bbbb-9999-bbbbbbbbbbbb';
+    const tenantBStaffId = 'bbbbbbbb-9999-bbbb-9999-bbbbbbbbbbb2';
+    const superAdminUid = '99999999-9999-9999-9999-999999999991';
+    const inactiveStaffUid = '88888888-8888-8888-8888-888888888881';
+    const inactiveStaffId = '88888888-8888-8888-8888-888888888882';
+
+    await client.query(`
+      INSERT INTO auth.users (id, email)
+      VALUES ($1, 'staff-b@example.test'), ($2, 'super@example.test'), ($3, 'inactive-up@example.test')
+      ON CONFLICT DO NOTHING;
+    `, [tenantBStaffUid, superAdminUid, inactiveStaffUid]);
+    await client.query(`
+      INSERT INTO public.subscriptions (tenant_id, plan_id, plan_version_id, status, billing_mode, current_period_start, current_period_end)
+      SELECT $1, p.code, pv.id, 'active', 'manual', now(), now() + interval '1 year'
+      FROM public.plan_versions pv
+      JOIN public.plans p ON p.id = pv.plan_id
+      WHERE p.code = 'kurumsal' AND pv.lifecycle_status = 'published'
+      LIMIT 1;
+    `, [tenantBId]);
+    await client.query(`
+      INSERT INTO public.users_profile (id, tenant_id, name, role, active)
+      VALUES
+        ($1, $4, 'Tenant B Staff', 'staff', true),
+        ($2, NULL, 'Super Admin', 'super_admin', true),
+        ($3, $5, 'Deactivated Profile Staff', 'staff', false);
+    `, [tenantBStaffUid, superAdminUid, inactiveStaffUid, tenantBId, tenantId]);
+    await client.query(`
+      INSERT INTO public.staff (id, tenant_id, user_profile_id, name, active, is_owner)
+      VALUES
+        ($1, $4, $5, 'Owner Staff', true, true),
+        ($2, $6, $7, 'Tenant B Staff', true, false),
+        ($3, $4, $8, 'Inactive Profile Staff', true, false);
+    `, [ownerStaffId, tenantBStaffId, inactiveStaffId, tenantId, ownerUid, tenantBId, tenantBStaffUid, inactiveStaffUid]);
+
+    const setAuthUid = async (uid) => {
+      await client.query(`RESET ROLE;`);
+      await client.query(`SELECT set_config('request.jwt.claim.sub', $1, false);`, [uid || '']);
+      if (uid) {
+        await client.query(`SET ROLE authenticated;`);
+      }
+    };
+
+    // 9a. Direct DML must be blocked on Phase 6 tables
+    await setAuthUid(staffUid);
+    await assert.rejects(
+      async () => client.query(`INSERT INTO public.products (tenant_id, name, sku, price_minor_units, currency) VALUES ($1, 'Hack', 'HACK', 100, 'TRY');`, [tenantId]),
+      (err) => err && err.code === '42501'
+    );
+    await assert.rejects(
+      async () => client.query(`INSERT INTO public.pos_orders (tenant_id, branch_id, order_number, staff_id, currency) VALUES ($1, $2, 'ORD-HACK', $3, 'TRY');`, [tenantId, branchId, staffId]),
+      (err) => err && err.code === '42501'
+    );
+    await assert.rejects(
+      async () => client.query(`INSERT INTO public.staff_commission_rules (tenant_id, staff_id, item_type, commission_basis_points, created_by_user_id) VALUES ($1, $2, 'product', 1000, $3);`, [tenantId, staffId, staffUid]),
+      (err) => err && err.code === '42501'
+    );
+
+    // 9b. Deactivated users_profile (even with staff.active = true) & customer role blocked from pos_* RPCs
+    await setAuthUid(inactiveStaffUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_create_product('Blocked', 'BLK-1', 1000, 'TRY');`),
+      (err) => err && err.message.includes('FORBIDDEN')
+    );
+
+    await setAuthUid(customerUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_create_product('Cust Blocked', 'BLK-2', 1000, 'TRY');`),
+      (err) => err && err.message.includes('FORBIDDEN')
+    );
+
+    // 9c. Node 1: Product catalog, stock receipt, idempotency + conflict, adjustment & return
+    await setAuthUid(staffUid);
+    const prodRes = (await client.query(`
+      SELECT public.pos_create_product('Botanical Serum', 'SKU-D2-01', 25000, 'TRY', 'haircare', NULL, NULL, NULL, 'bottle', 10000, 2000) AS res;
+    `)).rows[0].res;
+    assert.equal(prodRes.success, true);
+    const productId = prodRes.product_id;
+
+    const rec1 = (await client.query(`
+      SELECT public.pos_record_stock_receipt($1, $2, 5, 10000, 'INIT-1', 'd2-rec-1') AS res;
+    `, [branchId, productId])).rows[0].res;
+    assert.equal(rec1.success, true);
+    assert.equal(rec1.new_balance, 5);
+
+    const recReplay = (await client.query(`
+      SELECT public.pos_record_stock_receipt($1, $2, 5, 10000, 'INIT-1', 'd2-rec-1') AS res;
+    `, [branchId, productId])).rows[0].res;
+    assert.equal(recReplay.idempotent_replay, true);
+    assert.equal(recReplay.new_balance, 5);
+
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_record_stock_receipt($1, $2, 99, 10000, 'INIT-2', 'd2-rec-1') AS res;`, [branchId, productId]),
+      (err) => err && err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+
+    // ADIM034-INV-006: Cost & reference & reason idempotency conflict across all 4 inventory ledger RPCs
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_record_stock_receipt($1, $2, 5, 1, 'INIT-1', 'd2-rec-1') AS res;`, [branchId, productId]),
+      (err) => err && err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_record_stock_receipt($1, $2, 5, 10000, 'INIT-OTHER', 'd2-rec-1') AS res;`, [branchId, productId]),
+      (err) => err && err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+
+    const saleDec = (await client.query(`
+      SELECT public.pos_decrement_stock_for_sale($1, $2, 1, 'SALE-REF-1', 'd2-sale-1') AS res;
+    `, [branchId, productId])).rows[0].res;
+    assert.equal(saleDec.new_balance, 4);
+    const saleDecReplay = (await client.query(`
+      SELECT public.pos_decrement_stock_for_sale($1, $2, 1, ' SALE-REF-1 ', 'd2-sale-1') AS res;
+    `, [branchId, productId])).rows[0].res;
+    assert.equal(saleDecReplay.idempotent_replay, true);
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_decrement_stock_for_sale($1, $2, 1, 'SALE-REF-2', 'd2-sale-1') AS res;`, [branchId, productId]),
+      (err) => err && err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+
+    const adjDec = (await client.query(`
+      SELECT public.pos_adjust_stock($1, $2, -1, 'Damaged bottle', 'd2-adj-1') AS res;
+    `, [branchId, productId])).rows[0].res;
+    assert.equal(adjDec.new_balance, 3);
+    const adjReplay = (await client.query(`
+      SELECT public.pos_adjust_stock($1, $2, -1, ' Damaged bottle ', 'd2-adj-1') AS res;
+    `, [branchId, productId])).rows[0].res;
+    assert.equal(adjReplay.idempotent_replay, true);
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_adjust_stock($1, $2, -1, 'Lost in transit', 'd2-adj-1') AS res;`, [branchId, productId]),
+      (err) => err && err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+
+    const retInc = (await client.query(`
+      SELECT public.pos_return_restock($1, $2, 2, 'Customer return', 'SALE-REF-1', 'd2-ret-1') AS res;
+    `, [branchId, productId])).rows[0].res;
+    assert.equal(retInc.new_balance, 5);
+    const retReplay = (await client.query(`
+      SELECT public.pos_return_restock($1, $2, 2, 'Customer return', 'SALE-REF-1', 'd2-ret-1') AS res;
+    `, [branchId, productId])).rows[0].res;
+    assert.equal(retReplay.idempotent_replay, true);
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_return_restock($1, $2, 2, 'Different reason', 'SALE-REF-1', 'd2-ret-1') AS res;`, [branchId, productId]),
+      (err) => err && err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_return_restock($1, $2, 2, 'Customer return', 'SALE-REF-OTHER', 'd2-ret-1') AS res;`, [branchId, productId]),
+      (err) => err && err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+
+    // 9d. Node 2: Suppliers, PO lifecycle, partial + full receiving, over-receipt rejection
+    const suppRes = (await client.query(`
+      SELECT public.pos_create_supplier('Derma Supply Co', 'Ayşe', 'sup@example.test', '+905550001122') AS res;
+    `)).rows[0].res;
+    assert.equal(suppRes.success, true);
+
+    const poRes = (await client.query(`
+      SELECT public.pos_create_purchase_order($1, $2, 'TRY', $3::jsonb, 'Restock') AS res;
+    `, [suppRes.supplier_id, branchId, JSON.stringify([{ product_id: productId, quantity: 10, unit_cost_minor_units: 10000 }])])).rows[0].res;
+    assert.equal(poRes.status, 'draft');
+    assert.equal(poRes.total_amount_minor_units, 100000);
+
+    const poDetails = (await client.query(`SELECT public.pos_get_purchase_order($1) AS res;`, [poRes.purchase_order_id])).rows[0].res;
+    const poItemId = poDetails.items[0].item_id;
+
+    // Draft receiving blocked
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_receive_purchase_order_items($1, $2::jsonb, 'po-rec-draft');`, [poRes.purchase_order_id, JSON.stringify([{ po_item_id: poItemId, quantity_received: 5 }])]),
+      (err) => err && err.message.includes('INVALID_STATE')
+    );
+
+    await client.query(`SELECT public.pos_approve_purchase_order($1);`, [poRes.purchase_order_id]);
+    const recvPart = (await client.query(`
+      SELECT public.pos_receive_purchase_order_items($1, $2::jsonb, 'po-rec-1') AS res;
+    `, [poRes.purchase_order_id, JSON.stringify([{ po_item_id: poItemId, quantity_received: 5 }])])).rows[0].res;
+    assert.equal(recvPart.status, 'partially_received');
+
+    // Over-receipt blocked
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_receive_purchase_order_items($1, $2::jsonb, 'po-rec-over');`, [poRes.purchase_order_id, JSON.stringify([{ po_item_id: poItemId, quantity_received: 6 }])]),
+      (err) => err && err.message.includes('OVER_RECEIPT')
+    );
+
+    const invAfterRecv = (await client.query(`SELECT public.pos_get_branch_inventory($1) AS res;`, [branchId])).rows[0].res;
+    assert.equal(invAfterRecv.items[0].on_hand_quantity, 10); // 5 initial + 5 received
+
+    // 9e. Node 3 + Node 4: Commission rules (owner-only), mixed cart (product + service price*100 + custom), tips, checkout & earnings ACL
+    // Ordinary staff cannot set commission rule
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_set_staff_commission_rule($1, 'product', 1000, true);`, [staffId]),
+      (err) => err && err.message.includes('FORBIDDEN')
+    );
+
+    await setAuthUid(ownerUid);
+    const ruleProd = (await client.query(`SELECT public.pos_set_staff_commission_rule($1, 'product', 1000, true) AS res;`, [staffId])).rows[0].res;
+    assert.equal(ruleProd.success, true);
+    const ruleSvc = (await client.query(`SELECT public.pos_set_staff_commission_rule($1, 'service', 2000, true) AS res;`, [staffId])).rows[0].res;
+    assert.equal(ruleSvc.success, true);
+
+    await setAuthUid(staffUid);
+    const ord = (await client.query(`SELECT public.pos_create_order($1, 'TRY', NULL, 'Mixed cart') AS res;`, [branchId])).rows[0].res;
+    assert.equal(ord.success, true);
+
+    // Package item cleanly fails before Faz D3 provisions service_package_definitions
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_add_cart_item($1, 'package', 1, NULL, NULL, $2);`, [ord.order_id, crypto.randomUUID()]),
+      (err) => err && err.message.includes('FEATURE_NOT_AVAILABLE')
+    );
+
+    // Foreign performing_staff_id rejected
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_add_cart_item($1, 'custom', 1, NULL, NULL, NULL, NULL, $2, 'Cross', 5000);`, [ord.order_id, tenantBStaffId]),
+      (err) => err && err.message.includes('CROSS_TENANT_VIOLATION')
+    );
+
+    // Add 2x product (2 * 25000 = 50000, tax 20% = 10000 -> line 60000) + 1x service (price 1200 -> 120000 minor units!)
+    const addProd = (await client.query(`
+      SELECT public.pos_add_cart_item($1, 'product', 2, $2, NULL, NULL, NULL, $3) AS res;
+    `, [ord.order_id, productId, staffId])).rows[0].res;
+    assert.equal(addProd.line_total_minor_units, 60000);
+
+    const addSvc = (await client.query(`
+      SELECT public.pos_add_cart_item($1, 'service', 1, NULL, $2, NULL, NULL, $3) AS res;
+    `, [ord.order_id, serviceId, staffId])).rows[0].res;
+    assert.equal(addSvc.line_total_minor_units, 120000);
+
+    // Allocate tip 5000 minor units
+    const tipRes = (await client.query(`
+      SELECT public.pos_set_tip_allocation($1, $2, 5000) AS res;
+    `, [ord.order_id, staffId])).rows[0].res;
+    assert.equal(tipRes.tip_minor_units, 5000);
+    assert.equal(tipRes.total_minor_units, 185000);
+
+    // Underpayment fails closed
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_checkout_order($1, 'cash', 1000, NULL, 'chk-fail-1');`, [ord.order_id]),
+      (err) => err && err.message.includes('INSUFFICIENT_PAYMENT')
+    );
+
+    // Atomic checkout succeeds
+    const chkOk = (await client.query(`
+      SELECT public.pos_checkout_order($1, 'cash', 185000, 'CASH-001', 'chk-ok-1') AS res;
+    `, [ord.order_id])).rows[0].res;
+    assert.equal(chkOk.status, 'completed');
+    assert.equal(chkOk.products_decremented, 1);
+
+    // Idempotent replay produces zero extra stock burn & zero extra earnings
+    const chkReplay = (await client.query(`
+      SELECT public.pos_checkout_order($1, 'cash', 185000, 'CASH-001', 'chk-ok-1') AS res;
+    `, [ord.order_id])).rows[0].res;
+    assert.equal(chkReplay.idempotent_replay, true);
+
+    // ADIM034-POS-005: Checkout idempotency rejects altered method, amount, or reference; accepts whitespace-normalized identical reference
+    const chkReplayTrimRef = (await client.query(`
+      SELECT public.pos_checkout_order($1, 'cash', 185000, ' CASH-001 ', 'chk-ok-1') AS res;
+    `, [ord.order_id])).rows[0].res;
+    assert.equal(chkReplayTrimRef.idempotent_replay, true);
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_checkout_order($1, 'external', 185000, 'CASH-001', 'chk-ok-1');`, [ord.order_id]),
+      (err) => err && err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_checkout_order($1, 'cash', 999999, 'CASH-001', 'chk-ok-1');`, [ord.order_id]),
+      (err) => err && err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_checkout_order($1, 'cash', 185000, 'CASH-999', 'chk-ok-1');`, [ord.order_id]),
+      (err) => err && err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_checkout_order($1, 'cash', 185000, NULL, 'chk-ok-1');`, [ord.order_id]),
+      (err) => err && err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+
+    // Cross-order idempotency key reuse rejected
+    const ord2 = (await client.query(`SELECT public.pos_create_order($1, 'TRY') AS res;`, [branchId])).rows[0].res;
+    await client.query(`SELECT public.pos_add_cart_item($1, 'custom', 1, NULL, NULL, NULL, NULL, NULL, 'Item', 1000);`, [ord2.order_id]);
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_checkout_order($1, 'cash', 1000, NULL, 'chk-ok-1');`, [ord2.order_id]),
+      (err) => err && err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+
+    // Verify stock is now 8 (10 - 2)
+    const invAfterSale = (await client.query(`SELECT public.pos_get_branch_inventory($1) AS res;`, [branchId])).rows[0].res;
+    assert.equal(invAfterSale.items[0].on_hand_quantity, 8);
+
+    // Verify staff earnings: product commission 10% of 50000 (tax excluded) = 5000; service commission 20% of 120000 = 24000; tip = 5000 -> total 34000
+    const ownEarnings = (await client.query(`SELECT public.pos_get_staff_earnings($1) AS res;`, [staffId])).rows[0].res;
+    assert.equal(ownEarnings.commission_minor_units, 29000);
+    assert.equal(ownEarnings.tip_minor_units, 5000);
+    assert.equal(ownEarnings.total_earnings_minor_units, 34000);
+
+    // Another staff in same tenant & super_admin cannot read staffId's earnings
+    await setAuthUid(staff2Uid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_get_staff_earnings($1);`, [staffId]),
+      (err) => err && err.message.includes('FORBIDDEN')
+    );
+
+    await setAuthUid(superAdminUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_get_staff_earnings($1);`, [staffId]),
+      (err) => err && err.message.includes('FORBIDDEN')
+    );
+
+    // Same-tenant owner CAN read staffId's earnings
+    await setAuthUid(ownerUid);
+    const ownerReadEarnings = (await client.query(`SELECT public.pos_get_staff_earnings($1) AS res;`, [staffId])).rows[0].res;
+    assert.equal(ownerReadEarnings.total_earnings_minor_units, 34000);
+
+    // 9f. ADIM034-PO-004: Canonical PO receiving idempotency (reordered equivalent passes, different qty or item conflicts)
+    await setAuthUid(staffUid);
+    const prod2Res = (await client.query(`
+      SELECT public.pos_create_product('Keratin Mask', 'SKU-D2-02', 15000, 'TRY', 'haircare', NULL, NULL, NULL, 'jar', 5000, 2000) AS res;
+    `)).rows[0].res;
+    assert.equal(prod2Res.success, true);
+    const product2Id = prod2Res.product_id;
+
+    const poCanonRes = (await client.query(`
+      SELECT public.pos_create_purchase_order($1, $2, 'TRY', $3::jsonb, 'Canonical PO test') AS res;
+    `, [
+      suppRes.supplier_id,
+      branchId,
+      JSON.stringify([
+        { product_id: productId, quantity: 10, unit_cost_minor_units: 10000 },
+        { product_id: product2Id, quantity: 10, unit_cost_minor_units: 5000 },
+      ]),
+    ])).rows[0].res;
+    await client.query(`SELECT public.pos_approve_purchase_order($1);`, [poCanonRes.purchase_order_id]);
+    const poCanonDetails = (await client.query(`SELECT public.pos_get_purchase_order($1) AS res;`, [poCanonRes.purchase_order_id])).rows[0].res;
+    const itemA = poCanonDetails.items.find((i) => i.product_id === productId).item_id;
+    const itemB = poCanonDetails.items.find((i) => i.product_id === product2Id).item_id;
+
+    const canonRecv1 = (await client.query(`
+      SELECT public.pos_receive_purchase_order_items($1, $2::jsonb, 'po-canon-1') AS res;
+    `, [poCanonRes.purchase_order_id, JSON.stringify([{ po_item_id: itemA, quantity_received: 3 }, { po_item_id: itemB, quantity_received: 4 }])])).rows[0].res;
+    assert.equal(canonRecv1.idempotent_replay, false);
+
+    // Reordered equivalent payload replays cleanly
+    const canonRecvReordered = (await client.query(`
+      SELECT public.pos_receive_purchase_order_items($1, $2::jsonb, 'po-canon-1') AS res;
+    `, [poCanonRes.purchase_order_id, JSON.stringify([{ po_item_id: itemB, quantity_received: 4 }, { po_item_id: itemA, quantity_received: 3 }])])).rows[0].res;
+    assert.equal(canonRecvReordered.idempotent_replay, true);
+
+    // Altered quantity or altered item subset conflicts
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_receive_purchase_order_items($1, $2::jsonb, 'po-canon-1');`, [poCanonRes.purchase_order_id, JSON.stringify([{ po_item_id: itemA, quantity_received: 2 }, { po_item_id: itemB, quantity_received: 4 }])]),
+      (err) => err && err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_receive_purchase_order_items($1, $2::jsonb, 'po-canon-1');`, [poCanonRes.purchase_order_id, JSON.stringify([{ po_item_id: itemA, quantity_received: 3 }])]),
+      (err) => err && err.message.includes('IDEMPOTENCY_CONFLICT')
+    );
+
+    // 9g. ADIM034-POS-003: Currency mismatch rejection (TRY product cannot be added to USD order)
+    const ordUsd = (await client.query(`SELECT public.pos_create_order($1, 'USD') AS res;`, [branchId])).rows[0].res;
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_add_cart_item($1, 'product', 1, $2);`, [ordUsd.order_id, productId]),
+      (err) => err && err.message.includes('CURRENCY_MISMATCH')
+    );
+    await setAuthUid(null);
+    const usdItemCount = (await client.query(`SELECT count(*)::int AS cnt FROM public.pos_order_items WHERE order_id = $1;`, [ordUsd.order_id])).rows[0].cnt;
+    const usdOrderTotal = (await client.query(`SELECT total_minor_units FROM public.pos_orders WHERE id = $1;`, [ordUsd.order_id])).rows[0].total_minor_units;
+    assert.equal(usdItemCount, 0);
+    assert.equal(usdOrderTotal, 0);
+
+    // 9h. ADIM034-POS-002: Direct DB RPC rejection of EXTERNAL_HOLD payment methods with zero mutation
+    await setAuthUid(staffUid);
+    const ordHold = (await client.query(`SELECT public.pos_create_order($1, 'TRY') AS res;`, [branchId])).rows[0].res;
+    await client.query(`SELECT public.pos_add_cart_item($1, 'product', 1, $2, NULL, NULL, NULL, $3);`, [ordHold.order_id, productId, staffId]);
+    await setAuthUid(null);
+    const stockBeforeHold = (await client.query(`SELECT on_hand_quantity FROM public.inventory_balances WHERE branch_id = $1 AND product_id = $2;`, [branchId, productId])).rows[0].on_hand_quantity;
+
+    await setAuthUid(staffUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_checkout_order($1, 'card_terminal_adapter', 30000, 'TERM-1', 'hold-term-1');`, [ordHold.order_id]),
+      (err) => err && err.message.includes('LIVE_POS_TERMINAL_CREDENTIALS_REQUIRED')
+    );
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_checkout_order($1, 'customer_wallet', 30000, 'WAL-1', 'hold-wal-1');`, [ordHold.order_id]),
+      (err) => err && err.message.includes('WALLET_LEDGER_DEFERRED_TO_FAZ_D3')
+    );
+
+    await setAuthUid(null);
+    const holdOrderRow = (await client.query(`SELECT status, idempotency_key FROM public.pos_orders WHERE id = $1;`, [ordHold.order_id])).rows[0];
+    const stockAfterHold = (await client.query(`SELECT on_hand_quantity FROM public.inventory_balances WHERE branch_id = $1 AND product_id = $2;`, [branchId, productId])).rows[0].on_hand_quantity;
+    const holdPayCount = (await client.query(`SELECT count(*)::int AS cnt FROM public.pos_order_payments WHERE order_id = $1;`, [ordHold.order_id])).rows[0].cnt;
+    const holdEarnCount = (await client.query(`SELECT count(*)::int AS cnt FROM public.staff_earnings_ledger WHERE order_id = $1;`, [ordHold.order_id])).rows[0].cnt;
+    assert.equal(holdOrderRow.status, 'open');
+    assert.equal(holdOrderRow.idempotency_key, null);
+    assert.equal(stockAfterHold, stockBeforeHold);
+    assert.equal(holdPayCount, 0);
+    assert.equal(holdEarnCount, 0);
+
+    // 9i. ADIM034-POS-001: Concurrent pos_add_cart_item from two independent PG connections serializes atomically
+    await setAuthUid(staffUid);
+    const ordConc = (await client.query(`SELECT public.pos_create_order($1, 'TRY') AS res;`, [branchId])).rows[0].res;
+    await setAuthUid(null);
+
+    const c1 = pgInstance.getPgClient('postgres', '127.0.0.1');
+    const c2 = pgInstance.getPgClient('postgres', '127.0.0.1');
+    try {
+      await c1.connect();
+      await c2.connect();
+
+      await c1.query(`BEGIN;`);
+      await c1.query(`SELECT set_config('request.jwt.claim.sub', $1, true);`, [staffUid]);
+      await c1.query(`SET LOCAL ROLE authenticated;`);
+      await c1.query(`SELECT public.pos_add_cart_item($1, 'custom', 1, NULL, NULL, NULL, NULL, NULL, 'Conc A', 10000);`, [ordConc.order_id]);
+
+      await c2.query(`BEGIN;`);
+      await c2.query(`SELECT set_config('request.jwt.claim.sub', $1, true);`, [staffUid]);
+      await c2.query(`SET LOCAL ROLE authenticated;`);
+      const c2AddPromise = c2.query(
+        `SELECT public.pos_add_cart_item($1, 'custom', 1, NULL, NULL, NULL, NULL, NULL, 'Conc B', 10000) AS res;`,
+        [ordConc.order_id]
+      );
+
+      // Give c2 a moment to block on the pos_order advisory lock held by c1
+      await new Promise((r) => setTimeout(r, 80));
+      await c1.query(`COMMIT;`);
+      const c2AddRes = await c2AddPromise;
+      await c2.query(`COMMIT;`);
+      assert.equal(c2AddRes.rows[0].res.order_total_minor_units, 20000);
+    } finally {
+      try { await c1.end(); } catch {}
+      try { await c2.end(); } catch {}
+    }
+
+    const concSums = (await client.query(`
+      SELECT o.total_minor_units, COALESCE(SUM(i.line_total_minor_units), 0)::int AS items_sum
+      FROM public.pos_orders o
+      JOIN public.pos_order_items i ON i.order_id = o.id
+      WHERE o.id = $1
+      GROUP BY o.id, o.total_minor_units;
+    `, [ordConc.order_id])).rows[0];
+    assert.equal(concSums.items_sum, 20000);
+    assert.equal(concSums.total_minor_units, 20000);
+
+    await setAuthUid(staffUid);
+    await assert.rejects(
+      async () => client.query(`SELECT public.pos_checkout_order($1, 'cash', 10000, NULL, 'conc-underpay');`, [ordConc.order_id]),
+      (err) => err && err.message.includes('INSUFFICIENT_PAYMENT')
+    );
+    const concChk = (await client.query(`
+      SELECT public.pos_checkout_order($1, 'cash', 20000, 'CASH-CONC', 'conc-ok') AS res;
+    `, [ordConc.order_id])).rows[0].res;
+    assert.equal(concChk.status, 'completed');
+    await setAuthUid(null);
+    console.log('[PASS] Phase 6 POS, Inventory, Suppliers/PO & Staff Commissions-Tips verified on PG17');
+
+    console.log('\nALL ADIM-033 + ADIM-034 DISPOSABLE PG17 TESTS PASSED.');
   } finally {
     if (client) {
       try { await client.end(); } catch {}

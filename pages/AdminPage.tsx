@@ -22,6 +22,7 @@ import CustomerMemoryTab from '../components/CustomerMemoryTab';
 import ReferralTab from '../components/ReferralTab';
 import AdminSettingsTab from '../components/AdminSettingsTab';
 import { RescheduleRequestsTab } from '../components/RescheduleRequestsTab';
+import PosInventoryWorkspacePanel from '../components/PosInventoryWorkspacePanel';
 import { ImageUpload } from '../components/ImageUpload';
 import { onboardingChecklistService, OnboardingReport } from '../services/onboardingChecklistService';
 import { AdminFeatureAvailability } from '../services/adminFeatureAvailabilityService';
@@ -71,12 +72,12 @@ const AdminPage: React.FC = () => {
   const getInitialTab = () => {
     const pathSegments = location.pathname.split('/');
     const lastSegment = pathSegments[pathSegments.length - 1];
-    const validTabs = ['dashboard', 'setup', 'appointments', 'reschedule-requests', 'staff', 'services', 'reports', 'billing', 'profile', 'settings', 'customers', 'referrals'];
+    const validTabs = ['dashboard', 'setup', 'appointments', 'reschedule-requests', 'pos', 'staff', 'services', 'reports', 'billing', 'profile', 'settings', 'customers', 'referrals'];
     if (validTabs.includes(lastSegment)) return lastSegment;
     return 'dashboard';
   };
 
-  const [activeTab, setActiveTabState] = useState<'dashboard' | 'setup' | 'appointments' | 'reschedule-requests' | 'staff' | 'services' | 'reports' | 'billing' | 'profile' | 'settings' | 'customers' | 'referrals'>(getInitialTab() as any);
+  const [activeTab, setActiveTabState] = useState<'dashboard' | 'setup' | 'appointments' | 'reschedule-requests' | 'pos' | 'staff' | 'services' | 'reports' | 'billing' | 'profile' | 'settings' | 'customers' | 'referrals'>(getInitialTab() as any);
 
   const setActiveTab = (tab: any) => {
     setActiveTabState(tab);
@@ -755,6 +756,12 @@ const AdminPage: React.FC = () => {
             </button>
           )}
           <button
+            onClick={() => setActiveTab('pos')}
+            className={`${activeTab === 'pos' ? 'border-accent text-accent dark:border-blue-400 dark:text-blue-400 border-b-2' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-slate-500 border-b-2'} whitespace-nowrap py-2 px-1 font-medium text-sm transition-colors duration-300`}
+          >
+            POS &amp; Envanter
+          </button>
+          <button
             onClick={() => setActiveTab('services')}
             className={`${activeTab === 'services' ? 'border-accent text-accent dark:border-blue-400 dark:text-blue-400 border-b-2' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-slate-500 border-b-2'} whitespace-nowrap py-2 px-1 font-medium text-sm transition-colors duration-300`}
           >
@@ -994,6 +1001,18 @@ const AdminPage: React.FC = () => {
           userRole={currentUser?.role || 'tenant_owner'}
           onAppointmentUpdated={() => setAppointmentRetryNonce(n => n + 1)}
         />
+      )}
+
+      {activeTab === 'pos' && (
+        tabAvailability['pos']?.isAccessible === false
+          ? renderLockedFeature(tabAvailability['pos']!.lockReason!, tabAvailability['pos']!.recommendedAction)
+          : <PosInventoryWorkspacePanel
+              branchName={
+                (selectedBranchFilter !== 'all'
+                  ? branches.find(b => b.id === selectedBranchFilter)?.name
+                  : branches.find(b => b.isPrimary)?.name) || branches[0]?.name || 'Merkez Şube'
+              }
+            />
       )}
 
       {activeTab === 'appointments' && (
@@ -1556,7 +1575,7 @@ const AdminPage: React.FC = () => {
                <span className="text-[10px] font-medium leading-none truncate w-full text-center px-1 text-ellipsis overflow-hidden">{t.admin.tab_services}</span>
             </button>
             <div className="relative flex-1 h-full flex justify-center dropdown-container">
-                <button className={`flex flex-col items-center justify-center w-full h-full ${(['staff', 'reports', 'billing', 'profile', 'referrals', 'settings'].includes(activeTab)) ? 'text-accent dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`} onClick={() => setIsMobileMoreMenuOpen(!isMobileMoreMenuOpen)}>
+                <button className={`flex flex-col items-center justify-center w-full h-full ${(['pos', 'staff', 'reports', 'billing', 'profile', 'referrals', 'settings'].includes(activeTab)) ? 'text-accent dark:text-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`} onClick={() => setIsMobileMoreMenuOpen(!isMobileMoreMenuOpen)}>
                    <svg className="w-6 h-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16"/></svg>
                    <span className="text-[10px] font-medium leading-none truncate w-full text-center px-1 text-ellipsis overflow-hidden">Di�xer</span>
                 </button>
@@ -1570,6 +1589,9 @@ const AdminPage: React.FC = () => {
         {isMobileMoreMenuOpen && (
           <div className="absolute bottom-16 right-2 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-gray-100 dark:border-slate-700 overflow-hidden transform transition-all z-50">
               <div className="py-1 flex flex-col items-start w-full" onClick={() => setIsMobileMoreMenuOpen(false)}>
+                  <button onClick={() => setActiveTab('pos')} className={`w-full text-left px-4 py-3 text-sm flex items-center gap-2 ${activeTab === 'pos' ? 'bg-blue-50 dark:bg-slate-700 text-accent font-semibold' : 'text-gray-700 dark:text-gray-300'}`}>
+                     POS &amp; Envanter
+                  </button>
                   <button onClick={() => setActiveTab('staff')} className={`w-full text-left px-4 py-3 text-sm flex items-center gap-2 ${activeTab === 'staff' ? 'bg-blue-50 dark:bg-slate-700 text-accent font-semibold' : 'text-gray-700 dark:text-gray-300'}`}>
                      {t.admin.tab_staff}
                   </button>

@@ -79,6 +79,10 @@ All migrations in `supabase/migrations/` must be applied in the exact alphabetic
 69. **`20260913_phase3_reporting_analytics_foundation.sql`** — V2 Faz D1 (from `72911e4:20260922`): Server-authoritative tenant analytics RPCs (`get_tenant_booking_analytics`, `get_tenant_staff_performance_analytics`, `get_tenant_service_performance_analytics`, `get_tenant_branch_comparison_analytics`, `get_tenant_customer_retention_analytics`) strictly classifying `ESTIMATED_REVENUE` and `NOT_AVAILABLE_IN_CURRENT_SOURCE_TRUTH`.
 70. **`20260914_phase3_custom_domain_verification_foundation.sql`** — V2 Faz D1 (from `72911e4:20260923`): `custom_domains` table, legacy domain reconciliation (`LEGACY_UNVERIFIED`), hostname normalization, `request_custom_domain`, `get_tenant_custom_domains`, `recheck_custom_domain`, `remove_custom_domain`, and `resolve_tenant_by_custom_domain` (`EXTERNAL_HOLD`: `DOMAIN_PROVIDER_READY_NOT_CONNECTED` unless `REAL_PROVIDER_VERIFIED`).
 71. **`20260915_phase5_scheduling_buffer_parity_hardening.sql`** — V2 Faz D1 (from `72911e4:20260929`): Restores EV055-R3 asymmetric buffer collision logic for existing appointments in `evaluate_booking_slot` while preserving Phase 3 resource/capacity evaluation.
+72. **`20260916_phase6_product_inventory_foundation.sql`** — V2 Faz D2 (from `72911e4:20260930`): Product catalog (`products`), branch inventory balances (`inventory_balances`), immutable append-only stock ledger (`inventory_movements`), advisory-locked stock RPCs (`pos_create_product`, `pos_record_stock_receipt`, `pos_decrement_stock_for_sale`, `pos_adjust_stock`, `pos_return_restock`, `pos_get_branch_inventory`) with active `staff` + `users_profile` verification and idempotency conflict guards.
+73. **`20260917_phase6_node2_suppliers_po_receiving.sql`** — V2 Faz D2 (from `72911e4:20261001`): Suppliers (`suppliers`), purchase orders (`purchase_orders`), line items (`purchase_order_items`), and receiving audit/idempotency events (`purchase_order_receiving_events`), with `pos_create_supplier`, `pos_create_purchase_order`, `pos_approve_purchase_order`, `pos_cancel_purchase_order`, `pos_receive_purchase_order_items`, and `pos_get_purchase_order`.
+74. **`20260918_phase6_node3_pos_mixed_cart_checkout.sql`** — V2 Faz D2 (from `72911e4:20261002`): POS mixed cart orders (`pos_orders`), line items (`pos_order_items`), and multi-tender payments (`pos_order_payments`), plus `pos_create_order`, `pos_add_cart_item` (using canonical `services.price * 100` and `to_regclass('public.service_package_definitions')` guard), `pos_checkout_order`, and `pos_get_order`.
+75. **`20260919_phase6_node4_staff_commissions_tips.sql`** — V2 Faz D2 (from `72911e4:20261003`): Staff commission rules (`staff_commission_rules`), tip allocations (`pos_tip_allocations`), immutable internal earnings ledger (`staff_earnings_ledger`), `pos_set_staff_commission_rule` (`tenant_owner` only), `pos_set_tip_allocation`, hardened `pos_add_cart_item`, earnings-materializing `pos_checkout_order` (excluding tax/tip), and `pos_get_staff_earnings` (own staff or same-tenant `tenant_owner` only; no `super_admin` bypass).
 
 ---
 
@@ -163,6 +167,19 @@ All migrations in `supabase/migrations/` must be applied in the exact alphabetic
 | `resource_blocks` | `20260912_phase3_resource_capacity_foundation.sql` | — | `20260912_phase3_resource_capacity_foundation.sql` |
 | `appointment_resources` | `20260912_phase3_resource_capacity_foundation.sql` | — | `20260912_phase3_resource_capacity_foundation.sql` |
 | `custom_domains` | `20260914_phase3_custom_domain_verification_foundation.sql` | — | `20260914_phase3_custom_domain_verification_foundation.sql` |
+| `products` | `20260916_phase6_product_inventory_foundation.sql` | — | `20260916_phase6_product_inventory_foundation.sql` |
+| `inventory_balances` | `20260916_phase6_product_inventory_foundation.sql` | — | `20260916_phase6_product_inventory_foundation.sql` |
+| `inventory_movements` | `20260916_phase6_product_inventory_foundation.sql` | — | `20260916_phase6_product_inventory_foundation.sql` |
+| `suppliers` | `20260917_phase6_node2_suppliers_po_receiving.sql` | — | `20260917_phase6_node2_suppliers_po_receiving.sql` |
+| `purchase_orders` | `20260917_phase6_node2_suppliers_po_receiving.sql` | — | `20260917_phase6_node2_suppliers_po_receiving.sql` |
+| `purchase_order_items` | `20260917_phase6_node2_suppliers_po_receiving.sql` | — | `20260917_phase6_node2_suppliers_po_receiving.sql` |
+| `purchase_order_receiving_events` | `20260917_phase6_node2_suppliers_po_receiving.sql` | — | `20260917_phase6_node2_suppliers_po_receiving.sql` |
+| `pos_orders` | `20260918_phase6_node3_pos_mixed_cart_checkout.sql` | — | `20260918_phase6_node3_pos_mixed_cart_checkout.sql` |
+| `pos_order_items` | `20260918_phase6_node3_pos_mixed_cart_checkout.sql` | — | `20260918_phase6_node3_pos_mixed_cart_checkout.sql` |
+| `pos_order_payments` | `20260918_phase6_node3_pos_mixed_cart_checkout.sql` | — | `20260918_phase6_node3_pos_mixed_cart_checkout.sql` |
+| `staff_commission_rules` | `20260919_phase6_node4_staff_commissions_tips.sql` | — | `20260919_phase6_node4_staff_commissions_tips.sql` |
+| `pos_tip_allocations` | `20260919_phase6_node4_staff_commissions_tips.sql` | — | `20260919_phase6_node4_staff_commissions_tips.sql` |
+| `staff_earnings_ledger` | `20260919_phase6_node4_staff_commissions_tips.sql` | — | `20260919_phase6_node4_staff_commissions_tips.sql` |
 
 ---
 
@@ -253,4 +270,16 @@ After the migrations have successfully been applied:
 * **`EXTERNAL_HOLD` Classification**:
   * External live calendar sync (Google Calendar OAuth, Apple CalDAV, Microsoft Graph) is classified `EXTERNAL_HOLD` (`EXTERNAL_CALENDAR_CREDENTIALS_REQUIRED`); only deterministic local/test adapters (`DeterministicTestCalendarProvider`, `google_intent`/`ics` client intent) are active.
   * Live custom domain DNS/SSL verification is classified `EXTERNAL_HOLD` (`DOMAIN_PROVIDER_READY_NOT_CONNECTED`); `resolve_tenant_by_custom_domain` strictly requires `REAL_PROVIDER_VERIFIED` and never promotes simulated or legacy unverified domains to live routing.
+
+---
+
+## 11. V2 Faz D2 — POS, Product Inventory, Suppliers/PO & Staff Commissions-Tips Port (ADIM-034)
+
+* **Conflict-Free Sequential Timestamps (`20260916..20260919`)**: Ported from historical V2 branch (`72911e4`: `20260930`..`20261003`) without modifying `20260901..20260915`.
+* **Schema & Dependency Alignment**:
+  * `pos_order_items.package_id` is provisioned as `UUID NULL` without an immediate FK to `service_package_definitions`, and `pos_add_cart_item` guards `p_item_type = 'package'` via `to_regclass('public.service_package_definitions')` until Faz D3 (`ADIM-035`) creates the packages catalog.
+  * `pos_add_cart_item` resolves service prices from canonical `public.services.price` (integer major currency units) via `COALESCE(v_service.price, 0) * 100` rather than non-existent `services.price_minor_units`.
+* **Trust Boundary & `EXTERNAL_HOLD` Classification**:
+  * All 13 Phase 6 tables revoke direct `INSERT/UPDATE/DELETE` from `PUBLIC`, `anon`, and `authenticated`, routing mutations through `SECURITY DEFINER` RPCs enforcing active `staff` + `users_profile` (`role IN ('tenant_owner', 'staff')`) and `tenant_owner`-only commission rule authority.
+  * Live physical POS terminal PSP capture (`card_terminal_adapter`), deferred customer wallet debit (`customer_wallet` until Faz D3), and automated bank/payroll payouts (`staff_earnings_ledger` is internal accounting only) are classified `EXTERNAL_HOLD`.
 
