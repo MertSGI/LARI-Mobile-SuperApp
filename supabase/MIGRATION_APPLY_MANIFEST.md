@@ -68,6 +68,10 @@ All migrations in `supabase/migrations/` must be applied in the exact alphabetic
 58. **`20260902_subscription_sync_transaction.sql`** — Atomic all-in-one transaction RPC for subscription sync operations, fail-closed enforcement across subscriptions, tenants, and audit_logs.
 59. **`20260903_public_booking_ratelimit_spam_and_otp_contract.sql`** — Public booking server-side rate-limiting, burst quotas, brute-force lockout, secure OTP single-use token contract, and synthetic-only outbox queueing.
 60. **`20260904_self_service_token_security_and_ratelimit.sql`** — Stage V1A-SEC-01: Self-Service Token Brute-Force Rate-Limiting, 15-Minute Lockout, SHA-256 Token Matching, Zero-PII Leak, and Tenant Isolation Contract.
+61. **`20260905_p2a_atomic_tenant_provisioning_rpc.sql`** — Parallel Lane P2A (P2A.0-R2): Server-authoritative atomic and idempotent `provision_tenant_for_authenticated_owner` RPC, `tenant_provisioning_idempotency` table, dual advisory locks, `pending_onboarding` baseline subscription, and forward-hardened `tenant_business_profiles` public visibility policy.
+62. **`20260906_p2a_publish_commercial_contract_alignment.sql`** — Parallel Lane P2A (P2A.0-R2): Forward-hardened `approve_and_publish_tenant(uuid)` preserving canonical selected `plan_id` / `plan_version_id` and transitioning `pending_onboarding` -> `manual_active` on Super Admin approval.
+63. **`20260907_p2a_owner_onboarding_contracts.sql`** — Parallel Lane P2A (P2A.2-R2): Server-authoritative owner onboarding RPCs (`save_owner_business_profile`, `create_owner_first_branch`, `create_owner_first_service`, `create_owner_first_staff`, `get_owner_onboarding_state`, `evaluate_owner_onboarding_readiness`) and fail-closed `pending_onboarding` commercial eligibility/quota alignment (`assert_tenant_commercial_action_allowed`, `resolve_commercial_quota`).
+64. **`20260908_authenticated_owner_branch_mutations_rpc.sql`** — Parallel Lane P2A / Slice 1-R2: Server-authoritative authenticated owner branch mutation RPCs (`create_tenant_branch`, `update_tenant_branch`, `set_primary_tenant_branch`, `deactivate_tenant_branch`), deterministic `generate_branch_slug` helper, and SELECT-only `branches` RLS policies.
 
 ---
 
@@ -138,6 +142,7 @@ All migrations in `supabase/migrations/` must be applied in the exact alphabetic
 | `public_booking_rate_limit_events` | `20260903_public_booking_ratelimit_spam_and_otp_contract.sql` | — | `20260903_public_booking_ratelimit_spam_and_otp_contract.sql` |
 | `public_booking_otp_challenges` | `20260903_public_booking_ratelimit_spam_and_otp_contract.sql` | — | `20260903_public_booking_ratelimit_spam_and_otp_contract.sql` |
 | `self_service_token_rate_limits` | `20260904_self_service_token_security_and_ratelimit.sql` | — | `20260904_self_service_token_security_and_ratelimit.sql` |
+| `tenant_provisioning_idempotency` | `20260905_p2a_atomic_tenant_provisioning_rpc.sql` | — | `20260905_p2a_atomic_tenant_provisioning_rpc.sql` |
 
 ---
 
@@ -204,4 +209,18 @@ After the migrations have successfully been applied:
   * `node scripts/test-appointments-direct-write-hardening.mjs`
   * `node scripts/verify-lari-recovery-hard-gate.mjs`
   * `node scripts/verify-disposable-pg17-pristine-restore.mjs`
+
+---
+
+## 9. V2 Faz C2 — P2A Atomic Provisioning/Onboarding Migration Port (ADIM-032)
+
+* **Conflict-Free Sequential Timestamps (`20260905..20260908`)**: Historical V2 branch (`72911e4`) used `20260901..20260904` for P2A provisioning, publish alignment, owner onboarding, and branch mutation RPCs. Because `HEAD` already uses `20260901..20260904` for Pilot 3/4/5 security hardening migrations, the P2A SQL migrations are ported cleanly as `20260905..20260908` without modifying `20260901..20260904`.
+* **Disposable Test & Fixture Suites**:
+  * `supabase/tests/p2a_tenant_provisioning_static_test.sql`
+  * `supabase/tests/p2a_tenant_provisioning_integration_tests.sql`
+  * `supabase/tests/p2a_onboarding_integration_tests.sql`
+  * `supabase/tests/package_branch_server_authority_tests.sql`
+  * `supabase/tests/fixtures/p2a_historical_replay_bridge_before_migration_38.sql`
+  * `supabase/tests/fixtures/p2a_managed_runtime_bootstrap.sql`
+* **Governance & Safety Preserved**: `NO_REMOTE_DB_WRITE = TRUE`, `PRODUCTION = NO_GO`, `PAID_FALLBACK = DISABLED`, `AUTO_MERGE = DISABLED`, Issue #10 remains `OPEN_PRODUCTION_BLOCKER`.
 

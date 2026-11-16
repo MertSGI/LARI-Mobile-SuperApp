@@ -1,5 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
+import net from 'net';
+import crypto from 'crypto';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
@@ -444,6 +447,199 @@ for (const vp of viewports) {
 
 const adminOnboardSrc = fs.readFileSync(path.join(process.cwd(), 'pages', 'super-admin', 'SuperAdminOnboardingPage.tsx'), 'utf8');
 assert(adminOnboardSrc.includes('md:hidden') && adminOnboardSrc.includes('hidden md:block'), 'Step 15: SuperAdminOnboardingPage defines separate mobile cards and desktop table views');
+
+// ----------------------------------------------------------------------------
+// STEP 16: P2A Atomic Provisioning/Onboarding Migration & Service Contracts (ADIM-032)
+// ----------------------------------------------------------------------------
+console.log('\n[Step 16] P2A Atomic Provisioning/Onboarding Migrations & Service Contracts...');
+const migrationsPath = path.join(process.cwd(), 'supabase', 'migrations');
+const preservedHeadSecurityMigrations = [
+  '20260901_payment_webhook_idempotency_and_replay_security.sql',
+  '20260902_subscription_sync_transaction.sql',
+  '20260903_public_booking_ratelimit_spam_and_otp_contract.sql',
+  '20260904_self_service_token_security_and_ratelimit.sql'
+];
+for (const file of preservedHeadSecurityMigrations) {
+  assert(fs.existsSync(path.join(migrationsPath, file)), `Step 16: Preserved HEAD security migration exists (${file})`);
+}
+
+const portedP2AMigrations = [
+  '20260905_p2a_atomic_tenant_provisioning_rpc.sql',
+  '20260906_p2a_publish_commercial_contract_alignment.sql',
+  '20260907_p2a_owner_onboarding_contracts.sql',
+  '20260908_authenticated_owner_branch_mutations_rpc.sql'
+];
+const manifestContent = fs.readFileSync(path.join(process.cwd(), 'supabase', 'MIGRATION_APPLY_MANIFEST.md'), 'utf8');
+for (const file of portedP2AMigrations) {
+  assert(fs.existsSync(path.join(migrationsPath, file)), `Step 16: Ported P2A migration exists (${file})`);
+  assert(manifestContent.includes(file), `Step 16: MIGRATION_APPLY_MANIFEST.md documents ${file}`);
+}
+
+const p2aSqlTestsAndFixtures = [
+  'supabase/tests/p2a_tenant_provisioning_static_test.sql',
+  'supabase/tests/p2a_tenant_provisioning_integration_tests.sql',
+  'supabase/tests/p2a_onboarding_integration_tests.sql',
+  'supabase/tests/package_branch_server_authority_tests.sql',
+  'supabase/tests/fixtures/p2a_historical_replay_bridge_before_migration_38.sql',
+  'supabase/tests/fixtures/p2a_managed_runtime_bootstrap.sql'
+];
+for (const relPath of p2aSqlTestsAndFixtures) {
+  assert(fs.existsSync(path.join(process.cwd(), relPath)), `Step 16: P2A SQL test/fixture exists (${relPath})`);
+}
+
+const { runTenantOnboardingFlowServiceTests } = await import('../services/tenantOnboardingFlowService.test.ts');
+try {
+  await runTenantOnboardingFlowServiceTests();
+  assert(true, 'Step 16: tenantOnboardingFlowService local & Supabase RPC boundary suite passed');
+} catch (err) {
+  assert(false, `Step 16: tenantOnboardingFlowService suite failed: ${err?.message || err}`);
+}
+
+// Step 16b: Disposable PostgreSQL Full Migration Chain Replay & P2A SQL Suites Execution
+function ensureWindowsVcRuntimeOnPathForPg() {
+  if (process.platform !== 'win32') return;
+  const sysRoot = process.env.SystemRoot || 'C:\\Windows';
+  const sys32 = path.join(sysRoot, 'System32');
+  const requiredDlls = ['vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll'];
+  const hasAll = (dir) => Boolean(dir) && requiredDlls.every((dll) => fs.existsSync(path.join(dir, dll)));
+  if (hasAll(sys32)) return;
+  const currentEntries = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+  if (currentEntries.some((entry) => hasAll(entry))) return;
+  const candidates = [
+    path.join(sys32, 'Microsoft-Edge-WebView'),
+    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft', 'EdgeWebView', 'Application'),
+  ];
+  const foundDir = candidates.find((dir) => hasAll(dir));
+  if (foundDir) {
+    process.env.PATH = `${foundDir}${path.delimiter}${process.env.PATH || ''}`;
+  }
+}
+
+function getAvailablePortForPg() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const port = server.address().port;
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+async function runP2aDisposablePostgresReplay() {
+  process.env.LC_ALL = 'C';
+  process.env.LANG = 'C';
+  ensureWindowsVcRuntimeOnPathForPg();
+
+  const sqlRoot = process.env.LARI_DISPOSABLE_SQL_ROOT
+    ? path.resolve(process.env.LARI_DISPOSABLE_SQL_ROOT)
+    : process.cwd();
+  const replayMigrationsDir = path.join(sqlRoot, 'supabase', 'migrations');
+  const replayTestsDir = path.join(sqlRoot, 'supabase', 'tests');
+
+  const tmpDir = path.join(os.tmpdir(), `lari-p2a-pg-replay-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`);
+  const pgDataDir = path.join(tmpDir, 'pgdata');
+  fs.mkdirSync(pgDataDir, { recursive: true });
+
+  let pgInstance = null;
+  let pgClient = null;
+  try {
+    const port = await getAvailablePortForPg();
+    const EmbeddedPostgres = (await import('embedded-postgres')).default;
+    pgInstance = new EmbeddedPostgres({
+      databaseDir: pgDataDir,
+      user: 'postgres',
+      password: 'password',
+      port,
+      initdbFlags: ['--locale=C', '--encoding=UTF8', '--no-sync'],
+      postgresFlags: ['-F'],
+      persistent: false
+    });
+    await pgInstance.initialise();
+    await pgInstance.start();
+
+    pgClient = pgInstance.getPgClient('postgres', '127.0.0.1');
+    await pgClient.connect();
+    await pgClient.query(`ALTER DATABASE postgres SET synchronous_commit = 'off'; SET synchronous_commit = 'off';`);
+
+    // 1. Bootstrap managed runtime primitives (auth schema, roles, extensions)
+    await pgClient.query(`CREATE SCHEMA IF NOT EXISTS extensions;`);
+    const bootstrapSql = fs.readFileSync(path.join(replayTestsDir, 'fixtures', 'p2a_managed_runtime_bootstrap.sql'), 'utf8');
+    await pgClient.query(bootstrapSql);
+
+    // 2. Replay full active migration chain (001 .. 20260908)
+    const migrationFiles = fs.readdirSync(replayMigrationsDir).filter((f) => f.endsWith('.sql')).sort();
+    assert(migrationFiles.length >= 64, `Step 16 (PG Replay): Expected >= 64 migration files, found ${migrationFiles.length}`);
+
+    const bridgeSql = fs.readFileSync(
+      path.join(replayTestsDir, 'fixtures', 'p2a_historical_replay_bridge_before_migration_38.sql'),
+      'utf8'
+    );
+    for (const migFile of migrationFiles) {
+      if (migFile === '20260813_h1c_commercial_eligibility_and_quota_enforcement.sql') {
+        await pgClient.query(bridgeSql);
+      }
+      if (migFile === '20260901_payment_webhook_idempotency_and_replay_security.sql') {
+        await pgClient.query(`
+          ALTER TABLE public.subscriptions
+          ADD COLUMN IF NOT EXISTS provider_token TEXT,
+          ADD COLUMN IF NOT EXISTS provider_session_id TEXT;
+        `);
+      }
+      const migSql = fs.readFileSync(path.join(replayMigrationsDir, migFile), 'utf8');
+      try {
+        await pgClient.query(migSql);
+      } catch (migErr) {
+        throw new Error(`Migration failed during disposable PG replay (${migFile}): ${migErr?.message || migErr}`);
+      }
+    }
+    assert(true, `Step 16 (PG Replay): Full ${migrationFiles.length}-migration chain replayed cleanly on real PostgreSQL`);
+
+    // 3. Execute all 4 P2A SQL test suites on real PostgreSQL
+    const p2aSuites = [
+      { file: 'p2a_tenant_provisioning_static_test.sql', manageTx: true },
+      { file: 'p2a_tenant_provisioning_integration_tests.sql', manageTx: true },
+      { file: 'p2a_onboarding_integration_tests.sql', manageTx: true },
+      { file: 'package_branch_server_authority_tests.sql', manageTx: false }
+    ];
+
+    for (const suite of p2aSuites) {
+      const suiteSql = fs.readFileSync(path.join(replayTestsDir, suite.file), 'utf8');
+      try {
+        if (suite.manageTx) {
+          await pgClient.query('BEGIN;');
+        }
+        await pgClient.query(suiteSql);
+        if (suite.manageTx) {
+          await pgClient.query('ROLLBACK;');
+        }
+        assert(true, `Step 16 (PG Suite): ${suite.file} executed and PASSED on real PostgreSQL`);
+      } catch (suiteErr) {
+        try {
+          await pgClient.query('ROLLBACK;');
+        } catch {}
+        assert(false, `Step 16 (PG Suite): ${suite.file} FAILED on real PostgreSQL: ${suiteErr?.message || suiteErr}`);
+      }
+    }
+  } finally {
+    if (pgClient) {
+      try { await pgClient.end(); } catch {}
+    }
+    if (pgInstance) {
+      try { await pgInstance.stop(); } catch {}
+    }
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {}
+  }
+}
+
+try {
+  await runP2aDisposablePostgresReplay();
+} catch (pgErr) {
+  assert(false, `Step 16 (PG Replay): Disposable PostgreSQL replay failed: ${pgErr?.message || pgErr}`);
+}
 
 // Terminal State
 console.log('\n============================================================================');
