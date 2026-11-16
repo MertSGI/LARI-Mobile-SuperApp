@@ -106,7 +106,14 @@ const V2_MIGRATIONS = [
   '20260905_p2a_atomic_tenant_provisioning_rpc.sql',
   '20260906_p2a_publish_commercial_contract_alignment.sql',
   '20260907_p2a_owner_onboarding_contracts.sql',
-  '20260908_authenticated_owner_branch_mutations_rpc.sql'
+  '20260908_authenticated_owner_branch_mutations_rpc.sql',
+  '20260909_phase2_staff_scheduling_foundation.sql',
+  '20260910_phase3_waitlist_foundation.sql',
+  '20260911_phase3_background_job_calendar_foundation.sql',
+  '20260912_phase3_resource_capacity_foundation.sql',
+  '20260913_phase3_reporting_analytics_foundation.sql',
+  '20260914_phase3_custom_domain_verification_foundation.sql',
+  '20260915_phase5_scheduling_buffer_parity_hardening.sql'
 ];
 
 const ALL_EXPECTED_MIGRATIONS = [...CANONICAL_MIGRATIONS, ...CANDIDATE_MIGRATIONS, ...V2_MIGRATIONS].sort();

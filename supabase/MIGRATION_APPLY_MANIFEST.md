@@ -72,6 +72,13 @@ All migrations in `supabase/migrations/` must be applied in the exact alphabetic
 62. **`20260906_p2a_publish_commercial_contract_alignment.sql`** — Parallel Lane P2A (P2A.0-R2): Forward-hardened `approve_and_publish_tenant(uuid)` preserving canonical selected `plan_id` / `plan_version_id` and transitioning `pending_onboarding` -> `manual_active` on Super Admin approval.
 63. **`20260907_p2a_owner_onboarding_contracts.sql`** — Parallel Lane P2A (P2A.2-R2): Server-authoritative owner onboarding RPCs (`save_owner_business_profile`, `create_owner_first_branch`, `create_owner_first_service`, `create_owner_first_staff`, `get_owner_onboarding_state`, `evaluate_owner_onboarding_readiness`) and fail-closed `pending_onboarding` commercial eligibility/quota alignment (`assert_tenant_commercial_action_allowed`, `resolve_commercial_quota`).
 64. **`20260908_authenticated_owner_branch_mutations_rpc.sql`** — Parallel Lane P2A / Slice 1-R2: Server-authoritative authenticated owner branch mutation RPCs (`create_tenant_branch`, `update_tenant_branch`, `set_primary_tenant_branch`, `deactivate_tenant_branch`), deterministic `generate_branch_slug` helper, and SELECT-only `branches` RLS policies.
+65. **`20260909_phase2_staff_scheduling_foundation.sql`** — V2 Faz D1 (from `72911e4:20260916`): Staff time-off, breaks, asymmetric booking buffer rules, branch-aware business holidays, `evaluate_schedule_constraints`, `evaluate_booking_slot` constraint integration, and `check_staff_slot_availability` wrapper.
+66. **`20260910_phase3_waitlist_foundation.sql`** — V2 Faz D1 (from `72911e4:20260917`): Waitlist lifecycle (`booking_waitlist`), idempotent anti-abuse rate limit primitive (`ht_rate_limit_buckets`, `ht_check_rate_limit`), sanitized listing (`get_sanitized_waitlist_entries`), state machine trigger, `join_booking_waitlist`, `offer_waitlist_slot` (256-bit SHA-256 claim token), `claim_waitlist_slot`, and `cancel_waitlist_slot`.
+67. **`20260911_phase3_background_job_calendar_foundation.sql`** — V2 Faz D1 (from `72911e4:20260920`): Provider-neutral `calendar_sync_queue` and `background_job_runs` worker ledger (`enqueue_calendar_sync`, `claim_calendar_sync_batch`, `enqueue_background_job`, `claim_background_job_batch`, `complete_background_job`, `fail_background_job`, `cancel_background_job`) with `FOR UPDATE SKIP LOCKED` and zero live external calendar OAuth.
+68. **`20260912_phase3_resource_capacity_foundation.sql`** — V2 Faz D1 (from `72911e4:20260920` reconciled with `20260903`): `resources`, `service_resource_requirements`, `resource_blocks`, `appointment_resources`, deterministic advisory locking (`evaluate_and_lock_resource_plan`), `evaluate_booking_slot` resource evaluation, canonical 15-arg `create_public_booking` preserving Pilot 4 OTP/rate-limit security + atomic resource allocation before quota, and `admin_*_resource*` RPCs.
+69. **`20260913_phase3_reporting_analytics_foundation.sql`** — V2 Faz D1 (from `72911e4:20260922`): Server-authoritative tenant analytics RPCs (`get_tenant_booking_analytics`, `get_tenant_staff_performance_analytics`, `get_tenant_service_performance_analytics`, `get_tenant_branch_comparison_analytics`, `get_tenant_customer_retention_analytics`) strictly classifying `ESTIMATED_REVENUE` and `NOT_AVAILABLE_IN_CURRENT_SOURCE_TRUTH`.
+70. **`20260914_phase3_custom_domain_verification_foundation.sql`** — V2 Faz D1 (from `72911e4:20260923`): `custom_domains` table, legacy domain reconciliation (`LEGACY_UNVERIFIED`), hostname normalization, `request_custom_domain`, `get_tenant_custom_domains`, `recheck_custom_domain`, `remove_custom_domain`, and `resolve_tenant_by_custom_domain` (`EXTERNAL_HOLD`: `DOMAIN_PROVIDER_READY_NOT_CONNECTED` unless `REAL_PROVIDER_VERIFIED`).
+71. **`20260915_phase5_scheduling_buffer_parity_hardening.sql`** — V2 Faz D1 (from `72911e4:20260929`): Restores EV055-R3 asymmetric buffer collision logic for existing appointments in `evaluate_booking_slot` while preserving Phase 3 resource/capacity evaluation.
 
 ---
 
@@ -143,6 +150,19 @@ All migrations in `supabase/migrations/` must be applied in the exact alphabetic
 | `public_booking_otp_challenges` | `20260903_public_booking_ratelimit_spam_and_otp_contract.sql` | — | `20260903_public_booking_ratelimit_spam_and_otp_contract.sql` |
 | `self_service_token_rate_limits` | `20260904_self_service_token_security_and_ratelimit.sql` | — | `20260904_self_service_token_security_and_ratelimit.sql` |
 | `tenant_provisioning_idempotency` | `20260905_p2a_atomic_tenant_provisioning_rpc.sql` | — | `20260905_p2a_atomic_tenant_provisioning_rpc.sql` |
+| `staff_time_off` | `20260909_phase2_staff_scheduling_foundation.sql` | — | `20260909_phase2_staff_scheduling_foundation.sql` |
+| `staff_breaks` | `20260909_phase2_staff_scheduling_foundation.sql` | — | `20260909_phase2_staff_scheduling_foundation.sql` |
+| `booking_buffer_rules` | `20260909_phase2_staff_scheduling_foundation.sql` | — | `20260909_phase2_staff_scheduling_foundation.sql` |
+| `business_holidays` | `20260909_phase2_staff_scheduling_foundation.sql` | — | `20260909_phase2_staff_scheduling_foundation.sql` |
+| `ht_rate_limit_buckets` | `20260910_phase3_waitlist_foundation.sql` | — | `20260910_phase3_waitlist_foundation.sql` |
+| `booking_waitlist` | `20260910_phase3_waitlist_foundation.sql` | — | `20260910_phase3_waitlist_foundation.sql` |
+| `calendar_sync_queue` | `20260911_phase3_background_job_calendar_foundation.sql` | — | `20260911_phase3_background_job_calendar_foundation.sql` |
+| `background_job_runs` | `20260911_phase3_background_job_calendar_foundation.sql` | — | `20260911_phase3_background_job_calendar_foundation.sql` |
+| `resources` | `20260912_phase3_resource_capacity_foundation.sql` | — | `20260912_phase3_resource_capacity_foundation.sql` |
+| `service_resource_requirements` | `20260912_phase3_resource_capacity_foundation.sql` | — | `20260912_phase3_resource_capacity_foundation.sql` |
+| `resource_blocks` | `20260912_phase3_resource_capacity_foundation.sql` | — | `20260912_phase3_resource_capacity_foundation.sql` |
+| `appointment_resources` | `20260912_phase3_resource_capacity_foundation.sql` | — | `20260912_phase3_resource_capacity_foundation.sql` |
+| `custom_domains` | `20260914_phase3_custom_domain_verification_foundation.sql` | — | `20260914_phase3_custom_domain_verification_foundation.sql` |
 
 ---
 
@@ -223,4 +243,14 @@ After the migrations have successfully been applied:
   * `supabase/tests/fixtures/p2a_historical_replay_bridge_before_migration_38.sql`
   * `supabase/tests/fixtures/p2a_managed_runtime_bootstrap.sql`
 * **Governance & Safety Preserved**: `NO_REMOTE_DB_WRITE = TRUE`, `PRODUCTION = NO_GO`, `PAID_FALLBACK = DISABLED`, `AUTO_MERGE = DISABLED`, Issue #10 remains `OPEN_PRODUCTION_BLOCKER`.
+
+---
+
+## 10. V2 Faz D1 — Scheduling, Waitlist, Resource Capacity, Analytics & Custom Domain Port (ADIM-033)
+
+* **Conflict-Free Sequential Timestamps (`20260909..20260915`)**: Ported from historical V2 branch (`72911e4`: `20260916`, `20260917`, `20260920`, `20260922`, `20260923`, `20260929`) without touching `20260901..20260904` or `20260905..20260908`.
+* **Security Reconciliation (`20260912`)**: Preserves `HEAD`'s canonical 15-parameter `create_public_booking` signature from `20260903` (single overload in `pg_proc`, E.164 phone normalization, server-side rate-limiting, idempotency conflict fingerprints, and single-use OTP verification) while enforcing deterministic resource locking and atomic `appointment_resources` allocation prior to commercial quota consumption.
+* **`EXTERNAL_HOLD` Classification**:
+  * External live calendar sync (Google Calendar OAuth, Apple CalDAV, Microsoft Graph) is classified `EXTERNAL_HOLD` (`EXTERNAL_CALENDAR_CREDENTIALS_REQUIRED`); only deterministic local/test adapters (`DeterministicTestCalendarProvider`, `google_intent`/`ics` client intent) are active.
+  * Live custom domain DNS/SSL verification is classified `EXTERNAL_HOLD` (`DOMAIN_PROVIDER_READY_NOT_CONNECTED`); `resolve_tenant_by_custom_domain` strictly requires `REAL_PROVIDER_VERIFIED` and never promotes simulated or legacy unverified domains to live routing.
 

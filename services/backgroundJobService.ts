@@ -590,7 +590,13 @@ export const backgroundJobService = {
     return {
       affectedTenantIds,
       affectedRecordCount,
-      summary: `Doğrulama bekleyen ${affectedRecordCount} adet özel alan adının CNAME / SSL yapısı kontrol edildi.`
+      summary: `Doğrulama bekleyen ${affectedRecordCount} adet özel alan adının CNAME / SSL yapısı simülasyon modunda kontrol edildi (Canlı DNS doğrulaması EXTERNAL_HOLD).`,
+      metadata: {
+        verificationMode: 'local_simulation',
+        externalHoldClassification: 'EXTERNAL_HOLD',
+        liveDnsVerificationAllowed: false,
+        providerStatus: 'DOMAIN_PROVIDER_READY_NOT_CONNECTED'
+      }
     };
   },
 
@@ -656,13 +662,37 @@ export const backgroundJobService = {
       enabled: false,
       isCronTriggered: false,
       readyForLiveOps: false,
+      externalHoldCapabilities: [
+        {
+          capabilityId: 'external_calendar_oauth_sync',
+          classification: 'EXTERNAL_HOLD' as const,
+          liveExecutionAllowed: false,
+          reasonCode: 'EXTERNAL_CALENDAR_CREDENTIALS_REQUIRED',
+          description: 'Canlı Google Calendar OAuth / Apple CalDAV çift yönlü senkronizasyon harici kimlik bilgisi ve onay gerektirir.'
+        },
+        {
+          capabilityId: 'live_custom_domain_dns_ssl_verification',
+          classification: 'EXTERNAL_HOLD' as const,
+          liveExecutionAllowed: false,
+          reasonCode: 'DOMAIN_PROVIDER_READY_NOT_CONNECTED',
+          description: 'Canlı DNS TXT/CNAME ve SSL sertifika doğrulaması harici DNS/hosting sağlayıcısı bağlantısı gerektirir.'
+        },
+        {
+          capabilityId: 'live_edge_cron_scheduler',
+          classification: 'EXTERNAL_HOLD' as const,
+          liveExecutionAllowed: false,
+          reasonCode: 'EXTERNAL_CRON_INFRASTRUCTURE_REQUIRED',
+          description: 'Otonom zamanlanmış iş çalıştırma için canlı Edge/Cron tetikleyicisi gereklidir.'
+        }
+      ],
       checklist: [
         { label: 'Background Model ve Servis Altyapısı', completed: true },
         { label: 'Abonelik Deneme Süresi Sonu & İptal Sweepleri', completed: true },
         { label: 'Outbox Yeniden Gönderim ve Hata Retraing Mekanizması', completed: true },
         { label: 'Super Admin Y�netim Konsolu Paneli', completed: true },
-        { label: 'Supabase Edge Functions / Scheduled Cron Entegrasyonu', completed: false, comment: 'Sürekli çalışan bir server cron veya Supabase Scheduled Function tetikleyicisi kurulmalıdır.' },
-        { label: 'Canlı E-Posta / SMS / WhatsApp Sağlayıcı API Key Bağlantısı', completed: false, comment: 'Resend API key, Netgsm şifreleri ve Meta Token bağlantıları girilmelidir.' }
+        { label: 'Supabase Edge Functions / Scheduled Cron Entegrasyonu', completed: false, comment: 'Sürekli çalışan bir server cron veya Supabase Scheduled Function tetikleyicisi kurulmalıdır (EXTERNAL_HOLD).' },
+        { label: 'Canlı E-Posta / SMS / WhatsApp Sağlayıcı API Key Bağlantısı', completed: false, comment: 'Resend API key, Netgsm şifreleri ve Meta Token bağlantıları girilmelidir (EXTERNAL_HOLD).' },
+        { label: 'Harici Takvim OAuth & Canlı Custom Domain DNS/SSL Doğrulaması', completed: false, comment: 'Canlı Google/Apple takvim senkronizasyonu ve DNS/SSL sağlayıcı doğrulaması EXTERNAL_HOLD kapsamındadır.' }
       ]
     };
   }
