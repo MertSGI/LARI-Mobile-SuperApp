@@ -46,6 +46,7 @@ export const MobileCustomerWalletPage: React.FC<
   const {
     themeMode,
     activeBooking,
+    bookingHistory,
     passportEntries,
     loyaltyPoints,
     stampCount,
@@ -67,6 +68,7 @@ export const MobileCustomerWalletPage: React.FC<
   const [activeSubTab, setActiveSubTab] = useState<
     'qr' | 'passport' | 'loyalty' | 'reviews'
   >('qr');
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'upcoming' | 'past'>('all');
   const [qrMode, setQrMode] = useState<'appointment' | 'package'>('appointment');
   const [customerTipRate, setCustomerTipRate] = useState<0 | 5 | 10 | 15>(0);
   const [liveStage, setLiveStage] = useState<1 | 2 | 3 | 4>(2);
@@ -632,6 +634,98 @@ export const MobileCustomerWalletPage: React.FC<
               </div>
             </>
           )}
+
+          {/* ALL APPOINTMENTS & PAST BOOKINGS HISTORY */}
+          <div
+            className={`rounded-3xl p-4 space-y-3 shadow-sm ${cardSurface}`}
+            data-testid="wallet-booking-history-card"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-[#5B5FEF] block">
+                  RANDEVU GEÇMİŞİ
+                </span>
+                <h3 className="text-sm font-black">
+                  Tüm Randevularım ({bookingHistory.length})
+                </h3>
+              </div>
+              <div className="flex items-center gap-1">
+                {(
+                  [
+                    { id: 'all', label: 'Tümü' },
+                    { id: 'upcoming', label: 'Aktif' },
+                    { id: 'past', label: 'Geçmiş' },
+                  ] as const
+                ).map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setHistoryFilter(f.id)}
+                    className={`rounded-lg px-2.5 py-1 text-[11px] font-bold border transition ${
+                      historyFilter === f.id
+                        ? 'bg-[#4F46E5] border-[#4338CA] text-white'
+                        : isDark
+                          ? 'bg-slate-800 border-slate-700 text-slate-300'
+                          : 'bg-[#F8FAFC] border-slate-200 text-slate-600'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {bookingHistory
+                .filter((item) => {
+                  if (historyFilter === 'upcoming') {
+                    return item.status === 'confirmed' || item.status === 'rescheduled';
+                  }
+                  if (historyFilter === 'past') {
+                    return item.status === 'completed' || item.status === 'cancelled';
+                  }
+                  return true;
+                })
+                .map((item) => {
+                  const statusBadge =
+                    item.status === 'confirmed'
+                      ? { text: 'Onaylı', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
+                      : item.status === 'rescheduled'
+                        ? { text: 'Ertelendi', cls: 'bg-amber-50 text-amber-800 border-amber-200' }
+                        : item.status === 'cancelled'
+                          ? { text: 'İptal', cls: 'bg-rose-50 text-rose-700 border-rose-200' }
+                          : { text: 'Tamamlandı', cls: 'bg-[#EEF2FF] text-[#4338CA] border-indigo-200' };
+
+                  return (
+                    <div
+                      key={item.appointmentId}
+                      className={`rounded-2xl p-3 border-2 flex items-start justify-between gap-2 ${innerSurface}`}
+                      data-testid={`booking-history-item-${item.appointmentId}`}
+                    >
+                      <div className="min-w-0 space-y-0.5">
+                        <p className="text-xs font-black truncate">{item.businessName}</p>
+                        <p className="text-[11px] font-semibold text-[#4F46E5] truncate">
+                          {item.serviceName}
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          {item.scheduledDate} • {item.scheduledTime} • {item.specialistName}
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadge.cls}`}
+                        >
+                          {statusBadge.text}
+                        </span>
+                        <span className="text-xs font-black">
+                          {item.priceMajor.toLocaleString('tr-TR')} {item.currency}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
         </div>
       )}
 

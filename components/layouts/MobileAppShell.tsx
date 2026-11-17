@@ -177,14 +177,14 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
     >
       {/* Instagram-Inspired Clean Top Bar (Scrolls naturally with page - zero bounce/reflow!) */}
       <header
-        className={`w-full border-b-2 px-4 py-3 ${
+        className={`w-full border-b-2 px-4 py-2.5 ${
           isDark
             ? 'bg-slate-950 border-slate-800'
             : 'bg-white border-slate-200'
         }`}
       >
-        <div className="max-w-lg mx-auto grid grid-cols-[64px_1fr_64px] items-center gap-1">
-          {/* Left: Quick Action + */}
+        <div className="max-w-lg mx-auto grid grid-cols-[56px_1fr_56px] items-center gap-2">
+          {/* Left: Quick Action CalendarPlus */}
           <div className="flex items-center justify-start gap-1">
             {shellState.whiteLabelStorefrontLock.active ? (
               <span
@@ -210,20 +210,31 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
             )}
           </div>
 
-          {/* Exact Center: LARİ Brand Symbol */}
+          {/* Exact Center: LARİ Brand Symbol Badge (High-Contrast in Light & Dark Modes) */}
           <div className="flex items-center justify-center min-w-0">
             <button
               type="button"
               onClick={onBrandHeaderClick}
-              className="inline-flex min-h-10 items-center justify-center rounded-full px-3 py-1 transition hover:bg-slate-100/70 dark:hover:bg-slate-800/70"
+              aria-label="LARİ Ana Sayfa"
+              className={`group inline-flex items-center justify-center rounded-2xl p-1 transition active:scale-95 ${
+                isDark
+                  ? 'hover:bg-slate-800/80'
+                  : 'hover:bg-slate-100/80'
+              }`}
               data-testid="header-brand-center-btn"
             >
-              <img
-                src="/brand/lari-symbol-only.svg"
-                alt="LARİ"
-                className="h-7 w-auto object-contain mx-auto"
-                data-testid="header-brand-symbol"
-              />
+              <span
+                className={`flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1D1352] via-[#2C1A88] to-[#3B23C4] shadow-[0_6px_18px_rgba(44,26,136,0.32)] ring-2 transition-transform group-hover:scale-105 ${
+                  isDark ? 'ring-indigo-400/35' : 'ring-[#4F46E5]/20'
+                }`}
+              >
+                <img
+                  src="/brand/lari-symbol-only.svg"
+                  alt="LARİ"
+                  className="h-8 w-8 object-contain"
+                  data-testid="header-brand-symbol"
+                />
+              </span>
             </button>
           </div>
 

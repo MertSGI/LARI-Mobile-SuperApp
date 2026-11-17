@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   BellRing,
+  Calendar,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Coffee,
   QrCode,
   Sparkles,
@@ -35,6 +38,45 @@ export interface MobileBookingBottomSheetProps {
 
 const sharedWaitlistRegistry = new MobileResourceWaitlistRegistry();
 
+const TR_DAYS_SHORT = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
+const TR_MONTHS_SHORT = [
+  'Oca',
+  'Şub',
+  'Mar',
+  'Nis',
+  'May',
+  'Haz',
+  'Tem',
+  'Ağu',
+  'Eyl',
+  'Eki',
+  'Kas',
+  'Ara',
+];
+
+function toLocalIsoDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function addDaysToIso(baseIso: string, deltaDays: number): string {
+  const [y, m, d] = baseIso.split('-').map(Number);
+  const dt = new Date(y, (m || 1) - 1, (d || 1) + deltaDays);
+  return toLocalIsoDate(dt);
+}
+
+function formatChipInfo(iso: string, todayIso: string): { top: string; bottom: string } {
+  const tomorrowIso = addDaysToIso(todayIso, 1);
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(y, (m || 1) - 1, d || 1);
+  const bottom = `${d} ${TR_MONTHS_SHORT[dt.getMonth()]}`;
+  if (iso === todayIso) return { top: 'Bugün', bottom };
+  if (iso === tomorrowIso) return { top: 'Yarın', bottom };
+  return { top: TR_DAYS_SHORT[dt.getDay()], bottom };
+}
+
 export const MobileBookingBottomSheet: React.FC<
   MobileBookingBottomSheetProps
 > = ({
@@ -49,6 +91,11 @@ export const MobileBookingBottomSheet: React.FC<
   const { confirmBooking, showToast, themeMode } = useMobileAppSession();
   const isDark = themeMode === 'dark';
 
+  const todayIso = useMemo(() => toLocalIsoDate(new Date()), []);
+  const [selectedDate, setSelectedDate] = useState<string>(todayIso);
+  const [dayOffset, setDayOffset] = useState<number>(0);
+  const dateInputRef = useRef<HTMLInputElement | null>(null);
+
   const [selectedSlot, setSelectedSlot] = useState(
     listing.nextAvailableSlot || '15:30'
   );
@@ -60,6 +107,23 @@ export const MobileBookingBottomSheet: React.FC<
   const [quietSession, setQuietSession] = useState<boolean>(false);
   const [confirmed, setConfirmed] = useState(false);
   const [waitlistStatus, setWaitlistStatus] = useState<string | null>(null);
+
+  const visibleDays = useMemo(
+    () => Array.from({ length: 4 }, (_, idx) => addDaysToIso(todayIso, dayOffset + idx)),
+    [todayIso, dayOffset]
+  );
+
+  const availableSlots = useMemo(() => {
+    if (selectedDate === todayIso) {
+      return ['13:30', '14:00', '15:30', '17:00'];
+    }
+    return ['10:30', '13:30', '15:30', '17:00'];
+  }, [selectedDate, todayIso]);
+
+  const selectedChipInfo = useMemo(
+    () => formatChipInfo(selectedDate, todayIso),
+    [selectedDate, todayIso]
+  );
 
   const primaryService = listing.popularServices[0];
   const serviceLabel = preselectedServiceNames?.length
@@ -76,7 +140,7 @@ export const MobileBookingBottomSheet: React.FC<
       branchLabel: `${listing.district}, ${listing.city}`,
       serviceName: serviceLabel,
       specialistName: selectedSpecialist,
-      scheduledDate: '2026-11-18',
+      scheduledDate: selectedDate,
       scheduledTime: selectedSlot,
       priceMajor: primaryService?.priceMajor || 0,
       currency: primaryService?.currency || 'TRY',
@@ -98,7 +162,7 @@ export const MobileBookingBottomSheet: React.FC<
     const res = await sharedWaitlistRegistry.claimSlot({
       tenantId: listing.tenantId,
       customerId: 'cust-mobile-guest',
-      slotKey: `2026-11-17_${selectedSlot}`,
+      slotKey: `${selectedDate}_${selectedSlot}`,
       staffId: 'staff-1',
       requiredResourceId: primaryService?.requiredResourceId || 'room-1',
       resourceCapacity: 1,
@@ -161,13 +225,136 @@ export const MobileBookingBottomSheet: React.FC<
           </div>
         )}
 
+        {/* Date Selector Strip (Swipe/Arrow Navigation + Direct Calendar Picker) */}
+        <div className="space-y-2" data-testid="booking-date-selector">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black uppercase text-slate-500">
+              Tarih Seçimi
+            </span>
+            <div className="relative flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  const input = dateInputRef.current;
+                  if (input) {
+                    if (typeof (input as any).showPicker === 'function') {
+                      (input as any).showPicker();
+                    } else {
+                      input.focus();
+                      input.click();
+                    }
+                  }
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-xl border-2 px-2.5 py-1 text-xs font-bold transition ${
+                  isDark
+                    ? 'bg-slate-800 border-slate-700 text-indigo-300 hover:bg-slate-700'
+                    : 'bg-[#EEF2FF] border-[#4F46E5]/30 text-[#4338CA] hover:bg-indigo-100'
+                }`}
+                data-testid="booking-calendar-picker-btn"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Takvimden Seç</span>
+              </button>
+              <input
+                ref={dateInputRef}
+                type="date"
+                min={todayIso}
+                value={selectedDate}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (!val) return;
+                  setSelectedDate(val);
+                  const [y1, m1, d1] = todayIso.split('-').map(Number);
+                  const [y2, m2, d2] = val.split('-').map(Number);
+                  const diff = Math.round(
+                    (new Date(y2, m2 - 1, d2).getTime() -
+                      new Date(y1, m1 - 1, d1).getTime()) /
+                      86400000
+                  );
+                  if (diff >= 0) {
+                    setDayOffset(diff);
+                  }
+                }}
+                className="sr-only"
+                aria-label="Randevu tarihi seç"
+                data-testid="booking-date-native-input"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setDayOffset((prev) => Math.max(0, prev - 4))}
+              disabled={dayOffset === 0}
+              aria-label="Önceki günler"
+              data-testid="booking-date-prev-btn"
+              className={`flex h-12 w-8 shrink-0 items-center justify-center rounded-xl border-2 transition ${
+                dayOffset === 0
+                  ? 'opacity-40 cursor-not-allowed border-slate-200 dark:border-slate-800 text-slate-400'
+                  : isDark
+                    ? 'bg-slate-800 border-slate-700 text-white hover:bg-slate-700'
+                    : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            <div className="grid flex-1 grid-cols-4 gap-1.5">
+              {visibleDays.map((iso) => {
+                const chip = formatChipInfo(iso, todayIso);
+                const active = selectedDate === iso;
+                return (
+                  <button
+                    key={iso}
+                    type="button"
+                    onClick={() => setSelectedDate(iso)}
+                    style={{ minHeight: '48px' }}
+                    data-testid={`booking-day-chip-${iso}`}
+                    className={`rounded-xl border-2 px-1 py-1.5 text-center transition ${
+                      active
+                        ? 'bg-[#4F46E5] text-white border-[#4338CA] shadow-xs'
+                        : isDark
+                          ? 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'
+                          : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="block text-[10px] font-black uppercase leading-tight opacity-85">
+                      {chip.top}
+                    </span>
+                    <span className="block text-xs font-black leading-tight mt-0.5">
+                      {chip.bottom}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setDayOffset((prev) => prev + 4)}
+              aria-label="Sonraki günler"
+              data-testid="booking-date-next-btn"
+              className={`flex h-12 w-8 shrink-0 items-center justify-center rounded-xl border-2 transition ${
+                isDark
+                  ? 'bg-slate-800 border-slate-700 text-white hover:bg-slate-700'
+                  : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
         {/* Instant Time Slot Selector */}
         <div className="space-y-2">
           <span className="text-xs font-black uppercase text-slate-500 block">
-            Bugün Müsait Saatler
+            {selectedDate === todayIso
+              ? 'Bugün Müsait Saatler'
+              : `${selectedChipInfo.bottom} (${selectedChipInfo.top}) Müsait Saatler`}
           </span>
           <div className="grid grid-cols-4 gap-2">
-            {['13:30', '14:00', '15:30', '17:00'].map((slot) => (
+            {availableSlots.map((slot) => (
               <button
                 key={slot}
                 type="button"
@@ -254,7 +441,7 @@ export const MobileBookingBottomSheet: React.FC<
             <div className="text-xs">
               <p className="font-black">Randevunuz Onaylandı & QR Cüzdana Eklendi!</p>
               <p className="font-semibold mt-0.5">
-                Saat {selectedSlot} • İptal/Erteleme ücretsiz (4 saat öncesine kadar).
+                {selectedChipInfo.bottom} ({selectedChipInfo.top}) • Saat {selectedSlot} • İptal/Erteleme ücretsiz (4 saat öncesine kadar).
               </p>
             </div>
           </div>

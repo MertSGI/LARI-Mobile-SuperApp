@@ -126,8 +126,17 @@ async function run() {
       assert.equal(legacySocialCtaCount, 0);
       assert.ok((await page.locator('[data-testid^="social-quick-book-"]').count()) > 0);
 
-      // Header brand + notification center drawer
+      // Header brand + notification center drawer + quick booking date navigation
       await page.waitForSelector('[data-testid="header-brand-symbol"]');
+      await page.click('[data-testid="header-quick-plus-btn"]');
+      await page.waitForSelector('[data-testid="mobile-booking-bottom-sheet"]');
+      await page.waitForSelector('[data-testid="booking-date-selector"]');
+      await page.waitForSelector('[data-testid="booking-calendar-picker-btn"]');
+      await page.click('[data-testid="booking-date-next-btn"]');
+      await page.click('[data-testid="mobile-booking-bottom-sheet"] button:has-text("Hemen Randevu Al")');
+      await page.waitForSelector('[data-testid="mobile-booking-bottom-sheet"]', { state: 'detached' });
+      await page.click('[data-testid="mobile-tab-explore"]');
+
       await page.click('[data-testid="header-notifications-btn"]');
       await page.waitForSelector('[data-testid="notification-drawer"]');
       await page.click('[data-testid="notification-mark-all-read-btn"]');
@@ -156,6 +165,7 @@ async function run() {
       // B) Switch to Wallet, Live Companion, Real QR SVG, Package QR Mode, Care Passport & Stamp Card
       await page.click('[data-testid="mobile-tab-wallet"]');
       await page.waitForSelector('[data-testid="live-appointment-companion-card"]');
+      await page.waitForSelector('[data-testid="wallet-booking-history-card"]');
       await page.waitForSelector('[data-testid="wallet-qr-pass-card"]');
       await page.waitForSelector('[data-testid="lari-qr-svg-container"]');
       await page.click('[data-testid="wallet-qr-mode-package"]');
@@ -172,6 +182,7 @@ async function run() {
       // C) Tap 5th Floating Avatar Tab (Profile) -> Test Panel Boundaries, Dark/Light toggle & Switch to HT Patient Concierge + VIP QR
       await page.click('[data-testid="mobile-tab-profile"]');
       await page.waitForSelector('[data-testid="mobile-profile-settings-page"]');
+      await page.waitForSelector('[data-testid="profile-booking-history-card"]');
       await page.waitForSelector('[data-testid="panel-visibility-boundaries-card"]');
       await page.click('[data-testid="theme-mode-toggle-btn"]');
       const darkTheme = await page.getAttribute('[data-testid="lari-mobile-app-shell"]', 'data-theme');

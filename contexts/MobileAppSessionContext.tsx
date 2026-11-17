@@ -30,7 +30,7 @@ export interface MobileActiveBooking {
   scheduledTime: string;
   priceMajor: number;
   currency: string;
-  status: 'confirmed' | 'cancelled' | 'rescheduled';
+  status: 'confirmed' | 'cancelled' | 'rescheduled' | 'completed';
   hospitalityDrink: string;
   quietSession: boolean;
   attachedStyleNote?: string;
@@ -61,6 +61,7 @@ export interface AdmittedPatientSession {
 export interface MobileAppSessionValue {
   themeMode: 'light' | 'dark';
   activeBooking: MobileActiveBooking | null;
+  bookingHistory: MobileActiveBooking[];
   passportEntries: MobilePassportEntry[];
   loyaltyPoints: number;
   stampCount: number;
@@ -116,11 +117,63 @@ const INITIAL_PASSPORT_ENTRIES: MobilePassportEntry[] = [
   },
 ];
 
+const INITIAL_BOOKING_HISTORY: MobileActiveBooking[] = [
+  {
+    appointmentId: 'apt-hist-1',
+    tenantId: 'ten-atelier-nisantasi',
+    tenantSlug: 'atelier-nisantasi',
+    businessName: 'Atelier Nişantaşı Hair & Spa',
+    branchLabel: 'Nişantaşı, İstanbul',
+    serviceName: 'Soft Balayage & Bakım',
+    specialistName: 'Merve Yılmaz',
+    scheduledDate: '2026-11-01',
+    scheduledTime: '14:00',
+    priceMajor: 4200,
+    currency: 'TRY',
+    status: 'completed',
+    hospitalityDrink: 'Filtre Kahve',
+    quietSession: true,
+  },
+  {
+    appointmentId: 'apt-hist-2',
+    tenantId: 'ten-auto-maslak',
+    tenantSlug: 'maslak-auto-studio',
+    businessName: 'Maslak Auto Studio • Bakım & Servis',
+    branchLabel: 'Maslak, İstanbul',
+    serviceName: 'Periyodik Bakım & Bilgisayarlı Kontrol',
+    specialistName: 'Kemal Usta',
+    scheduledDate: '2026-10-24',
+    scheduledTime: '11:30',
+    priceMajor: 2900,
+    currency: 'TRY',
+    status: 'completed',
+    hospitalityDrink: 'İkram Seçilmedi',
+    quietSession: false,
+  },
+  {
+    appointmentId: 'apt-hist-3',
+    tenantId: 'ten-dent-kadikoy',
+    tenantSlug: 'lari-dent-kadikoy',
+    businessName: 'LARİ Dent & Estetik Kliniği',
+    branchLabel: 'Kadıköy, İstanbul',
+    serviceName: 'Dijital Gülüş Tasarımı Muayenesi',
+    specialistName: 'Dr. Ece Aksoy',
+    scheduledDate: '2026-10-12',
+    scheduledTime: '16:00',
+    priceMajor: 1800,
+    currency: 'TRY',
+    status: 'completed',
+    hospitalityDrink: 'Bitki Çayı',
+    quietSession: false,
+  },
+];
+
 const noop = () => undefined;
 
 const SAFE_FALLBACK: MobileAppSessionValue = {
   themeMode: 'light',
   activeBooking: null,
+  bookingHistory: INITIAL_BOOKING_HISTORY,
   passportEntries: INITIAL_PASSPORT_ENTRIES,
   loyaltyPoints: 480,
   stampCount: 4,
@@ -161,6 +214,9 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
   const [activeBooking, setActiveBooking] = useState<MobileActiveBooking | null>(
     null
   );
+  const [bookingHistory, setBookingHistory] = useState<MobileActiveBooking[]>(
+    () => INITIAL_BOOKING_HISTORY.map((item) => ({ ...item }))
+  );
   const [passportEntries, setPassportEntries] = useState<MobilePassportEntry[]>(
     () => INITIAL_PASSPORT_ENTRIES.map((entry) => ({ ...entry }))
   );
@@ -200,7 +256,12 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
 
   const confirmBooking = useCallback(
     (input: ConfirmBookingInput) => {
-      setActiveBooking({ ...input, status: 'confirmed' });
+      const confirmedItem: MobileActiveBooking = { ...input, status: 'confirmed' };
+      setActiveBooking(confirmedItem);
+      setBookingHistory((prev) => [
+        confirmedItem,
+        ...prev.filter((item) => item.appointmentId !== confirmedItem.appointmentId),
+      ]);
       setLoyaltyPoints((points) => points + 50);
       showToast('Randevunuz onaylandı • +50 LARİ Puan');
     },
@@ -209,23 +270,39 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
 
   const rescheduleActiveBooking = useCallback(
     (newDate: string, newTime: string) => {
-      setActiveBooking((booking) =>
-        booking
-          ? {
-              ...booking,
-              scheduledDate: newDate,
-              scheduledTime: newTime,
-              status: 'rescheduled',
-            }
-          : null
-      );
+      setActiveBooking((booking) => {
+        if (!booking) return null;
+        const updated: MobileActiveBooking = {
+          ...booking,
+          scheduledDate: newDate,
+          scheduledTime: newTime,
+          status: 'rescheduled',
+        };
+        setBookingHistory((prev) =>
+          prev.map((item) =>
+            item.appointmentId === updated.appointmentId ? updated : item
+          )
+        );
+        return updated;
+      });
       showToast('Randevu tarihi güncellendi.');
     },
     [showToast]
   );
 
   const cancelActiveBooking = useCallback(() => {
-    setActiveBooking(null);
+    setActiveBooking((booking) => {
+      if (booking) {
+        setBookingHistory((prev) =>
+          prev.map((item) =>
+            item.appointmentId === booking.appointmentId
+              ? { ...item, status: 'cancelled' }
+              : item
+          )
+        );
+      }
+      return null;
+    });
     showToast('Randevu iptal edildi. Yeni bir deneyim keşfedebilirsiniz.');
   }, [showToast]);
 
@@ -382,6 +459,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     () => ({
       themeMode,
       activeBooking,
+      bookingHistory,
       passportEntries,
       loyaltyPoints,
       stampCount,
@@ -415,6 +493,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     [
       themeMode,
       activeBooking,
+      bookingHistory,
       passportEntries,
       loyaltyPoints,
       stampCount,

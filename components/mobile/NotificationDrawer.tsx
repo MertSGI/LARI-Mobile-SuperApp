@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
+import { useMobileAppSession } from '../../contexts/MobileAppSessionContext';
 
 interface NotificationDrawerProps {
   open: boolean;
@@ -72,6 +73,14 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   onMarkAllRead,
   onRepeatAppointment,
 }) => {
+  const { bookingHistory } = useMobileAppSession();
+  const recentAppointments = bookingHistory.length > 0
+    ? bookingHistory.slice(0, 5).map((item) => ({
+        businessName: item.businessName,
+        serviceName: item.serviceName,
+        date: `${item.scheduledDate} • ${item.scheduledTime}`,
+      }))
+    : RECENT_APPOINTMENTS;
   useEffect(() => {
     if (!open || typeof window === 'undefined') return;
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -137,9 +146,9 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
               <CalendarCheck className="h-4 w-4 text-[#4F46E5]" />
             </div>
             <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 no-scrollbar">
-              {RECENT_APPOINTMENTS.map((appointment) => (
+              {recentAppointments.map((appointment, idx) => (
                 <article
-                  key={`${appointment.businessName}-${appointment.serviceName}`}
+                  key={`${appointment.businessName}-${appointment.serviceName}-${idx}`}
                   className={`w-64 shrink-0 snap-start rounded-2xl border-2 p-4 shadow-sm ${cardSurface}`}
                 >
                   <p className="truncate text-sm font-black">{appointment.businessName}</p>
