@@ -1,126 +1,158 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Camera,
+  Car,
   ChevronRight,
-  Crown,
-  MapPin,
+  Compass,
+  Flame,
   Plane,
   Sparkles,
-  Stethoscope,
-  Wallet,
+  Store,
   X,
 } from 'lucide-react';
-import { MobilePersonaType, MobileShellMode } from '../../services/mobile/mobileShellPolicyService';
+import {
+  MobilePersonaType,
+  MobileShellMode,
+} from '../../services/mobile/mobileShellPolicyService';
 
 export interface StoryHighlightItem {
   id: string;
   badgeTr: string;
+  shortLabelTr: string;
+  ringType: 'flash' | 'brand' | 'ai' | 'ht' | 'partner';
+  slotTimeBadge?: string;
   titleTr: string;
   subtitleTr: string;
+  highlights: string[];
+  ctaLabelTr: string;
   targetPersona?: MobilePersonaType;
   targetTabId?: string;
   targetMode?: MobileShellMode;
-  highlights: string[];
-  ctaLabelTr: string;
+  targetVertical?: string;
 }
 
 export const MOBILE_STORY_HIGHLIGHTS: StoryHighlightItem[] = [
   {
-    id: 'story-flash-map',
-    badgeTr: 'Son Dakika & Harita',
-    titleTr: 'Yakınındaki Boş Koltukları Canlı Haritada Yakala',
+    id: 'story-flash-nisantasi',
+    badgeTr: 'Son Dakika • 15:30',
+    shortLabelTr: '15:30 Nişantaşı',
+    ringType: 'flash',
+    slotTimeBadge: '15:30',
+    titleTr: 'Atelier Nişantaşı — Bugün 15:30 Boş Koltuk',
     subtitleTr:
-      'Web formunda saat arama devri bitti. Harita üzerinden şu an müsait olan salon, berber ve klinikleri anlık Flash avantajıyla yakala.',
+      'İptal sonrası açılan son dakika koltuğunu birkaç saniyede yakalayın.',
+    highlights: [
+      'Soft Balayage & Bakım • 120 dk',
+      'İsteğe bağlı ücretsiz baristasız/kahve tercihi',
+      'Tek dokunuşla QR Pass cüzdana eklenir',
+    ],
+    ctaLabelTr: 'Keşfet & Koltuğu Kap',
     targetMode: 'b2c_customer',
     targetPersona: 'salon_customer',
     targetTabId: 'explore',
-    highlights: [
-      'Canlı Radar Harita & Anlık Mesafe Hesabı',
-      'Son 2 Saatte Boşalan Flash Koltuk Fırsatları',
-      'Uzman Portfolyoları, Önce/Sonra Vitrini & Doğrulanmış Yorumlar',
-    ],
-    ctaLabelTr: 'Harita & Flash Saatleri Aç',
   },
   {
-    id: 'story-vip-passport',
-    badgeTr: 'VIP Ağırlama & Pasaport',
-    titleTr: 'Salona Girmeden Kahveni Seç, Boya Formülünü Unutma',
+    id: 'story-flash-maslak-auto',
+    badgeTr: 'Oto Servis • 14:30',
+    shortLabelTr: '14:30 Maslak Oto',
+    ringType: 'flash',
+    slotTimeBadge: '14:30',
+    titleTr: 'Maslak Auto Studio — Periyodik Bakım & Detailing',
     subtitleTr:
-      'LARİ uygulaması kişisel güzellik ve bakım hafızandır. Randevu günü kahve ve sessiz seans tercihini önden ilet, geçmiş boya/bakım formüllerini pasaportunda sakla.',
+      'LARİ yalnızca salonlar için değil; oto bakım, servis, ekspertiz ve detailing randevuları da burada.',
+    highlights: [
+      'Bilgisayarlı Arıza Tespiti & Hızlı Lift Randevusu',
+      'Google Haritalar konum & yol tarifi entegre',
+      'Şeffaf fiyat ve tahmini işlem süresi',
+    ],
+    ctaLabelTr: 'Oto Servisleri Gör',
     targetMode: 'b2c_customer',
     targetPersona: 'salon_customer',
-    targetTabId: 'wallet',
+    targetTabId: 'explore',
+    targetVertical: 'auto_service',
+  },
+  {
+    id: 'story-flash-kadikoy',
+    badgeTr: 'Son Dakika • 14:00',
+    shortLabelTr: '14:00 Kadıköy',
+    ringType: 'flash',
+    slotTimeBadge: '14:00',
+    titleTr: 'LARİ Dent Kadıköy — Dijital Gülüş Muayenesi',
+    subtitleTr:
+      'Bugün saat 14:00 için 1 muayene koltuğu açık.',
     highlights: [
-      'Salona Varmadan İkram (Filtre Kahve/Matcha) & Sessiz Seans Seçimi',
-      'Kişisel Güzellik Pasaportu: Dip/Uç Boya Formülü & Hekim Notu Arşivi',
-      'Apple Wallet Tarzı 5’li Damga Kartı & Dijital Hediye Zarfı',
+      '3D Gülüş Analizi & OM1 / B1 Simülasyon',
+      'Google Doğrulanmış Klinik Profili',
+      'Şube izole dijital hasta pasaportu',
     ],
-    ctaLabelTr: 'Cüzdan & Bakım Pasaportuna Git',
+    ctaLabelTr: 'Kliniği İncele',
+    targetMode: 'b2c_customer',
+    targetPersona: 'salon_customer',
+    targetTabId: 'explore',
+    targetVertical: 'dental_clinic',
   },
   {
     id: 'story-ai-camera',
-    badgeTr: 'Canlı AI Stüdyo',
-    titleTr: 'Kameranı Aç, Önce/Sonra Sürgüsüyle Yeni Stilini Dene',
+    badgeTr: 'AI Stüdyo',
+    shortLabelTr: 'AI Önizleme',
+    ringType: 'ai',
+    titleTr: 'Kameranı Aç & Önce/Sonra Sürgüsüyle Dene',
     subtitleTr:
-      'Saç balayage tonlarını, dijital gülüş tasarımını (OM1/B1) veya cilt protokolünü canlı vizörde karşılaştır ve tek dokunuşla uzmanına referans olarak zımbala.',
+      'Saç rengi, gülüş tonu veya cilt protokolünü kaydırılabilir görsel stüdyoda karşılaştır.',
+    highlights: [
+      'Gerçek fotoğraf veya stüdyo portresiyle anlık önizleme',
+      'Seçilen renk kodunu tek dokunuşla randevuya ekleme',
+      'Sıfır gizli ücret (0 TL Sandbox)',
+    ],
+    ctaLabelTr: 'AI Stüdyoyu Başlat',
     targetMode: 'b2c_customer',
     targetPersona: 'salon_customer',
     targetTabId: 'ai_style',
-    highlights: [
-      'Canlı Kamera Vizörü & Yüz Hizalama Rehberi',
-      'Parmağınla Kaydırılabilir Önce / Sonra (Before/After) Karşılaştırma',
-      'Renk/Ton Kartelası & Randevuya Görsel Stil Notu Zımbalama',
-    ],
-    ctaLabelTr: 'AI Kamera Stüdyosunu Başlat',
   },
   {
     id: 'story-ht-vip',
-    badgeTr: 'VIP Sağlık Turizmi',
-    titleTr: 'Havalimanı VIP Vito’dan Post-Op Doktor Takibine Cep Concierge',
+    badgeTr: 'Sağlık VIP',
+    shortLabelTr: 'Sağlık Turizmi',
+    ringType: 'ht',
+    titleTr: 'Havalimanı Transferden Post-Op Takibe VIP Asistan',
     subtitleTr:
-      'Uluslararası hastalar için uçuş inişi, şoför plaka kartı, 5* otel voucher’ı, operasyon öncesi geri sayım ve gün gün iyileşme fotoğrafı onayı tek ekranda.',
+      'Çok dilli/çok dövizli paket teklifi, seyahat takvimi ve hekim fotoğraf kontrolü.',
+    highlights: [
+      '7 Adımlı canlı seyahat & klinik takvimi',
+      'Pre-Op hazırlık ve 1/3/7/30. gün doktor kontrolü',
+      'KVKK & GDPR uyumlu pasaport gizliliği',
+    ],
+    ctaLabelTr: 'Sağlık Konsiyerjine Geç',
     targetMode: 'b2c_customer',
     targetPersona: 'ht_patient',
     targetTabId: 'ht_concierge',
-    highlights: [
-      '7 Adımlı Canlı Seyahat & Operasyon Zaman Tüneli',
-      'Operasyon Öncesi Hazırlık & Açlık Geri Sayım Sayacı',
-      '1. / 3. / 7. / 30. Gün Post-Op Fotoğraf Gönderimi & Hekim Onayı',
-    ],
-    ctaLabelTr: 'VIP Sağlık Concierge’i Aç',
-  },
-  {
-    id: 'story-partner-studio',
-    badgeTr: 'Partner Cep Stüdyo',
-    titleTr: 'Uzman & Hekimler İçin Koltuk Başı Çizim Kanvası ve Hızlı POS',
-    subtitleTr:
-      'Müşteri koltuğa oturduğunda kahve tercihini ve geçmiş boya formülünü gör, fotoğraf üzerinde parmakla estetik/saç çizimi yap, 3 saniyede barkod okutup tahsilat al.',
-    targetMode: 'b2b_partner',
-    targetPersona: 'salon_partner',
-    targetTabId: 'partner_agenda',
-    highlights: [
-      'Koltuk Başı (Chairside) VIP Müşteri & Boya/İşlem Formül Kartı',
-      'Dokunmatik Konsültasyon Kanvası: Fotoğraf Üzerinde Parmakla Çizim',
-      'Kamera Barkod POS & Canlı Uzman Günlük Prim Halkası',
-    ],
-    ctaLabelTr: 'Partner Cep Stüdyosuna Geç',
   },
 ];
 
-const StoryIcon = ({ id, className }: { id: string; className: string }) => {
-  if (id === 'story-flash-map') return <MapPin className={className} />;
-  if (id === 'story-vip-passport') return <Crown className={className} />;
-  if (id === 'story-ai-camera') return <Camera className={className} />;
-  if (id === 'story-ht-vip') return <Plane className={className} />;
-  if (id === 'story-partner-studio') return <Wallet className={className} />;
-  return <Stethoscope className={className} />;
-};
+function renderStoryAvatarIcon(item: StoryHighlightItem) {
+  if (item.targetVertical === 'auto_service') {
+    return <Car className="w-6 h-6 text-slate-800" />;
+  }
+  switch (item.ringType) {
+    case 'flash':
+      return <Flame className="w-6 h-6 text-[#4F46E5]" />;
+    case 'ai':
+      return <Camera className="w-6 h-6 text-[#4F46E5]" />;
+    case 'ht':
+      return <Plane className="w-6 h-6 text-emerald-600" />;
+    case 'partner':
+      return <Store className="w-6 h-6 text-slate-800" />;
+    default:
+      return <Compass className="w-6 h-6 text-[#4F46E5]" />;
+  }
+}
 
 export interface MobileStoryOnboardingProps {
   onNavigateExperience: (opts: {
     mode?: MobileShellMode;
     persona?: MobilePersonaType;
     tabId?: string;
+    verticalFilter?: string;
   }) => void;
   defaultOpenFullModal?: boolean;
 }
@@ -132,6 +164,26 @@ export const MobileStoryOnboarding: React.FC<MobileStoryOnboardingProps> = ({
   const [activeStoryIndex, setActiveStoryIndex] = useState<number | null>(
     defaultOpenFullModal ? 0 : null
   );
+  const [stripVisible, setStripVisible] = useState(true);
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onScroll = () => {
+      const y = window.scrollY || 0;
+      const delta = y - lastScrollY.current;
+      if (y <= 32) {
+        setStripVisible(true);
+      } else if (delta > 12) {
+        setStripVisible(false);
+      } else if (delta < -6) {
+        setStripVisible(true);
+      }
+      lastScrollY.current = y;
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   const activeStory =
     activeStoryIndex !== null ? MOBILE_STORY_HIGHLIGHTS[activeStoryIndex] : null;
@@ -141,56 +193,77 @@ export const MobileStoryOnboarding: React.FC<MobileStoryOnboardingProps> = ({
       mode: story.targetMode,
       persona: story.targetPersona,
       tabId: story.targetTabId,
+      verticalFilter: story.targetVertical,
     });
     setActiveStoryIndex(null);
   };
 
   return (
     <>
-      {/* Top Interactive Story Reels Strip (Always visible in native shell header area) */}
+      {/* Instagram-Style Circular Story & Son Dakika Ring Strip */}
       <div
-        className="w-full overflow-x-auto no-scrollbar border-b border-slate-200 bg-white px-3.5 py-3"
+        className={`w-full overflow-x-auto no-scrollbar bg-white border-b-2 border-slate-200 px-3 transition-all duration-300 ${
+          stripVisible
+            ? 'max-h-32 py-3 opacity-100'
+            : 'max-h-0 py-0 opacity-0 overflow-hidden border-b-0 pointer-events-none'
+        }`}
         data-testid="mobile-story-reels-strip"
       >
-        <div className="mx-auto flex max-w-lg items-start gap-4">
+        <div className="max-w-lg mx-auto flex items-start gap-3.5">
           {MOBILE_STORY_HIGHLIGHTS.map((item, idx) => (
             <button
               key={item.id}
               type="button"
               onClick={() => setActiveStoryIndex(idx)}
-              className="group flex w-[72px] shrink-0 flex-col items-center gap-1.5 text-center transition-transform active:scale-95"
+              className="flex flex-col items-center gap-1.5 w-[74px] shrink-0 active:scale-95 transition-transform"
               data-testid={`story-bubble-${item.id}`}
             >
-              <span className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-[#5B5FEF] bg-[#EEF0FF] ring-2 ring-white transition-colors group-hover:bg-[#E4E7FF]">
-                <StoryIcon id={item.id} className="h-6 w-6 stroke-[1.8] text-[#5B5FEF]" />
-              </span>
-              <span className="line-clamp-2 text-[10px] font-semibold leading-tight text-[#111827]">
-                {item.badgeTr}
+              <div className="relative">
+                <div
+                  className={`p-[3px] rounded-full ${
+                    item.ringType === 'flash'
+                      ? 'bg-gradient-to-tr from-[#4F46E5] via-rose-500 to-amber-500'
+                      : 'bg-gradient-to-tr from-[#4F46E5] to-cyan-500'
+                  }`}
+                >
+                  <div className="w-14 h-14 rounded-full bg-white p-0.5 flex items-center justify-center">
+                    <div className="w-full h-full rounded-full bg-[#F8F9FB] border border-slate-200 flex items-center justify-center">
+                      {renderStoryAvatarIcon(item)}
+                    </div>
+                  </div>
+                </div>
+                {item.slotTimeBadge && (
+                  <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded-full bg-[#4F46E5] text-white text-[10px] font-black leading-none border-2 border-white shadow-xs">
+                    {item.slotTimeBadge}
+                  </span>
+                )}
+              </div>
+              <span className="text-xs font-bold text-slate-800 text-center leading-tight line-clamp-1 w-full">
+                {item.shortLabelTr}
               </span>
             </button>
           ))}
         </div>
       </div>
 
-      {/* Full-Screen Story Experience Modal */}
+      {/* Full-Screen Story Modal */}
       {activeStory && activeStoryIndex !== null && (
         <div
-          className="fixed inset-0 z-[90] flex select-none flex-col bg-[#F8F9FB] p-4"
+          className="fixed inset-0 z-[90] bg-[#F3F5F9] flex flex-col justify-between p-4 select-none"
           data-testid="mobile-story-fullscreen-modal"
         >
-          {/* Story Progress Bars */}
-          <div className="mx-auto w-full max-w-lg space-y-3 pt-2">
+          <div className="max-w-lg w-full mx-auto space-y-3 pt-2">
             <div className="grid grid-cols-5 gap-1.5">
               {MOBILE_STORY_HIGHLIGHTS.map((s, i) => (
                 <button
                   key={s.id}
                   type="button"
                   onClick={() => setActiveStoryIndex(i)}
-                  className="h-1.5 overflow-hidden rounded-full bg-slate-200"
+                  className="h-1.5 rounded-full overflow-hidden bg-slate-300"
                 >
                   <div
                     className={`h-full transition-all duration-300 ${
-                      i <= activeStoryIndex ? 'w-full bg-[#5B5FEF]' : 'w-0'
+                      i <= activeStoryIndex ? 'w-full bg-[#4F46E5]' : 'w-0'
                     }`}
                   />
                 </button>
@@ -198,14 +271,14 @@ export const MobileStoryOnboarding: React.FC<MobileStoryOnboardingProps> = ({
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="inline-flex items-center gap-2 rounded-full border border-[#DDE0FF] bg-[#EEF0FF] px-3 py-1.5 text-xs font-semibold text-[#5B5FEF]">
-                <Sparkles className="h-3.5 w-3.5" />
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-white text-[#4338CA] border-2 border-[#4F46E5]/30">
+                <Sparkles className="w-4 h-4 text-[#4F46E5]" />
                 {activeStory.badgeTr}
               </span>
               <button
                 type="button"
                 onClick={() => setActiveStoryIndex(null)}
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-[#6B7280] transition-colors hover:text-[#111827]"
+                className="w-10 h-10 rounded-full bg-white hover:bg-slate-100 border-2 border-slate-300 flex items-center justify-center text-slate-800"
                 data-testid="close-story-modal-btn"
               >
                 <X className="w-5 h-5" />
@@ -213,31 +286,26 @@ export const MobileStoryOnboarding: React.FC<MobileStoryOnboardingProps> = ({
             </div>
           </div>
 
-          {/* Story Main Visual Card */}
-          <article className="mx-auto my-auto w-full max-w-lg space-y-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_16px_48px_rgba(15,23,42,0.08)]">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EEF0FF] text-[#5B5FEF]">
-              <StoryIcon id={activeStory.id} className="h-7 w-7 stroke-[1.8]" />
-            </div>
+          <div className="max-w-lg w-full mx-auto my-auto rounded-3xl bg-white border-2 border-slate-300 p-6 shadow-xl space-y-5">
             <div className="space-y-2">
-              <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#5B5FEF]">
-                LARİ UYGULAMAYA ÖZEL DENEYİM ({activeStoryIndex + 1}/
-                {MOBILE_STORY_HIGHLIGHTS.length})
+              <span className="text-xs font-black uppercase tracking-widest text-[#4F46E5]">
+                LARİ HİKAYELER ({activeStoryIndex + 1}/{MOBILE_STORY_HIGHLIGHTS.length})
               </span>
-              <h2 className="text-2xl font-bold leading-tight text-[#111827]">
+              <h2 className="text-xl font-black text-slate-900 leading-snug">
                 {activeStory.titleTr}
               </h2>
-              <p className="text-sm leading-relaxed text-[#6B7280]">
+              <p className="text-sm text-slate-600 leading-relaxed">
                 {activeStory.subtitleTr}
               </p>
             </div>
 
-            <div className="divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-[#F8F9FB] px-4">
+            <div className="space-y-2.5 bg-[#F8F9FB] rounded-2xl p-4 border-2 border-slate-200">
               {activeStory.highlights.map((h, i) => (
-                <div key={i} className="flex items-start gap-3 py-3.5">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#EEF0FF] text-[11px] font-bold text-[#5B5FEF]">
+                <div key={i} className="flex items-start gap-2.5 text-sm text-slate-800">
+                  <span className="w-6 h-6 rounded-full bg-[#EEF2FF] text-[#4338CA] font-black flex items-center justify-center shrink-0 text-xs border border-indigo-200">
                     {i + 1}
                   </span>
-                  <span className="pt-0.5 text-sm font-medium leading-snug text-[#111827]">{h}</span>
+                  <span className="font-semibold leading-snug">{h}</span>
                 </div>
               ))}
             </div>
@@ -246,7 +314,8 @@ export const MobileStoryOnboarding: React.FC<MobileStoryOnboardingProps> = ({
               <button
                 type="button"
                 onClick={() => handleTriggerStoryCta(activeStory)}
-                className="flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-[#5B5FEF] px-4 py-3 text-xs font-bold text-white shadow-sm transition-colors hover:bg-[#4C50DA] active:scale-[0.98]"
+                style={{ minHeight: '50px' }}
+                className="flex-1 rounded-2xl bg-[#4F46E5] hover:bg-[#4338CA] text-white font-black text-sm px-4 py-3 flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-transform"
                 data-testid="story-cta-action-btn"
               >
                 <span>{activeStory.ctaLabelTr}</span>
@@ -256,23 +325,23 @@ export const MobileStoryOnboarding: React.FC<MobileStoryOnboardingProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveStoryIndex(activeStoryIndex + 1)}
-                  className="min-h-12 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-[#111827] transition-colors hover:bg-slate-50"
+                  style={{ minHeight: '50px' }}
+                  className="px-4 rounded-2xl bg-slate-100 text-slate-800 font-bold text-sm border-2 border-slate-300"
                 >
                   Sonraki
                 </button>
               )}
             </div>
-          </article>
+          </div>
 
-          {/* Quick Role Switcher Footer inside Story */}
-          <div className="mx-auto flex w-full max-w-lg items-center justify-between px-1 pb-1 text-[11px] text-[#6B7280]">
-            <span>Web klonu değil, kişisel cep asistanın.</span>
+          <div className="max-w-lg w-full mx-auto pb-2 flex items-center justify-between text-xs text-slate-500 font-semibold">
+            <span>Her sektörden işletme için hızlı randevu asistanı</span>
             <button
               type="button"
               onClick={() => setActiveStoryIndex(null)}
-              className="font-semibold text-[#5B5FEF]"
+              className="text-[#4F46E5] font-black underline"
             >
-              Uygulamaya Geç
+              Kapat
             </button>
           </div>
         </div>

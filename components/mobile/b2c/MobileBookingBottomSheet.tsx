@@ -2,11 +2,10 @@ import React, { useState } from 'react';
 import {
   BellRing,
   CheckCircle2,
+  ChevronDown,
   Coffee,
   QrCode,
-  ShieldAlert,
   Sparkles,
-  UserCheck,
   Volume2,
   VolumeX,
   X,
@@ -47,40 +46,44 @@ export const MobileBookingBottomSheet: React.FC<
   onClose,
   onBookingConfirmed,
 }) => {
-  const { confirmBooking } = useMobileAppSession();
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const { confirmBooking, showToast, themeMode } = useMobileAppSession();
+  const isDark = themeMode === 'dark';
+
   const [selectedSlot, setSelectedSlot] = useState(
     listing.nextAvailableSlot || '15:30'
   );
   const [selectedSpecialist, setSelectedSpecialist] = useState(
-    preselectedSpecialistName || 'Merve Yılmaz (Art Director)'
+    preselectedSpecialistName || 'İlk Müsait Uzman'
   );
-  const [hospitalityDrink, setHospitalityDrink] = useState<string>('Filtre Kahve');
+  const [showHospitalityOptions, setShowHospitalityOptions] = useState(false);
+  const [hospitalityDrink, setHospitalityDrink] = useState<string>('Yok');
   const [quietSession, setQuietSession] = useState<boolean>(false);
-  const [sharePassportFormula, setSharePassportFormula] = useState<boolean>(true);
   const [confirmed, setConfirmed] = useState(false);
   const [waitlistStatus, setWaitlistStatus] = useState<string | null>(null);
 
   const primaryService = listing.popularServices[0];
+  const serviceLabel = preselectedServiceNames?.length
+    ? preselectedServiceNames.join(' + ')
+    : primaryService?.name || 'Hizmet';
 
-  const handleConfirm = async () => {
+  const handleFastConfirm = async () => {
+    setConfirmed(true);
     confirmBooking({
-      appointmentId: `mobile-${listing.tenantId}-${Date.now()}`,
+      appointmentId: `apt-live-${Date.now()}`,
       tenantId: listing.tenantId,
       tenantSlug: listing.slug,
       businessName: listing.name,
       branchLabel: `${listing.district}, ${listing.city}`,
-      serviceName: preselectedServiceNames?.join(' + ') || primaryService?.name || 'LARI Mobile Service',
+      serviceName: serviceLabel,
       specialistName: selectedSpecialist,
-      scheduledDate: '2026-11-17',
+      scheduledDate: '2026-11-18',
       scheduledTime: selectedSlot,
       priceMajor: primaryService?.priceMajor || 0,
       currency: primaryService?.currency || 'TRY',
-      hospitalityDrink,
+      hospitalityDrink: hospitalityDrink === 'Yok' ? 'İkram Seçilmedi' : hospitalityDrink,
       quietSession,
       attachedStyleNote,
     });
-    setConfirmed(true);
     onBookingConfirmed?.({
       tenantId: listing.tenantId,
       serviceId: primaryService?.id || 'srv-default',
@@ -101,283 +104,188 @@ export const MobileBookingBottomSheet: React.FC<
       resourceCapacity: 1,
     });
     setWaitlistStatus(res.reasonCode);
-    if (res.claimed) {
-      onBookingConfirmed?.({
-        tenantId: listing.tenantId,
-        serviceId: primaryService?.id || 'srv-default',
-        slotTime: selectedSlot,
-        mode: 'waitlist_claim',
-        hospitalityDrink,
-        quietSession,
-      });
-    }
+    showToast(`Waitlist Durumu: ${res.reasonCode}`);
   };
 
   return (
     <div
-      className="fixed inset-0 z-[85] bg-slate-900/40 backdrop-blur-sm flex items-end justify-center"
+      className="fixed inset-0 z-[85] bg-slate-950/50 backdrop-blur-sm flex items-end justify-center"
       data-testid="mobile-booking-bottom-sheet"
+      onClick={onClose}
     >
-      <div className="w-full max-w-lg rounded-t-3xl bg-white border-t border-slate-200 p-5 space-y-4 max-h-[88vh] overflow-y-auto shadow-2xl text-[#111827]">
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={`w-full max-w-lg rounded-t-3xl border-t-2 p-5 space-y-4 max-h-[88vh] overflow-y-auto shadow-2xl ${
+          isDark
+            ? 'bg-slate-900 border-slate-700 text-white'
+            : 'bg-white border-slate-300 text-slate-900'
+        }`}
+      >
         <div className="flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-bold text-[#5B5FEF] uppercase tracking-wider">
-              Adım {step} / 3 • {listing.name}
+            <span className="text-xs font-black text-[#4F46E5] uppercase tracking-wider">
+              Hızlı Randevu • {listing.name}
             </span>
-            <h3 className="text-sm font-black text-[#111827]">
-              {step === 1
-                ? language === 'tr'
-                  ? '1. Hizmet & Uzman Seçimi'
-                  : '1. Select Service & Specialist'
-                : step === 2
-                  ? language === 'tr'
-                    ? '2. Saat & VIP Konfor Tercihi'
-                    : '2. Select Slot & VIP Hospitality'
-                  : language === 'tr'
-                    ? '3. Özet, Pasaport Paylaşımı & QR Onay'
-                    : '3. Summary & QR Pass'}
+            <h3 className="text-base font-black mt-0.5">
+              {language === 'tr' ? 'Saat Seç & Onayla (3 Saniye)' : 'Fast Confirm'}
             </h3>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600"
+            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {step === 1 && primaryService && (
-          <div className="space-y-3">
-            <div className="rounded-2xl bg-[#F8F9FB] border border-indigo-200 p-3.5 flex justify-between items-center text-xs">
-              <div>
-                <p className="font-bold text-[#111827]">
-                  {preselectedServiceNames?.length
-                    ? preselectedServiceNames.join(' + ')
-                    : primaryService.name}
-                </p>
-                <p className="text-slate-500 mt-0.5">
-                  {primaryService.durationMinutes} dk • Doğrulanmış Mağaza Garantisi
-                </p>
-              </div>
-              <span className="font-black text-[#5B5FEF] text-sm">
-                {primaryService.priceMajor} {primaryService.currency}
-              </span>
+        {/* Service & Price Summary */}
+        {primaryService && (
+          <div className="rounded-2xl bg-[#F8FAFC] border-2 border-slate-300 p-3.5 flex justify-between items-center text-sm text-slate-900">
+            <div className="min-w-0 pr-2">
+              <p className="font-black truncate">{serviceLabel}</p>
+              <p className="text-xs text-slate-600 mt-0.5">
+                {primaryService.durationMinutes} dk • {selectedSpecialist}
+              </p>
             </div>
-
-            {attachedStyleNote && (
-              <div className="rounded-xl bg-[#EEF0FF] border border-indigo-200 p-2.5 text-[11px] text-[#4338CA] flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-[#5B5FEF] shrink-0" />
-                <span>Ekli AI Stil Referansı: {attachedStyleNote}</span>
-              </div>
-            )}
-
-            <div className="space-y-1.5">
-              <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                <UserCheck className="w-3.5 h-3.5 text-[#5B5FEF]" />
-                Uzman / Hekim Tercihi
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  preselectedSpecialistName || 'Merve Yılmaz (Art Director)',
-                  'İlk Müsait Kıdemli Uzman',
-                ].map((sp) => (
-                  <button
-                    key={sp}
-                    type="button"
-                    onClick={() => setSelectedSpecialist(sp)}
-                    className={`p-2.5 rounded-xl text-left text-[11px] font-semibold border transition ${
-                      selectedSpecialist === sp
-                        ? 'bg-[#EEF0FF] border-[#5B5FEF] text-[#4338CA]'
-                        : 'bg-white border-slate-200 text-slate-600'
-                    }`}
-                  >
-                    {sp}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setStep(2)}
-              style={{ minHeight: '46px' }}
-              className="w-full rounded-xl bg-[#5B5FEF] hover:bg-[#4A4EE0] text-white text-xs font-black shadow-sm"
-            >
-              {language === 'tr'
-                ? 'Devam Et (Saat & VIP İkram Seç)'
-                : 'Continue'}
-            </button>
+            <span className="font-black text-[#4F46E5] text-base shrink-0">
+              {primaryService.priceMajor} {primaryService.currency}
+            </span>
           </div>
         )}
 
-        {step === 2 && (
-          <div className="space-y-3.5">
-            <div>
-              <span className="text-[11px] font-bold text-slate-700 block mb-1.5">
-                Müsait Saat Dilimleri (Bugün)
-              </span>
-              <div className="grid grid-cols-4 gap-2">
-                {['13:30', '14:00', '15:30', '17:00'].map((slot) => (
-                  <button
-                    key={slot}
-                    type="button"
-                    onClick={() => setSelectedSlot(slot)}
-                    style={{ minHeight: '42px' }}
-                    className={`rounded-xl text-xs font-bold border ${
-                      selectedSlot === slot
-                        ? 'bg-[#5B5FEF] text-white border-[#5B5FEF]'
-                        : 'bg-white text-slate-700 border-slate-200'
-                    }`}
-                  >
-                    {slot}
-                  </button>
-                ))}
-              </div>
-            </div>
+        {attachedStyleNote && (
+          <div className="rounded-xl bg-[#EEF2FF] border-2 border-[#4F46E5]/30 p-3 text-xs font-bold text-[#3730A3] flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-[#4F46E5] shrink-0" />
+            <span>AI Stil Notu Eklendi: {attachedStyleNote}</span>
+          </div>
+        )}
 
-            {/* App-Exclusive VIP Hospitality Selector */}
-            <div className="rounded-2xl bg-[#F8F9FB] border border-slate-200 p-3.5 space-y-2.5">
-              <span className="text-[11px] font-bold text-amber-700 flex items-center gap-1.5">
-                <Coffee className="w-3.5 h-3.5" />
-                Uygulamaya Özel: Salona Girmeden İkramını Seç
-              </span>
-              <div className="grid grid-cols-2 gap-1.5">
+        {/* Instant Time Slot Selector */}
+        <div className="space-y-2">
+          <span className="text-xs font-black uppercase text-slate-500 block">
+            Bugün Müsait Saatler
+          </span>
+          <div className="grid grid-cols-4 gap-2">
+            {['13:30', '14:00', '15:30', '17:00'].map((slot) => (
+              <button
+                key={slot}
+                type="button"
+                onClick={() => setSelectedSlot(slot)}
+                style={{ minHeight: '46px' }}
+                className={`rounded-xl text-sm font-black border-2 transition ${
+                  selectedSlot === slot
+                    ? 'bg-[#4F46E5] text-white border-[#4338CA]'
+                    : isDark
+                      ? 'bg-slate-800 text-slate-200 border-slate-700'
+                      : 'bg-white text-slate-800 border-slate-300'
+                }`}
+              >
+                {slot}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Optional Hospitality & Quiet Session Toggle (Collapsed by default for 3s speed!) */}
+        <div className="rounded-2xl border-2 border-slate-200 dark:border-slate-700 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowHospitalityOptions((v) => !v)}
+            className="w-full px-3.5 py-3 flex items-center justify-between text-xs font-bold"
+            data-testid="toggle-optional-hospitality-btn"
+          >
+            <span className="flex items-center gap-2">
+              <Coffee className="w-4 h-4 text-amber-600" />
+              İsteğe Bağlı: İkram & Sessiz Seans Ekle
+            </span>
+            <ChevronDown
+              className={`w-4 h-4 transition-transform ${
+                showHospitalityOptions ? 'rotate-180' : ''
+              }`}
+            />
+          </button>
+
+          {showHospitalityOptions && (
+            <div className="p-3.5 pt-1 border-t-2 border-slate-200 dark:border-slate-700 space-y-2.5">
+              <div className="grid grid-cols-2 gap-2">
                 {[
                   'Filtre Kahve',
-                  'Buzlu Matcha Latte',
-                  'Organik Bitki Çayı',
+                  'Bitki Çayı',
+                  'Su',
                   'İkram İstemiyorum',
                 ].map((drink) => (
                   <button
                     key={drink}
                     type="button"
                     onClick={() => setHospitalityDrink(drink)}
-                    className={`px-2.5 py-2 rounded-xl text-[11px] font-semibold border text-left ${
+                    className={`px-3 py-2 rounded-xl text-xs font-bold border-2 text-left ${
                       hospitalityDrink === drink
-                        ? 'bg-amber-50 border-amber-300 text-amber-900'
-                        : 'bg-white border-slate-200 text-slate-600'
+                        ? 'bg-[#EEF2FF] border-[#4F46E5] text-[#4338CA]'
+                        : 'bg-white border-slate-300 text-slate-700'
                     }`}
                   >
                     {drink}
                   </button>
                 ))}
               </div>
-
               <button
                 type="button"
                 onClick={() => setQuietSession((q) => !q)}
-                className={`w-full rounded-xl p-2.5 border text-xs font-semibold flex items-center justify-between ${
+                className={`w-full rounded-xl p-2.5 border-2 text-xs font-bold flex items-center justify-between ${
                   quietSession
-                    ? 'bg-[#EEF0FF] border-[#5B5FEF] text-[#4338CA]'
-                    : 'bg-white border-slate-200 text-slate-700'
+                    ? 'bg-[#EEF2FF] border-[#4F46E5] text-[#4338CA]'
+                    : 'bg-white border-slate-300 text-slate-700'
                 }`}
               >
                 <span className="flex items-center gap-2">
-                  {quietSession ? (
-                    <VolumeX className="w-4 h-4 text-[#5B5FEF]" />
-                  ) : (
-                    <Volume2 className="w-4 h-4 text-slate-400" />
-                  )}
-                  Sessiz / Dinlenme Seansı İstiyorum
+                  {quietSession ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                  Sessiz Seans İstiyorum
                 </span>
-                <span className="text-[10px] font-bold">
-                  {quietSession ? 'AKTİF' : 'Normal Mod'}
-                </span>
+                <span>{quietSession ? 'Aktif' : 'Normal'}</span>
               </button>
             </div>
+          )}
+        </div>
 
-            <button
-              type="button"
-              onClick={handleWaitlistClaim}
-              style={{ minHeight: '42px' }}
-              className="w-full rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold flex items-center justify-center gap-1.5"
-            >
-              <BellRing className="w-3.5 h-3.5" />
-              {waitlistStatus
-                ? `Waitlist Durumu: ${waitlistStatus}`
-                : language === 'tr'
-                  ? 'Dolu Slotta Oda Kilitli Waitlist ile Kap'
-                  : 'Claim Resource-Locked Waitlist'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setStep(3)}
-              style={{ minHeight: '46px' }}
-              className="w-full rounded-xl bg-[#5B5FEF] hover:bg-[#4A4EE0] text-white text-xs font-black"
-            >
-              {language === 'tr' ? 'Onay Adımına Geç' : 'Review & Confirm'}
-            </button>
+        {confirmed && (
+          <div className="rounded-2xl bg-emerald-50 border-2 border-emerald-400 p-3.5 flex items-center gap-3 text-emerald-950">
+            <QrCode className="w-10 h-10 text-emerald-700 shrink-0" />
+            <div className="text-xs">
+              <p className="font-black">Randevunuz Onaylandı & QR Cüzdana Eklendi!</p>
+              <p className="font-semibold mt-0.5">
+                Saat {selectedSlot} • İptal/Erteleme ücretsiz (4 saat öncesine kadar).
+              </p>
+            </div>
           </div>
         )}
 
-        {step === 3 && (
-          <div className="space-y-3">
-            <div className="rounded-2xl bg-[#F8F9FB] border border-slate-200 p-3.5 space-y-2 text-xs">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Saat & Uzman:</span>
-                <span className="font-bold text-[#111827]">
-                  Bugün {selectedSlot} • {selectedSpecialist}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">VIP Ağırlama:</span>
-                <span className="font-bold text-amber-700">
-                  {hospitalityDrink} {quietSession ? '• Sessiz Seans' : ''}
-                </span>
-              </div>
-              <label className="flex items-center gap-2 pt-2 border-t border-slate-200 text-[11px] text-emerald-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={sharePassportFormula}
-                  onChange={(e) => setSharePassportFormula(e.target.checked)}
-                />
-                <span>
-                  Bakım Pasaportumdaki geçmiş boya/işlem formülümü uzmana otomatik ilet
-                </span>
-              </label>
-            </div>
+        {/* Primary 1-Tap Instant Booking Button */}
+        <div className="space-y-2 pt-1">
+          <button
+            type="button"
+            onClick={handleFastConfirm}
+            style={{ minHeight: '52px' }}
+            className="w-full rounded-2xl bg-[#4F46E5] hover:bg-[#4338CA] text-white text-sm font-black flex items-center justify-center gap-2 shadow-md"
+          >
+            <CheckCircle2 className="w-5 h-5" />
+            {confirmed
+              ? 'Randevunuz Onaylandı ✓'
+              : `Hemen Randevu Al (${primaryService?.priceMajor || 0} ${primaryService?.currency || 'TRY'})`}
+          </button>
 
-            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 flex items-start gap-2">
-              <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <span>
-                {language === 'tr'
-                  ? 'No-Show Politikası: Randevudan 4 saat öncesine kadar ücretsiz erteleme/iptal yapabilirsiniz.'
-                  : 'No-Show Policy: Free reschedule/cancel up to 4 hours before appointment.'}
-              </span>
-            </div>
-
-            {confirmed && (
-              <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-3.5 flex items-center gap-3">
-                <QrCode className="w-10 h-10 text-emerald-700 shrink-0" />
-                <div className="text-xs">
-                  <p className="font-bold text-emerald-900">
-                    Offline QR Pass Cüzdanına Eklendi!
-                  </p>
-                  <p className="text-[11px] text-emerald-700">
-                    Uzmanına &ldquo;{hospitalityDrink}&rdquo; ve pasaport formülün iletildi.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={handleConfirm}
-              style={{ minHeight: '46px' }}
-              className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center justify-center gap-2 shadow-sm"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              {confirmed
-                ? language === 'tr'
-                  ? 'Randevunuz Onaylandı & QR Üretildi!'
-                  : 'Confirmed & QR Pass Generated!'
-                : language === 'tr'
-                  ? 'Randevuyu Onayla & QR Oluştur'
-                  : 'Confirm Appointment'}
-            </button>
-          </div>
-        )}
+          <button
+            type="button"
+            onClick={handleWaitlistClaim}
+            style={{ minHeight: '42px' }}
+            className="w-full rounded-xl bg-amber-50 border-2 border-amber-300 text-amber-900 text-xs font-bold flex items-center justify-center gap-1.5"
+          >
+            <BellRing className="w-4 h-4" />
+            {waitlistStatus
+              ? `Waitlist: ${waitlistStatus}`
+              : 'Doluysa Oda Kilitli Yedek Sıraya Gir'}
+          </button>
+        </div>
       </div>
     </div>
   );

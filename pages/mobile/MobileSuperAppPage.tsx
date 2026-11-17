@@ -61,17 +61,28 @@ export const MobileSuperAppContent: React.FC = () => {
           ? 'tenant_owner'
           : 'guest';
 
+  const isSignedInPartnerAccount =
+    currentUser?.role === 'tenant_owner' ||
+    currentUser?.role === 'staff' ||
+    currentUser?.role === 'super_admin';
+
+  const defaultStartupMode: MobileShellMode =
+    initialModeParam === 'partner' ||
+    (!initialModeParam && !initialSlugParam && isSignedInPartnerAccount)
+      ? 'b2b_partner'
+      : 'b2c_customer';
+
   const [requestedMode, setRequestedMode] = useState<MobileShellMode>(
-    initialModeParam === 'partner' ? 'b2b_partner' : 'b2c_customer'
+    defaultStartupMode
   );
   const [requestedPersona, setRequestedPersona] = useState<
     MobilePersonaType | undefined
   >(
     initialPersonaParam ||
-      (initialModeParam === 'partner' ? 'salon_partner' : 'salon_customer')
+      (defaultStartupMode === 'b2b_partner' ? 'salon_partner' : 'salon_customer')
   );
   const [activeTabId, setActiveTabId] = useState<string>(
-    initialModeParam === 'partner'
+    defaultStartupMode === 'b2b_partner'
       ? 'partner_agenda'
       : initialSlugParam
         ? 'storefront'

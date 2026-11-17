@@ -7,7 +7,17 @@ export type LariBusinessVertical =
   | 'aesthetic_clinic'
   | 'physiotherapy'
   | 'personal_trainer'
-  | 'consulting';
+  | 'consulting'
+  | 'auto_service'
+  | 'pet_grooming'
+  | 'home_repair';
+
+export interface GoogleBusinessProfileMetadata {
+  googlePlaceId: string;
+  mapsUri: string;
+  verifiedGoogleBusiness: boolean;
+  lastSyncedIso?: string;
+}
 
 export interface MarketplaceTenantListing {
   tenantId: string;
@@ -23,6 +33,7 @@ export interface MarketplaceTenantListing {
   priceTier: 1 | 2 | 3;
   availableToday: boolean;
   nextAvailableSlot?: string;
+  googleBusinessProfile?: GoogleBusinessProfileMetadata;
   popularServices: Array<{
     id: string;
     name: string;
@@ -39,6 +50,8 @@ export interface MobileDiscoverySearchInput {
   verticalFilter?: LariBusinessVertical | 'all';
   queryText?: string;
   availableTodayOnly?: boolean;
+  googleVerifiedOnly?: boolean;
+  minRating?: number;
   sortBy?: 'distance_km' | 'rating' | 'popular';
   whiteLabelLockedTenantSlug?: string | null;
 }
@@ -145,6 +158,12 @@ export function searchMobileMarketplace(
     }
     if (input.availableTodayOnly) {
       filtered = filtered.filter((item) => item.availableToday);
+    }
+    if (input.googleVerifiedOnly) {
+      filtered = filtered.filter((item) => item.googleBusinessProfile?.verifiedGoogleBusiness);
+    }
+    if (typeof input.minRating === 'number' && input.minRating > 0) {
+      filtered = filtered.filter((item) => item.rating >= input.minRating!);
     }
     if (input.queryText?.trim()) {
       const q = input.queryText.trim().toLowerCase();

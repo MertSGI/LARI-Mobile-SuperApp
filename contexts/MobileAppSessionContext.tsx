@@ -39,12 +39,15 @@ export interface MobilePassportEntry {
 export type ConfirmBookingInput = Omit<MobileActiveBooking, 'status'>;
 
 export interface MobileAppSessionValue {
+  themeMode: 'light' | 'dark';
   activeBooking: MobileActiveBooking | null;
   passportEntries: MobilePassportEntry[];
   loyaltyPoints: number;
   stampCount: number;
   walletBalanceMinor: number;
   toastMessage: string | null;
+  setThemeMode: (mode: 'light' | 'dark') => void;
+  toggleThemeMode: () => void;
   showToast: (message: string) => void;
   confirmBooking: (input: ConfirmBookingInput) => void;
   rescheduleActiveBooking: (newDate: string, newTime: string) => void;
@@ -83,12 +86,15 @@ const INITIAL_PASSPORT_ENTRIES: MobilePassportEntry[] = [
 const noop = () => undefined;
 
 const SAFE_FALLBACK: MobileAppSessionValue = {
+  themeMode: 'light',
   activeBooking: null,
   passportEntries: INITIAL_PASSPORT_ENTRIES,
   loyaltyPoints: 480,
   stampCount: 4,
   walletBalanceMinor: 125000,
   toastMessage: null,
+  setThemeMode: noop,
+  toggleThemeMode: noop,
   showToast: noop,
   confirmBooking: noop,
   rescheduleActiveBooking: noop,
@@ -105,6 +111,7 @@ const MobileAppSessionContext = createContext<MobileAppSessionValue | null>(null
 export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
   children,
 }) => {
+  const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
   const [activeBooking, setActiveBooking] = useState<MobileActiveBooking | null>(
     null
   );
@@ -201,14 +208,21 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     [showToast]
   );
 
+  const toggleThemeMode = useCallback(() => {
+    setThemeMode((prev) => (prev === 'light' ? 'dark' : 'light'));
+  }, []);
+
   const value = useMemo<MobileAppSessionValue>(
     () => ({
+      themeMode,
       activeBooking,
       passportEntries,
       loyaltyPoints,
       stampCount,
       walletBalanceMinor,
       toastMessage,
+      setThemeMode,
+      toggleThemeMode,
       showToast,
       confirmBooking,
       rescheduleActiveBooking,
@@ -220,12 +234,14 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       redeemGiftCode,
     }),
     [
+      themeMode,
       activeBooking,
       passportEntries,
       loyaltyPoints,
       stampCount,
       walletBalanceMinor,
       toastMessage,
+      toggleThemeMode,
       showToast,
       confirmBooking,
       rescheduleActiveBooking,

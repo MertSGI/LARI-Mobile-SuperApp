@@ -90,15 +90,22 @@ async function run() {
       const pageErrors = [];
       page.on('pageerror', (err) => pageErrors.push(err.message));
 
-      // A) Native App Boot Redirect (`/?app=1` -> `/m`) & B2C Mobile Super-App Launch
+      // A) Native App Boot Redirect (`/?app=1` -> `/m`) & B2C Customer Mode Default Launch
       await page.goto(`${url}/?app=1#/`, { waitUntil: 'networkidle' });
       await page.waitForSelector('[data-testid="lari-mobile-app-shell"]');
+      const startupMode = await page.getAttribute('[data-testid="lari-mobile-app-shell"]', 'data-effective-mode');
+      assert.equal(startupMode, 'b2c_customer', `Expected default startup mode b2c_customer on ${vp.name}`);
       await page.waitForSelector('[data-testid="mobile-story-reels-strip"]');
       await page.waitForSelector('[data-testid="mobile-explore-marketplace-page"]');
       await page.waitForSelector('[data-testid="interactive-radar-map-card"]');
-      await page.waitForSelector('[data-testid="flash-slots-strip"]');
+      await page.waitForSelector('[data-testid="marketplace-card-maslak-auto-studio"]');
 
-      // A.2) Open Full-Screen Storefront Detail Drawer & verify tabs
+      // A.2) Open Filter Drawer & verify auto_service + Google Business options
+      await page.click('[data-testid="explore-filter-drawer-btn"]');
+      await page.waitForSelector('[data-testid="explore-filter-modal"]');
+      await page.click('[data-testid="explore-filter-modal"] button:has-text("Uygula")');
+
+      // A.3) Open Full-Screen Storefront Detail Drawer & verify tabs
       await page.click('[data-testid="open-storefront-btn-atelier-nisantasi"]');
       await page.waitForSelector('[data-testid="mobile-storefront-detail-drawer"]');
       await page.click('[data-testid="storefront-tab-specialists"]');
@@ -125,13 +132,20 @@ async function run() {
       await page.waitForSelector('[data-testid="ai-before-after-viewfinder"]');
       await page.waitForSelector('[data-testid="ai-comparison-slider"]');
 
-      // C) Switch to HT Patient Concierge Persona & Post-Op Recovery Check-in
+      // C) Open Top-Right Profile Menu -> Test Dark/Light toggle & Switch to HT Patient Concierge
+      await page.click('[data-testid="header-profile-menu-btn"]');
+      await page.waitForSelector('[data-testid="header-profile-drawer"]');
+      await page.click('[data-testid="theme-dark-btn"]');
+      const darkTheme = await page.getAttribute('[data-testid="lari-mobile-app-shell"]', 'data-theme');
+      assert.equal(darkTheme, 'dark');
+      await page.click('[data-testid="theme-light-btn"]');
       await page.click('[data-testid="persona-pill-ht_patient"]');
       await page.waitForSelector('[data-testid="mobile-ht-concierge-page"]');
       await page.waitForSelector('[data-testid="ht-itinerary-timeline"]');
       await page.waitForSelector('[data-testid="ht-postop-recovery-card"]');
 
-      // D) Switch to Partner Mode, Commission Card & POS
+      // D) Open Top-Right Profile Menu -> Switch to Partner Mode, Commission Card & POS
+      await page.click('[data-testid="header-profile-menu-btn"]');
       await page.click('[data-testid="mobile-mode-toggle-btn"]');
       await page.waitForSelector('[data-testid="mobile-partner-agenda-page"]');
       await page.waitForSelector('[data-testid="partner-daily-commission-card"]');
@@ -139,7 +153,8 @@ async function run() {
       await page.waitForSelector('[data-testid="mobile-partner-pos-page"]');
       await page.click('[data-testid="partner-pos-cash-checkout-btn"]');
 
-      // E) Switch to Clinic Practitioner PHI Persona & Touch Consultation Canvas
+      // E) Open Top-Right Profile Menu -> Switch to Clinic Practitioner PHI Persona & Touch Canvas
+      await page.click('[data-testid="header-profile-menu-btn"]');
       await page.click('[data-testid="persona-pill-clinic_practitioner"]');
       await page.waitForSelector('[data-testid="mobile-clinic-workspace"]');
       await page.waitForSelector('[data-testid="clinic-touch-drawing-studio"]');

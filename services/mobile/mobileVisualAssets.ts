@@ -4,7 +4,10 @@ export type MobileVisualCategory =
   | 'dental_clinic'
   | 'aesthetic_clinic'
   | 'spa_wellness'
-  | 'health_tourism';
+  | 'health_tourism'
+  | 'auto_service'
+  | 'pet_grooming'
+  | 'personal_trainer';
 
 export interface MobileCategoryArtwork {
   label: string;
@@ -100,6 +103,24 @@ export const MOBILE_CATEGORY_ARTWORKS: Record<
     '#2563EB',
     '#EFF6FF',
     'M105 105h28V77h20v28h28v20h-28v28h-20v-28h-28zM191 80c15 4 25 17 25 33'
+  ),
+  auto_service: categoryArtwork(
+    'Oto Bakım & Servis',
+    '#334155',
+    '#F1F5F9',
+    'M98 118l16-32h92l16 32M95 118h130v22H95zM122 140v8M198 140v8'
+  ),
+  pet_grooming: categoryArtwork(
+    'Pet Kuaför & Vet',
+    '#D97706',
+    '#FFFBEB',
+    'M135 128c0-15 12-26 25-26s25 11 25 26-10 18-25 18-25-3-25-18zM122 92h1M146 78h1M174 78h1M198 92h1'
+  ),
+  personal_trainer: categoryArtwork(
+    'Spor & Koçluk',
+    '#4F46E5',
+    '#EEF2FF',
+    'M108 108h104M118 90v36M202 90v36M106 96v24M214 96v24'
   ),
 };
 
@@ -201,6 +222,17 @@ export const VENUE_VISUAL_CATALOG: Record<string, VenueVisualAsset> = {
     address: 'Etiler Mah. Nispetiye Cad. No: 63, Beşiktaş / İstanbul',
     totalBookingsCount: 1526,
     specialties: ['Medikal Cilt Bakımı', 'Hydrafacial', 'Eksozom Protokolü'],
+  },
+  'maslak-auto-studio': {
+    coverPhotoUrl: 'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&w=1600&q=88',
+    fallbackSvgUrl: venueFallback('Maslak Auto Servis', 'MA', '#334155', 'clinic'),
+    logoMonogram: 'MA',
+    logoBgColor: '#334155',
+    brandShortName: 'Maslak Auto',
+    phone: '+90 212 555 88 10',
+    address: 'Atatürk Oto Sanayi Sitesi 2. Kısım No: 14, Maslak / İstanbul',
+    totalBookingsCount: 3190,
+    specialties: ['Periyodik Bakım', 'Detailing & Seramik', 'Bilgisayarlı Arıza Tespiti'],
   },
 };
 
