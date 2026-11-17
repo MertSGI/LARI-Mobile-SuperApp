@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="512" x2="1024" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1D1352"/>
+      <stop offset="50%" stop-color="#2C1A88"/>
+      <stop offset="100%" stop-color="#3B23C4"/>
+    </linearGradient>
+    <linearGradient id="dotGrad" x1="753.4" y1="195.7" x2="753.4" y2="315.3" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#16CFD1"/>
+      <stop offset="100%" stop-color="#15B89B"/>
+    </linearGradient>
+    <clipPath id="iconClip">
+      <rect x="0" y="0" width="1024" height="1024" rx="218" ry="218"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#iconClip)">
+    <rect x="0" y="0" width="1024" height="1024" rx="218" ry="218" fill="url(#bgGrad)"/>
+    <rect x="12" y="12" width="1000" height="1000" rx="206" ry="206" stroke="#FFFFFF" stroke-opacity="0.22" stroke-width="24" fill="none"/>
+    <path d="M 810.8 326.8 A 352.8 352.8 0 1 1 679.4 203.5" stroke="#FFFFFF" stroke-width="36.6" stroke-linecap="butt" fill="none"/>
+    <path d="M 398.4 314.7 C 433.9 314.7, 462.6 344.8, 462.6 382.0 L 462.6 612.0 C 462.6 630.2, 477.3 644.9, 495.5 644.9 L 610.5 644.9 C 645.2 644.9, 673.4 673.1, 673.4 707.8 L 494.2 707.8 C 441.3 707.8, 398.4 664.9, 398.4 612.0 Z" fill="#FFFFFF"/>
+    <circle cx="753.4" cy="255.5" r="59.8" fill="url(#dotGrad)"/>
+  </g>
+</svg>

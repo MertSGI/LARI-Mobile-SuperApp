@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="dotGradSym" x1="753.4" y1="195.7" x2="753.4" y2="315.3" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#16CFD1"/>
+      <stop offset="100%" stop-color="#15B89B"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(-18, 12) scale(1.04)">
+    <path d="M 810.8 326.8 A 352.8 352.8 0 1 1 679.4 203.5" stroke="#FFFFFF" stroke-width="36.6" stroke-linecap="butt" fill="none"/>
+    <path d="M 398.4 314.7 C 433.9 314.7, 462.6 344.8, 462.6 382.0 L 462.6 612.0 C 462.6 630.2, 477.3 644.9, 495.5 644.9 L 610.5 644.9 C 645.2 644.9, 673.4 673.1, 673.4 707.8 L 494.2 707.8 C 441.3 707.8, 398.4 664.9, 398.4 612.0 Z" fill="#FFFFFF"/>
+    <circle cx="753.4" cy="255.5" r="59.8" fill="url(#dotGradSym)"/>
+  </g>
+</svg>

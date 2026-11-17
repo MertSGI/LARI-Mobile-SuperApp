@@ -7,9 +7,7 @@ import {
   Globe2,
   Inbox,
   Lock,
-  Moon,
   Plane,
-  Plus,
   QrCode,
   ScanLine,
   ShieldCheck,
@@ -17,10 +15,8 @@ import {
   Sparkles,
   Stethoscope,
   Store,
-  Sun,
   Users,
   WifiOff,
-  ChevronDown,
 } from 'lucide-react';
 import {
   MobilePersonaType,
@@ -29,6 +25,7 @@ import {
   MobileTabDescriptor,
 } from '../../services/mobile/mobileShellPolicyService';
 import { useMobileAppSession } from '../../contexts/MobileAppSessionContext';
+import NotificationDrawer from '../mobile/NotificationDrawer';
 
 export interface MobileAppShellProps {
   shellState: MobileShellResolutionResult;
@@ -109,21 +106,20 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
   activeTabId,
   onSelectTab,
   onQuickPlusAction,
-  onNotificationBellClick,
   onBrandHeaderClick,
-  businessDisplayName = 'LARİ',
   isOffline = false,
   language = 'tr',
   children,
 }) => {
-  const { themeMode, toggleThemeMode, showToast, activeBooking, completedBreakdown } =
+  const { themeMode, showToast, activeBooking, completedBreakdown } =
     useMobileAppSession();
   const isDark = themeMode === 'dark';
-  const isPartner = shellState.effectiveMode === 'b2b_partner';
   const activeTab =
     shellState.tabs.find((t) => t.id === activeTabId) || shellState.tabs[0];
 
   const [dockVisible, setDockVisible] = useState(true);
+  const [notificationDrawerOpen, setNotificationDrawerOpen] = useState(false);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(3);
   const lastScrollY = useRef(0);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -173,7 +169,7 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
       data-theme={themeMode}
       style={{
         paddingTop: shellState.layoutMetrics.safeAreaTopCss,
-        paddingBottom: `calc(96px + ${shellState.layoutMetrics.safeAreaBottomCss})`,
+        paddingBottom: `calc(112px + ${shellState.layoutMetrics.safeAreaBottomCss})`,
       }}
       data-testid="lari-mobile-app-shell"
       data-effective-mode={shellState.effectiveMode}
@@ -187,7 +183,7 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
             : 'bg-white border-slate-200'
         }`}
       >
-        <div className="max-w-lg mx-auto grid grid-cols-[84px_1fr_84px] items-center gap-1">
+        <div className="max-w-lg mx-auto grid grid-cols-[64px_1fr_64px] items-center gap-1">
           {/* Left: Quick Action + */}
           <div className="flex items-center justify-start gap-1">
             {shellState.whiteLabelStorefrontLock.active ? (
@@ -209,67 +205,30 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
                 aria-label="Hızlı Randevu Oluştur"
                 data-testid="header-quick-plus-btn"
               >
-                <Plus className="w-6 h-6 stroke-[2.3]" />
+                <CalendarPlus className="w-6 h-6 stroke-[2.3]" />
               </button>
             )}
           </div>
 
-          {/* Exact Center: LARİ Brand Mark & Quick Mode Switcher */}
+          {/* Exact Center: LARİ Brand Symbol */}
           <div className="flex items-center justify-center min-w-0">
             <button
               type="button"
               onClick={onBrandHeaderClick}
-              className="inline-flex items-center gap-2 px-3 py-1 rounded-full hover:bg-slate-100/70 dark:hover:bg-slate-800/70 transition"
+              className="inline-flex min-h-10 items-center justify-center rounded-full px-3 py-1 transition hover:bg-slate-100/70 dark:hover:bg-slate-800/70"
               data-testid="header-brand-center-btn"
             >
-              <span className="w-7 h-7 rounded-lg bg-[#4F46E5] text-white flex items-center justify-center font-black text-sm shadow-xs">
-                L
-              </span>
-              <span
-                className={`font-black text-lg tracking-tight truncate ${
-                  isDark ? 'text-white' : 'text-slate-950'
-                }`}
-              >
-                {businessDisplayName === 'LARİ Super-App'
-                  ? isPartner
-                    ? 'LARİ Partner'
-                    : 'LARİ'
-                  : businessDisplayName}
-              </span>
-              <ChevronDown className="w-4 h-4 text-slate-500 shrink-0" />
+              <img
+                src="/brand/lari-symbol-only.svg"
+                alt="LARİ"
+                className="h-7 w-auto object-contain mx-auto"
+                data-testid="header-brand-symbol"
+              />
             </button>
           </div>
 
-          {/* Right: Sun/Moon Quick Theme Toggle + Notification Bell */}
+          {/* Right: Notification Bell */}
           <div className="flex items-center justify-end gap-1">
-            <button
-              type="button"
-              onClick={() => {
-                const next = isDark ? 'light' : 'dark';
-                toggleThemeMode();
-                showToast(
-                  next === 'light'
-                    ? 'Açık Mod (Güneş) aktif edildi.'
-                    : 'Koyu Mod (Ay) aktif edildi.'
-                );
-              }}
-              style={{ minHeight: '40px', minWidth: '40px' }}
-              className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition active:scale-95 ${
-                isDark
-                  ? 'bg-slate-900 border-slate-700 text-indigo-300 hover:bg-slate-800'
-                  : 'bg-[#FFFBEB] border-amber-300 text-amber-500 hover:bg-amber-100'
-              }`}
-              aria-label={isDark ? 'Koyu Mod (Ay) - Açık Moda Geç' : 'Açık Mod (Güneş) - Koyu Moda Geç'}
-              title={isDark ? 'Ay (Koyu Mod)' : 'Güneş (Açık Mod)'}
-              data-testid="header-theme-toggle-btn"
-            >
-              {isDark ? (
-                <Moon className="w-5 h-5 fill-indigo-300/30" />
-              ) : (
-                <Sun className="w-5 h-5 fill-amber-400/40" />
-              )}
-            </button>
-
             {isOffline ? (
               <span
                 className="w-10 h-10 rounded-full bg-amber-50 border-2 border-amber-400 text-amber-700 flex items-center justify-center"
@@ -281,7 +240,7 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
             ) : (
               <button
                 type="button"
-                onClick={onNotificationBellClick}
+                onClick={() => setNotificationDrawerOpen(true)}
                 style={{ minHeight: '40px', minWidth: '40px' }}
                 className={`relative w-10 h-10 rounded-full flex items-center justify-center transition active:scale-95 ${
                   isDark ? 'text-white hover:bg-slate-800' : 'text-slate-900 hover:bg-slate-100'
@@ -290,7 +249,11 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
                 data-testid="header-notifications-btn"
               >
                 <Bell className="w-5 h-5 stroke-[2.2]" />
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 border-2 border-white dark:border-slate-950 absolute top-2 right-2" />
+                {unreadNotificationCount > 0 && (
+                  <span className="absolute right-0.5 top-0.5 flex min-h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-rose-500 px-1 text-[10px] font-black leading-none text-white dark:border-slate-950">
+                    {unreadNotificationCount}
+                  </span>
+                )}
               </button>
             )}
           </div>
@@ -298,9 +261,25 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
       </header>
 
       {/* Main Viewport Content */}
-      <main className="flex-1 w-full max-w-lg mx-auto px-3.5 py-3 overflow-x-hidden">
+      <main className="flex-1 w-full max-w-lg mx-auto px-3.5 pt-3 pb-28 overflow-x-hidden">
         {children}
       </main>
+
+      <NotificationDrawer
+        open={notificationDrawerOpen}
+        unreadCount={unreadNotificationCount}
+        isDark={isDark}
+        onClose={() => setNotificationDrawerOpen(false)}
+        onMarkAllRead={() => {
+          setUnreadNotificationCount(0);
+          showToast('Tüm bildirimler okundu olarak işaretlendi.');
+        }}
+        onRepeatAppointment={(businessName, serviceName) => {
+          setNotificationDrawerOpen(false);
+          showToast(`${businessName} • ${serviceName} yeniden seçildi.`);
+          onQuickPlusAction?.();
+        }}
+      />
 
       {/* Instagram-Authentic Floating Glass Pill Bottom Dock (Icon-Only + Profile Avatar Slot 5) */}
       <nav

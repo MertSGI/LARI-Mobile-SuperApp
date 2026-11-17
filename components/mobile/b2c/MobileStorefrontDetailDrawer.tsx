@@ -211,10 +211,16 @@ export const MobileStorefrontDetailDrawer: React.FC<
   >('services');
   const [showMessageComposer, setShowMessageComposer] = useState(false);
   const [messageText, setMessageText] = useState('');
+  const [activeHeroIndex, setActiveHeroIndex] = useState(0);
 
   const services = getExtraServicesForListing(listing);
   const specialists = getSpecialistsForVertical(listing.vertical);
   const visual = VENUE_VISUAL_CATALOG[listing.slug];
+  const heroImages = visual?.galleryPhotoUrls?.length
+    ? visual.galleryPhotoUrls
+    : visual
+      ? [visual.coverPhotoUrl]
+      : [];
 
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([
     services[0]?.id || '',
@@ -290,61 +296,106 @@ export const MobileStorefrontDetailDrawer: React.FC<
       className="fixed inset-0 z-[80] bg-[#F8F9FB] flex flex-col overflow-hidden text-[#111827]"
       data-testid="mobile-storefront-detail-drawer"
     >
-      {/* Minimal Corporate Top Bar + Storefront Hero */}
-      <div className="bg-white border-b border-slate-200 px-4 pt-3 pb-3 shrink-0 shadow-xs">
-        <div className="max-w-lg mx-auto space-y-3">
-          {/* Minimal Top Bar */}
-          <div className="flex items-center justify-between">
+      {/* Full-width cover gallery + storefront identity */}
+      <div className="shrink-0 border-b border-slate-200 bg-white shadow-xs">
+        <div className="relative mx-auto w-full max-w-lg">
+          <div
+            className="flex h-56 w-full snap-x snap-mandatory overflow-x-auto no-scrollbar"
+            onScroll={(event) => {
+              const element = event.currentTarget;
+              if (element.clientWidth > 0) {
+                setActiveHeroIndex(Math.round(element.scrollLeft / element.clientWidth));
+              }
+            }}
+            data-testid="storefront-hero-carousel"
+          >
+            {heroImages.map((imageUrl, index) => (
+              <img
+                key={`${listing.slug}-hero-${index}`}
+                src={imageUrl}
+                alt={`${listing.name} galeri fotoğrafı ${index + 1}`}
+                onError={(event) => {
+                  if (visual && event.currentTarget.src !== visual.fallbackSvgUrl) {
+                    event.currentTarget.src = visual.fallbackSvgUrl;
+                  }
+                }}
+                className="h-full w-full shrink-0 snap-center object-cover bg-slate-200"
+              />
+            ))}
+          </div>
+
+          <div
+            className="absolute inset-x-0 top-0 flex items-center justify-between px-4"
+            style={{ paddingTop: 'calc(12px + env(safe-area-inset-top))' }}
+          >
             <button
               type="button"
               onClick={onClose}
-              className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-[#111827] flex items-center justify-center"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-md transition hover:bg-black/55"
               data-testid="close-storefront-drawer-btn"
               aria-label="Kapat"
             >
-              <ChevronLeft className="w-5 h-5" />
+              <ChevronLeft className="h-5 w-5" />
             </button>
-            <span className="text-[11px] font-bold text-emerald-700 inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200">
-              <ShieldCheck className="w-3.5 h-3.5" />
+            <span className="inline-flex items-center gap-1 rounded-full bg-black/40 px-3 py-2 text-[11px] font-bold text-white backdrop-blur-md">
+              <ShieldCheck className="h-3.5 w-3.5" />
               Doğrulanmış Mağaza
             </span>
             <button
               type="button"
               onClick={handleShare}
-              className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-[#111827] flex items-center justify-center"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-md transition hover:bg-black/55"
               data-testid="storefront-share-btn"
               aria-label="Paylaş"
             >
-              <Share2 className="w-4 h-4" />
+              <Share2 className="h-4 w-4" />
             </button>
           </div>
 
-          {/* Logo Monogram Badge + Name + Single-Line Metadata */}
-          <div className="flex items-start gap-3">
-            <div
-              className="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-white text-sm shrink-0 shadow-sm"
-              style={{ backgroundColor: visual?.logoBgColor || '#5B5FEF' }}
-            >
-              {visual?.logoMonogram || listing.name.slice(0, 2).toUpperCase()}
+          {heroImages.length > 1 && (
+            <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/35 px-2.5 py-1.5 backdrop-blur-sm">
+              {heroImages.map((_, index) => (
+                <span
+                  key={`${listing.slug}-dot-${index}`}
+                  className={`h-1.5 rounded-full transition-all ${
+                    activeHeroIndex === index ? 'w-5 bg-white' : 'w-1.5 bg-white/55'
+                  }`}
+                  data-testid={`storefront-hero-dot-${index}`}
+                />
+              ))}
             </div>
-            <div className="min-w-0 flex-1">
-              <h2 className="text-base font-black text-[#111827] leading-tight">
-                {listing.name}
-              </h2>
-              <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-                {visual?.address || `${listing.district}, ${listing.city}`}
-              </p>
-              <p className="text-[11px] text-slate-700 font-semibold mt-1 flex items-center gap-1.5 flex-wrap">
-                <span className="inline-flex items-center gap-0.5 text-amber-600 font-bold">
-                  <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-                  {listing.rating}
-                </span>
-                <span>•</span>
-                <span>{visual?.totalBookingsCount || listing.reviewCount} Randevu</span>
-                <span>•</span>
-                <span className="text-emerald-700">Bugün {listing.nextAvailableSlot}</span>
-              </p>
-            </div>
+          )}
+
+          <div
+            className="absolute -bottom-6 left-4 flex h-16 w-16 items-center justify-center rounded-2xl border-4 border-white font-black text-white shadow-lg"
+            style={{ backgroundColor: visual?.logoBgColor || '#5B5FEF' }}
+            data-testid="storefront-overlap-avatar"
+          >
+            {visual?.logoMonogram || listing.name.slice(0, 2).toUpperCase()}
+          </div>
+        </div>
+
+        <div className="mx-auto max-w-lg space-y-3 px-4 pb-3 pt-9">
+          <div className="min-w-0">
+            <h2 className="text-base font-black leading-tight text-[#111827]">
+              {listing.name}
+            </h2>
+            <p className="mt-0.5 truncate text-[11px] text-slate-500">
+              {visual?.address || `${listing.district}, ${listing.city}`}
+            </p>
+            <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-700">
+              <span className="inline-flex items-center gap-0.5 font-bold text-amber-600">
+                <Star className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
+                {listing.rating}
+              </span>
+              <span>•</span>
+              <span>{visual?.totalBookingsCount || listing.reviewCount} Randevu</span>
+              <span>•</span>
+              <span className="text-emerald-700">Açık • Bugün {listing.nextAvailableSlot}</span>
+            </p>
+            <p className="mt-1.5 text-[11px] font-bold text-[#4F46E5]" data-testid="storefront-selected-specialist-heading">
+              {selectedSpecialist.name} • {selectedSpecialist.titleTr}
+            </p>
           </div>
 
           {/* One-Tap Action Row (Book + Call + Message + Directions) */}
@@ -445,7 +496,7 @@ export const MobileStorefrontDetailDrawer: React.FC<
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
-        <div className="max-w-lg mx-auto space-y-3 pb-24">
+        <div className="max-w-lg mx-auto space-y-3 pb-28">
           {activeTab === 'services' && (
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">

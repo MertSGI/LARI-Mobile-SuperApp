@@ -89,10 +89,21 @@ async function run() {
       const page = await context.newPage();
       const pageErrors = [];
       page.on('pageerror', (err) => pageErrors.push(err.message));
+      page.on('console', (message) => {
+        if (message.type() === 'error') pageErrors.push(message.text());
+      });
 
       // A) Native App Boot Redirect (`/?app=1` -> `/m`) & B2C Customer Mode Default Launch
       await page.goto(`${url}/?app=1#/`, { waitUntil: 'networkidle' });
-      await page.waitForSelector('[data-testid="lari-mobile-app-shell"]');
+      try {
+        await page.waitForSelector('[data-testid="lari-mobile-app-shell"]');
+      } catch (error) {
+        const bodyText = await page.locator('body').innerText().catch(() => 'BODY_UNAVAILABLE');
+        throw new Error(
+          `Mobile shell boot failed on ${vp.name}. Page errors: ${pageErrors.join('; ') || 'none'}. Body: ${bodyText.slice(0, 500)}`,
+          { cause: error }
+        );
+      }
       const startupMode = await page.getAttribute('[data-testid="lari-mobile-app-shell"]', 'data-effective-mode');
       assert.equal(startupMode, 'b2c_customer', `Expected default startup mode b2c_customer on ${vp.name}`);
       await page.waitForSelector('[data-testid="mobile-story-reels-strip"]');
@@ -101,11 +112,26 @@ async function run() {
       await page.waitForSelector('[data-testid="marketplace-card-maslak-auto-studio"]');
       await page.waitForSelector('[data-testid="lari-social-showcase-feed"]');
 
-      // Header Sun/Moon Quick Theme Toggle
-      await page.click('[data-testid="header-theme-toggle-btn"]');
-      assert.equal(await page.getAttribute('[data-testid="lari-mobile-app-shell"]', 'data-theme'), 'dark');
-      await page.click('[data-testid="header-theme-toggle-btn"]');
-      assert.equal(await page.getAttribute('[data-testid="lari-mobile-app-shell"]', 'data-theme'), 'light');
+      // Search clear affordance + expanded real-photo category catalog
+      await page.fill('[data-testid="explore-search-input"]', 'Nişantaşı');
+      await page.click('[data-testid="explore-search-clear-btn"]');
+      assert.equal(await page.inputValue('[data-testid="explore-search-input"]'), '');
+      await page.click('[data-testid="category-visibility-toggle"]');
+      await page.waitForSelector('[data-testid="category-card-health_tourism"]');
+      await page.click('[data-testid="category-visibility-toggle"]');
+
+      const legacySocialCtaCount = await page
+        .locator('button:has-text("Bu İşlem İçin Hemen Randevu Al")')
+        .count();
+      assert.equal(legacySocialCtaCount, 0);
+      assert.ok((await page.locator('[data-testid^="social-quick-book-"]').count()) > 0);
+
+      // Header brand + notification center drawer
+      await page.waitForSelector('[data-testid="header-brand-symbol"]');
+      await page.click('[data-testid="header-notifications-btn"]');
+      await page.waitForSelector('[data-testid="notification-drawer"]');
+      await page.click('[data-testid="notification-mark-all-read-btn"]');
+      await page.click('[data-testid="notification-drawer-close-btn"]');
 
       // A.2) Open Filter Drawer & verify auto_service + Google Business options
       await page.click('[data-testid="explore-filter-drawer-btn"]');
@@ -115,6 +141,8 @@ async function run() {
       // A.3) Open Full-Screen Storefront Detail Drawer & verify tabs
       await page.click('[data-testid="open-storefront-btn-atelier-nisantasi"]');
       await page.waitForSelector('[data-testid="mobile-storefront-detail-drawer"]');
+      await page.waitForSelector('[data-testid="storefront-hero-carousel"]');
+      await page.waitForSelector('[data-testid="storefront-overlap-avatar"]');
       await page.click('[data-testid="storefront-tab-specialists"]');
       await page.click('[data-testid="storefront-tab-portfolio"]');
       await page.click('[data-testid="close-storefront-drawer-btn"]');
@@ -145,10 +173,11 @@ async function run() {
       await page.click('[data-testid="mobile-tab-profile"]');
       await page.waitForSelector('[data-testid="mobile-profile-settings-page"]');
       await page.waitForSelector('[data-testid="panel-visibility-boundaries-card"]');
-      await page.click('[data-testid="theme-dark-btn"]');
+      await page.click('[data-testid="theme-mode-toggle-btn"]');
       const darkTheme = await page.getAttribute('[data-testid="lari-mobile-app-shell"]', 'data-theme');
       assert.equal(darkTheme, 'dark');
-      await page.click('[data-testid="theme-light-btn"]');
+      await page.click('[data-testid="theme-mode-toggle-btn"]');
+      await page.click('[data-testid="persona-role-dropdown-btn"]');
       await page.click('[data-testid="persona-pill-ht_patient"]');
       await page.waitForSelector('[data-testid="mobile-ht-concierge-page"]');
       await page.waitForSelector('[data-testid="ht-vip-admission-qr-card"]');
@@ -157,7 +186,7 @@ async function run() {
 
       // D) Switch to Partner Mode -> HT QR Admission + Voice Catalog Match + Publish Breakdown & Optional-Tip Payment QR
       await page.click('[data-testid="mobile-tab-profile"]');
-      await page.click('[data-testid="mobile-mode-toggle-btn"]');
+      await page.click('[data-testid="mobile-mode-partner-btn"]');
       await page.waitForSelector('[data-testid="mobile-partner-agenda-page"]');
       await page.waitForSelector('[data-testid="partner-daily-commission-card"]');
       await page.click('[data-testid="mobile-tab-partner_pos"]');
@@ -172,15 +201,16 @@ async function run() {
 
       // D.2) Switch back to Customer Mode & confirm Payment QR with Optional Tip in Wallet
       await page.click('[data-testid="mobile-tab-partner_switch"]');
-      await page.click('[data-testid="mobile-mode-toggle-btn"]');
+      await page.click('[data-testid="mobile-mode-customer-btn"]');
       await page.click('[data-testid="mobile-tab-wallet"]');
       await page.waitForSelector('[data-testid="wallet-checkout-breakdown-card"]');
       await page.click('[data-testid="customer-confirm-qr-payment-btn"]');
 
       // D.3) Switch back to Partner -> Clinic Practitioner PHI Persona & Touch Canvas
       await page.click('[data-testid="mobile-tab-profile"]');
-      await page.click('[data-testid="mobile-mode-toggle-btn"]');
+      await page.click('[data-testid="mobile-mode-partner-btn"]');
       await page.click('[data-testid="mobile-tab-partner_switch"]');
+      await page.click('[data-testid="persona-role-dropdown-btn"]');
       await page.click('[data-testid="persona-pill-clinic_practitioner"]');
       await page.waitForSelector('[data-testid="mobile-clinic-workspace"]');
       await page.waitForSelector('[data-testid="clinic-touch-drawing-studio"]');
@@ -190,7 +220,7 @@ async function run() {
       await page.goto(`${url}/?app=1&role=guest#/`, { waitUntil: 'networkidle' });
       await page.click('[data-testid="mobile-tab-profile"]');
       await page.waitForSelector('[data-testid="panel-visibility-boundaries-card"]');
-      assert.equal(await page.locator('[data-testid="mobile-mode-toggle-btn"]').count(), 0);
+      assert.equal(await page.locator('[data-testid="mobile-mode-toggle-group"]').count(), 0);
 
       // G) White-Label Storefront Lock (/m?slug=atelier-nisantasi)
       await page.goto(`${url}/#/m?slug=atelier-nisantasi`, { waitUntil: 'networkidle' });

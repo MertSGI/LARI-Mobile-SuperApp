@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   Bookmark,
   CalendarCheck,
+  CalendarPlus,
   Clock,
   Compass,
   ExternalLink,
@@ -250,6 +251,21 @@ const VERTICAL_BADGE_LABELS: Record<string, { badgeTr: string; pillClass: string
   },
 };
 
+const MOBILE_CATEGORY_OPTIONS = [
+  { id: 'beauty_salon', label: 'Güzellik & Saç', visualId: 'beauty_salon', vertical: 'beauty_salon' },
+  { id: 'auto_service', label: 'Oto Bakım & Servis', visualId: 'auto_service', vertical: 'auto_service' },
+  { id: 'dental_clinic', label: 'Diş & Klinik', visualId: 'dental_clinic', vertical: 'dental_clinic' },
+  { id: 'barber', label: 'Berber Kulübü', visualId: 'barber', vertical: 'barber' },
+  { id: 'aesthetic_clinic', label: 'Medikal Estetik', visualId: 'aesthetic_clinic', vertical: 'aesthetic_clinic' },
+  { id: 'spa_wellness', label: 'Spa & Masaj', visualId: 'spa_wellness', vertical: 'spa_wellness' },
+  { id: 'health_tourism', label: 'Sağlık Turizmi', visualId: 'health_tourism', vertical: 'aesthetic_clinic' },
+  { id: 'nail_studio', label: 'Tırnak & İpek Kirpik', visualId: 'nail_studio', vertical: 'nail_studio' },
+  { id: 'physiotherapy', label: 'Fizyoterapi & Rehabilitasyon', visualId: 'physiotherapy', vertical: 'physiotherapy' },
+  { id: 'dietitian', label: 'Diyetisyen & Beslenme', visualId: 'dietitian', vertical: 'consulting' },
+  { id: 'pet_grooming', label: 'Veteriner & Pet Bakım', visualId: 'pet_grooming', vertical: 'pet_grooming' },
+  { id: 'personal_trainer', label: 'Pilates & Fitness', visualId: 'personal_trainer', vertical: 'personal_trainer' },
+] as const;
+
 export interface MobileExploreMarketplacePageProps {
   whiteLabelLockedTenantSlug?: string | null;
   pastAppointments?: PastAppointmentSnapshot[];
@@ -289,6 +305,8 @@ export const MobileExploreMarketplacePage: React.FC<
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [showRadarMap, setShowRadarMap] = useState(true);
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+  const [showAllCategories, setShowAllCategories] = useState(false);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedMapPinSlug, setSelectedMapPinSlug] = useState<string>(
     'atelier-nisantasi'
   );
@@ -330,7 +348,7 @@ export const MobileExploreMarketplacePage: React.FC<
     : 'bg-[#F8FAFC] border-2 border-slate-200 text-slate-900';
 
   return (
-    <div className="space-y-5" data-testid="mobile-explore-marketplace-page">
+    <div className="space-y-5 pb-28" data-testid="mobile-explore-marketplace-page">
       {searchResult.storefrontLockActive ? (
         <div
           className="rounded-2xl bg-emerald-50 border-2 border-emerald-400 p-4 flex items-center justify-between gap-2"
@@ -365,12 +383,24 @@ export const MobileExploreMarketplacePage: React.FC<
                     ? 'Salon, klinik, oto servis veya işlem...'
                     : 'Search salon, clinic, auto service...'
                 }
-                className={`w-full rounded-2xl border-2 pl-10 pr-10 py-2.5 text-sm font-medium ${
+                className={`w-full flex-1 rounded-2xl border-2 pl-10 pr-20 py-2.5 text-sm font-medium ${
                   isDark
                     ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-400'
                     : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'
-                }`}
+                  }`}
+                data-testid="explore-search-input"
               />
+              {queryText && (
+                <button
+                  type="button"
+                  onClick={() => setQueryText('')}
+                  aria-label="Aramayı temizle"
+                  className="absolute right-11 top-2 flex h-8 w-8 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
+                  data-testid="explore-search-clear-btn"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
               <button
                 type="button"
                 aria-label="Sesli arama"
@@ -378,6 +408,7 @@ export const MobileExploreMarketplacePage: React.FC<
                   showToast('Sesli arama: Örn. "Maslak oto servis" veya "Nişantaşı" diyebilirsiniz')
                 }
                 className="absolute right-2 top-2 w-8 h-8 rounded-xl bg-[#EEF2FF] text-[#4F46E5] flex items-center justify-center"
+                data-testid="explore-voice-search-btn"
               >
                 <Mic className="w-4 h-4" />
               </button>
@@ -424,57 +455,66 @@ export const MobileExploreMarketplacePage: React.FC<
               <h2 className="text-sm font-black tracking-wide uppercase">
                 SEKTÖR & KATEGORİLER
               </h2>
-              {vertical !== 'all' && (
+              <div className="flex items-center gap-2">
+                {selectedCategoryId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategoryId(null);
+                      setVertical('all');
+                    }}
+                    className="text-xs font-bold text-slate-500 underline"
+                  >
+                    Filtreyi Temizle
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => setVertical('all')}
-                  className="text-xs font-bold text-[#4F46E5] underline"
+                  onClick={() => setShowAllCategories((current) => !current)}
+                  className="text-xs font-black text-[#4F46E5]"
+                  data-testid="category-visibility-toggle"
                 >
-                  Tümünü Göster
+                  {showAllCategories ? 'Daha Az Gör' : 'Tümünü Gör'}
                 </button>
-              )}
+              </div>
             </div>
             <div className="grid grid-cols-3 gap-2.5">
-              {(
-                [
-                  ['beauty_salon', 'Güzellik & Saç'],
-                  ['auto_service', 'Oto Bakım & Servis'],
-                  ['dental_clinic', 'Diş & Klinik'],
-                  ['barber', 'Berber Kulübü'],
-                  ['aesthetic_clinic', 'Medikal Estetik'],
-                  ['spa_wellness', 'Spa & Masaj'],
-                ] as const
-              ).map(([id, label]) => {
-                const artwork = MOBILE_CATEGORY_ARTWORKS[id];
-                const isActiveCat = vertical === id;
+              {(showAllCategories
+                ? MOBILE_CATEGORY_OPTIONS
+                : MOBILE_CATEGORY_OPTIONS.slice(0, 6)
+              ).map((category) => {
+                const artwork = MOBILE_CATEGORY_ARTWORKS[category.visualId];
+                const isActiveCat = selectedCategoryId === category.id;
                 return (
                   <button
-                    key={id}
+                    key={category.id}
                     type="button"
-                    onClick={() => setVertical(isActiveCat ? 'all' : id)}
-                    className={`overflow-hidden rounded-2xl border-2 text-left transition shadow-xs ${
+                    onClick={() => {
+                      setSelectedCategoryId(isActiveCat ? null : category.id);
+                      setVertical(isActiveCat ? 'all' : category.vertical);
+                    }}
+                    className={`relative h-28 overflow-hidden rounded-2xl border-2 text-left transition shadow-xs ${
                       isActiveCat
                         ? 'border-[#4F46E5] ring-2 ring-[#4F46E5]/30'
-                        : isDark
-                          ? 'bg-slate-900 border-slate-700'
-                          : 'bg-white border-slate-300'
+                        : 'border-white/60 dark:border-slate-700'
                     }`}
+                    data-testid={`category-card-${category.id}`}
                   >
                     <img
-                      src={artwork.svgUrl}
+                      src={artwork.photoUrl}
                       alt={artwork.alt}
-                      className="w-full h-16 object-cover bg-slate-50"
+                      onError={(event) => {
+                        if (event.currentTarget.src !== artwork.svgUrl) {
+                          event.currentTarget.src = artwork.svgUrl;
+                        }
+                      }}
+                      className="absolute inset-0 h-full w-full object-cover bg-slate-100"
                     />
+                    <span className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
                     <span
-                      className={`block px-2 py-2 text-xs font-bold leading-tight truncate ${
-                        isActiveCat
-                          ? 'text-[#4F46E5]'
-                          : isDark
-                            ? 'text-white'
-                            : 'text-slate-900'
-                      }`}
+                      className="absolute inset-x-0 bottom-0 z-10 block px-2.5 py-2.5 text-xs font-black leading-tight text-white"
                     >
-                      {label}
+                      {category.label}
                     </span>
                   </button>
                 );
@@ -490,7 +530,8 @@ export const MobileExploreMarketplacePage: React.FC<
             >
               {/* Google Maps Venue Selector Bar */}
               <div className="p-3 border-b-2 border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                <div className="flex-1 min-w-0 overflow-x-auto no-scrollbar whitespace-nowrap">
+                  <div className="flex items-center gap-1.5">
                   {searchResult.items.map((pin) => {
                     const isSelectedPin = pinnedItem.slug === pin.slug;
                     return (
@@ -512,11 +553,12 @@ export const MobileExploreMarketplacePage: React.FC<
                       </button>
                     );
                   })}
+                  </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setGpsEnabled((prev) => !prev)}
-                  className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border-2 flex items-center gap-1 shrink-0 ${
+                  className={`ml-2 px-2.5 py-1.5 rounded-xl text-xs font-bold border-2 flex items-center gap-1 shrink-0 ${
                     gpsEnabled
                       ? 'bg-[#4F46E5] text-white border-[#4338CA]'
                       : isDark
@@ -821,7 +863,7 @@ export const MobileExploreMarketplacePage: React.FC<
                       <button
                         type="button"
                         onClick={() => toggleLikeSocialPost(post.postId)}
-                        className="flex items-center gap-1 text-xs font-black"
+                        className="flex items-center gap-1 overflow-visible pl-1 text-xs font-black"
                       >
                         <Heart
                           className={`w-5 h-5 ${
@@ -838,6 +880,23 @@ export const MobileExploreMarketplacePage: React.FC<
                       >
                         <Share2 className="w-5 h-5" />
                       </button>
+                      {listing && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onOpenBookingSheet?.(
+                              { ...listing, distanceKm: 1.2, estimatedTravelMinutes: 8 },
+                              undefined,
+                              [post.serviceTag]
+                            )
+                          }
+                          aria-label={`${post.serviceTag} için hızlı randevu al`}
+                          className="text-[#4F46E5] transition hover:text-[#4338CA]"
+                          data-testid={`social-quick-book-${post.postId}`}
+                        >
+                          <CalendarPlus className="h-5 w-5" />
+                        </button>
+                      )}
                     </div>
                     <button
                       type="button"
@@ -857,23 +916,6 @@ export const MobileExploreMarketplacePage: React.FC<
                     {post.caption}
                   </p>
 
-                  {listing && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onOpenBookingSheet?.(
-                          { ...listing, distanceKm: 1.2, estimatedTravelMinutes: 8 },
-                          undefined,
-                          [post.serviceTag]
-                        )
-                      }
-                      style={{ minHeight: '42px' }}
-                      className="w-full rounded-xl bg-[#EEF2FF] hover:bg-indigo-100 border-2 border-[#4F46E5]/30 text-[#4338CA] text-xs font-black flex items-center justify-center gap-1.5"
-                    >
-                      <CalendarCheck className="w-4 h-4" />
-                      Bu İşlem İçin Hemen Randevu Al ({post.serviceTag})
-                    </button>
-                  )}
                 </div>
               </article>
             );
@@ -985,6 +1027,7 @@ export const MobileExploreMarketplacePage: React.FC<
                 type="button"
                 onClick={() => {
                   setVertical('all');
+                  setSelectedCategoryId(null);
                   setAvailableTodayOnly(false);
                   setGoogleVerifiedOnly(false);
                   setMinRating(0);

@@ -6,12 +6,16 @@ export type MobileVisualCategory =
   | 'spa_wellness'
   | 'health_tourism'
   | 'auto_service'
+  | 'nail_studio'
+  | 'physiotherapy'
+  | 'dietitian'
   | 'pet_grooming'
   | 'personal_trainer';
 
 export interface MobileCategoryArtwork {
   label: string;
   alt: string;
+  photoUrl: string;
   svgUrl: string;
   accentColor: string;
   backgroundColor: string;
@@ -19,6 +23,7 @@ export interface MobileCategoryArtwork {
 
 export interface VenueVisualAsset {
   coverPhotoUrl: string;
+  galleryPhotoUrls: string[];
   fallbackSvgUrl: string;
   logoMonogram: string;
   logoBgColor: string;
@@ -39,7 +44,8 @@ function categoryArtwork(
   label: string,
   accentColor: string,
   backgroundColor: string,
-  symbol: string
+  symbol: string,
+  photoUrl: string
 ): MobileCategoryArtwork {
   const safeLabel = label.replace(/&/g, '&amp;');
   const svg = [
@@ -58,6 +64,7 @@ function categoryArtwork(
   return {
     label,
     alt: label + ' kategorisi',
+    photoUrl,
     accentColor,
     backgroundColor,
     svgUrl: svgDataUri(svg),
@@ -72,55 +79,85 @@ export const MOBILE_CATEGORY_ARTWORKS: Record<
     'Güzellik Salonu',
     '#5B5FEF',
     '#F3F4FF',
-    'M112 119c19-8 34-24 39-45M145 121c-11-16-11-32 0-48'
+    'M112 119c19-8 34-24 39-45M145 121c-11-16-11-32 0-48',
+    'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=900&q=85'
   ),
   barber: categoryArtwork(
     'Berber',
     '#8B5E3C',
     '#FAF6F1',
-    'M107 75l47 57M154 75l-47 57M103 72l8 8M150 128l8 8'
+    'M107 75l47 57M154 75l-47 57M103 72l8 8M150 128l8 8',
+    'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=900&q=85'
   ),
   dental_clinic: categoryArtwork(
     'Diş Kliniği',
     '#0891B2',
     '#ECFEFF',
-    'M112 78c-10 15-2 53 14 58 8 3 8-21 15-21s7 24 15 21c16-5 24-43 14-58-10-15-20-5-29-5s-19-10-29 5z'
+    'M112 78c-10 15-2 53 14 58 8 3 8-21 15-21s7 24 15 21c16-5 24-43 14-58-10-15-20-5-29-5s-19-10-29 5z',
+    'https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=900&q=85'
   ),
   aesthetic_clinic: categoryArtwork(
     'Estetik Klinik',
     '#DB2777',
     '#FDF2F8',
-    'M115 123c24-4 39-22 43-48M113 105c11 8 25 9 38 2M128 85h1M153 89h1'
+    'M115 123c24-4 39-22 43-48M113 105c11 8 25 9 38 2M128 85h1M153 89h1',
+    'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=900&q=85'
   ),
   spa_wellness: categoryArtwork(
     'Spa & Wellness',
     '#059669',
     '#ECFDF5',
-    'M95 120c19-31 38-31 57 0 19-31 38-31 57 0M152 120V78M132 95l20-17 20 17'
+    'M95 120c19-31 38-31 57 0 19-31 38-31 57 0M152 120V78M132 95l20-17 20 17',
+    'https://images.unsplash.com/photo-1544161515-4ab6ce6db874?auto=format&fit=crop&w=900&q=85'
   ),
   health_tourism: categoryArtwork(
     'Sağlık Turizmi',
     '#2563EB',
     '#EFF6FF',
-    'M105 105h28V77h20v28h28v20h-28v28h-20v-28h-28zM191 80c15 4 25 17 25 33'
+    'M105 105h28V77h20v28h28v20h-28v28h-20v-28h-28zM191 80c15 4 25 17 25 33',
+    'https://images.unsplash.com/photo-1538108149393-fbbd81895907?auto=format&fit=crop&w=900&q=85'
   ),
   auto_service: categoryArtwork(
     'Oto Bakım & Servis',
     '#334155',
     '#F1F5F9',
-    'M98 118l16-32h92l16 32M95 118h130v22H95zM122 140v8M198 140v8'
+    'M98 118l16-32h92l16 32M95 118h130v22H95zM122 140v8M198 140v8',
+    'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&w=900&q=85'
+  ),
+  nail_studio: categoryArtwork(
+    'Tırnak & İpek Kirpik',
+    '#C026D3',
+    '#FDF4FF',
+    'M106 130c12-40 24-59 36-59s19 20 19 59M172 130c4-34 13-51 27-51 12 0 18 17 17 51',
+    'https://images.unsplash.com/photo-1604654894610-df63bc536371?auto=format&fit=crop&w=900&q=85'
+  ),
+  physiotherapy: categoryArtwork(
+    'Fizyoterapi & Rehabilitasyon',
+    '#0284C7',
+    '#F0F9FF',
+    'M124 81c20 0 36 16 36 36v37M160 118h47M112 151h96',
+    'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=900&q=85'
+  ),
+  dietitian: categoryArtwork(
+    'Diyetisyen & Beslenme',
+    '#65A30D',
+    '#F7FEE7',
+    'M112 119c12-35 38-49 70-31 17 10 24 36 11 53M151 78c8 6 13 14 14 25',
+    'https://images.unsplash.com/photo-1490645935967-10de6ba17061?auto=format&fit=crop&w=900&q=85'
   ),
   pet_grooming: categoryArtwork(
     'Pet Kuaför & Vet',
     '#D97706',
     '#FFFBEB',
-    'M135 128c0-15 12-26 25-26s25 11 25 26-10 18-25 18-25-3-25-18zM122 92h1M146 78h1M174 78h1M198 92h1'
+    'M135 128c0-15 12-26 25-26s25 11 25 26-10 18-25 18-25-3-25-18zM122 92h1M146 78h1M174 78h1M198 92h1',
+    'https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&w=900&q=85'
   ),
   personal_trainer: categoryArtwork(
     'Spor & Koçluk',
     '#4F46E5',
     '#EEF2FF',
-    'M108 108h104M118 90v36M202 90v36M106 96v24M214 96v24'
+    'M108 108h104M118 90v36M202 90v36M106 96v24M214 96v24',
+    'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?auto=format&fit=crop&w=900&q=85'
   ),
 };
 
@@ -170,6 +207,11 @@ function venueFallback(
 export const VENUE_VISUAL_CATALOG: Record<string, VenueVisualAsset> = {
   'atelier-nisantasi': {
     coverPhotoUrl: 'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1600&q=88',
+    galleryPhotoUrls: [
+      'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1600&q=88',
+      'https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&w=1600&q=88',
+      'https://images.unsplash.com/photo-1562322140-8baeececf3df?auto=format&fit=crop&w=1600&q=88',
+    ],
     fallbackSvgUrl: venueFallback('Atelier Nişantaşı', 'AN', '#5B5FEF', 'salon'),
     logoMonogram: 'AN',
     logoBgColor: '#5B5FEF',
@@ -181,6 +223,11 @@ export const VENUE_VISUAL_CATALOG: Record<string, VenueVisualAsset> = {
   },
   'lari-dent-kadikoy': {
     coverPhotoUrl: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=1600&q=88',
+    galleryPhotoUrls: [
+      'https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=1600&q=88',
+      'https://images.unsplash.com/photo-1606811971618-4486d14f3f99?auto=format&fit=crop&w=1600&q=88',
+      'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=1600&q=88',
+    ],
     fallbackSvgUrl: venueFallback('LARİ Dent Kadıköy', 'LD', '#0891B2', 'clinic'),
     logoMonogram: 'LD',
     logoBgColor: '#0891B2',
@@ -192,6 +239,11 @@ export const VENUE_VISUAL_CATALOG: Record<string, VenueVisualAsset> = {
   },
   'no9-barber-club': {
     coverPhotoUrl: 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=1600&q=88',
+    galleryPhotoUrls: [
+      'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&w=1600&q=88',
+      'https://images.unsplash.com/photo-1621605815971-fbc98d665033?auto=format&fit=crop&w=1600&q=88',
+      'https://images.unsplash.com/photo-1599351431202-1e0f0137899a?auto=format&fit=crop&w=1600&q=88',
+    ],
     fallbackSvgUrl: venueFallback('No.9 Barber Club', 'N9', '#8B5E3C', 'barber'),
     logoMonogram: 'N9',
     logoBgColor: '#8B5E3C',
@@ -203,6 +255,11 @@ export const VENUE_VISUAL_CATALOG: Record<string, VenueVisualAsset> = {
   },
   'aura-holistic-spa-bebek': {
     coverPhotoUrl: 'https://images.unsplash.com/photo-1544161515-4ab6ce6db874?auto=format&fit=crop&w=1600&q=88',
+    galleryPhotoUrls: [
+      'https://images.unsplash.com/photo-1544161515-4ab6ce6db874?auto=format&fit=crop&w=1600&q=88',
+      'https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?auto=format&fit=crop&w=1600&q=88',
+      'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1600&q=88',
+    ],
     fallbackSvgUrl: venueFallback('Aura Holistic Spa', 'AU', '#059669', 'spa'),
     logoMonogram: 'AU',
     logoBgColor: '#059669',
@@ -214,6 +271,11 @@ export const VENUE_VISUAL_CATALOG: Record<string, VenueVisualAsset> = {
   },
   'dr-selin-aesthetics-etiler': {
     coverPhotoUrl: 'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=1600&q=88',
+    galleryPhotoUrls: [
+      'https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=1600&q=88',
+      'https://images.unsplash.com/photo-1516841273335-e39b37888115?auto=format&fit=crop&w=1600&q=88',
+      'https://images.unsplash.com/photo-1666887360642-380f1e0984e2?auto=format&fit=crop&w=1600&q=88',
+    ],
     fallbackSvgUrl: venueFallback('Dr. Selin Aesthetics', 'DS', '#DB2777', 'aesthetic'),
     logoMonogram: 'DS',
     logoBgColor: '#DB2777',
@@ -225,6 +287,11 @@ export const VENUE_VISUAL_CATALOG: Record<string, VenueVisualAsset> = {
   },
   'maslak-auto-studio': {
     coverPhotoUrl: 'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&w=1600&q=88',
+    galleryPhotoUrls: [
+      'https://images.unsplash.com/photo-1486262715619-67b85e0b08d3?auto=format&fit=crop&w=1600&q=88',
+      'https://images.unsplash.com/photo-1632823469850-1b7b1e8b7e5e?auto=format&fit=crop&w=1600&q=88',
+      'https://images.unsplash.com/photo-1597404294360-feeeda04612e?auto=format&fit=crop&w=1600&q=88',
+    ],
     fallbackSvgUrl: venueFallback('Maslak Auto Servis', 'MA', '#334155', 'clinic'),
     logoMonogram: 'MA',
     logoBgColor: '#334155',

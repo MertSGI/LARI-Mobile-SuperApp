@@ -4,6 +4,7 @@ import {
   Bell,
   Check,
   CheckCircle2,
+  ChevronDown,
   Fingerprint,
   Globe,
   Moon,
@@ -67,6 +68,7 @@ export const MobileProfileSettingsPage: React.FC<
   const [pushHt, setPushHt] = useState(true);
   const [biometricConfirmed, setBiometricConfirmed] = useState(false);
   const [confirmPhrase, setConfirmPhrase] = useState('');
+  const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
   const [deletionResult, setDeletionResult] =
     useState<AccountDeletionResult | null>(null);
 
@@ -105,7 +107,7 @@ export const MobileProfileSettingsPage: React.FC<
   };
 
   return (
-    <div className="space-y-4" data-testid="mobile-profile-settings-page">
+    <div className="space-y-4 pb-28" data-testid="mobile-profile-settings-page">
       {/* Profile Header */}
       <div className={`rounded-3xl p-5 text-center space-y-2 shadow-sm ${cardSurface}`}>
         <div className="w-16 h-16 mx-auto rounded-full bg-[#EEF2FF] text-[#4F46E5] border-2 border-[#4F46E5] flex items-center justify-center font-black text-lg">
@@ -131,42 +133,39 @@ export const MobileProfileSettingsPage: React.FC<
           <span className="text-xs font-black uppercase tracking-wider text-slate-500 block">
             Uygulama Teması (Güneş / Ay)
           </span>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setThemeMode('light');
-                showToast('Güneş • Açık (Kurumsal) mod aktif edildi.');
-              }}
-              style={{ minHeight: '48px' }}
-              className={`rounded-xl border-2 px-3 py-2 text-sm font-black flex items-center justify-center gap-2 transition ${
-                !isDark
-                  ? 'bg-amber-50 border-amber-400 text-amber-900 shadow-xs'
-                  : 'bg-slate-800 border-slate-700 text-slate-300'
-              }`}
-              data-testid="theme-light-btn"
-            >
-              <Sun className="w-5 h-5 text-amber-500 fill-amber-400/40" />
-              Güneş • Açık Mod
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setThemeMode('dark');
-                showToast('Ay • Koyu mod aktif edildi.');
-              }}
-              style={{ minHeight: '48px' }}
-              className={`rounded-xl border-2 px-3 py-2 text-sm font-black flex items-center justify-center gap-2 transition ${
-                isDark
-                  ? 'bg-[#4F46E5] border-[#818CF8] text-white shadow-xs'
-                  : 'bg-white border-slate-300 text-slate-700'
-              }`}
-              data-testid="theme-dark-btn"
-            >
-              <Moon className="w-5 h-5 fill-current/20" />
-              Ay • Koyu Mod
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const nextMode = isDark ? 'light' : 'dark';
+              setThemeMode(nextMode);
+              showToast(
+                nextMode === 'dark'
+                  ? 'Ay • Koyu mod aktif edildi.'
+                  : 'Güneş • Açık mod aktif edildi.'
+              );
+            }}
+            style={{ minHeight: '50px' }}
+            className={`flex w-full items-center justify-center gap-2 rounded-xl border-2 px-3 py-2 text-sm font-black transition ${
+              isDark
+                ? 'bg-[#4F46E5] border-[#818CF8] text-white shadow-xs'
+                : 'bg-amber-50 border-amber-400 text-amber-900 shadow-xs'
+            }`}
+            data-testid="theme-mode-toggle-btn"
+            aria-label={
+              isDark
+                ? 'Koyu Mod (Ay) — Açık Moda Geç'
+                : 'Açık Mod (Güneş) — Koyu Moda Geç'
+            }
+          >
+            {isDark ? (
+              <Moon className="h-5 w-5 fill-current/20" />
+            ) : (
+              <Sun className="h-5 w-5 fill-amber-400/40 text-amber-500" />
+            )}
+            {isDark
+              ? 'Koyu Mod (Ay) — Açık Moda Geç'
+              : 'Açık Mod (Güneş) — Koyu Moda Geç'}
+          </button>
         </div>
 
         {/* Role & Panel Visibility Boundary Matrix */}
@@ -196,57 +195,109 @@ export const MobileProfileSettingsPage: React.FC<
             <span className="text-xs font-black uppercase tracking-wider text-slate-500 block">
               Çalışma Modu
             </span>
-            <button
-              type="button"
-              onClick={() =>
-                onToggleMode(isPartner ? 'b2c_customer' : 'b2b_partner')
-              }
-              style={{ minHeight: '48px' }}
-              className={`w-full rounded-xl px-4 py-2.5 text-sm font-bold border-2 flex items-center justify-between transition ${
-                isPartner
-                  ? 'bg-[#4F46E5] border-[#4338CA] text-white'
-                  : 'bg-[#EEF2FF] border-[#4F46E5] text-[#4338CA]'
-              }`}
-              data-testid="mobile-mode-toggle-btn"
-            >
-              <span>
-                {isPartner
-                  ? 'Müşteri Moduna Geç (Keşfet & Randevu)'
-                  : 'Partner / İşletme Moduna Geç'}
-              </span>
-              <Check className="w-4 h-4" />
-            </button>
+            <div className="grid grid-cols-2 gap-2" data-testid="mobile-mode-toggle-group">
+              <button
+                type="button"
+                onClick={() => {
+                  if (isPartner) onToggleMode('b2c_customer');
+                }}
+                style={{ minHeight: '48px' }}
+                className={`rounded-xl border-2 px-3 py-2 text-xs font-black transition ${
+                  !isPartner
+                    ? 'bg-[#4F46E5] border-[#4338CA] text-white'
+                    : isDark
+                      ? 'bg-slate-800 border-slate-700 text-slate-200'
+                      : 'bg-white border-slate-300 text-slate-700'
+                }`}
+                data-testid="mobile-mode-customer-btn"
+              >
+                Müşteri Modu
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isPartner) onToggleMode('b2b_partner');
+                }}
+                style={{ minHeight: '48px' }}
+                className={`rounded-xl border-2 px-3 py-2 text-xs font-black transition ${
+                  isPartner
+                    ? 'bg-[#4F46E5] border-[#4338CA] text-white'
+                    : isDark
+                      ? 'bg-slate-800 border-slate-700 text-slate-200'
+                      : 'bg-white border-slate-300 text-slate-700'
+                }`}
+                data-testid="mobile-mode-partner-btn"
+              >
+                Partner / İşletme Modu
+              </button>
+            </div>
           </div>
         )}
 
         {shellState && shellState.availablePersonas.length > 1 && onSwitchPersona && (
           <div className="space-y-2">
             <span className="text-xs font-black uppercase tracking-wider text-slate-500 block">
-              Dikey Deneyim / Rol Seçimi
+              Kullanım Rolü
             </span>
-            <div className="grid grid-cols-1 gap-2">
-              {shellState.availablePersonas.map((persona) => {
-                const active = persona === shellState.effectivePersona;
-                return (
-                  <button
-                    key={persona}
-                    type="button"
-                    onClick={() => onSwitchPersona(persona)}
-                    style={{ minHeight: '44px' }}
-                    className={`px-3.5 py-2 rounded-xl text-sm font-bold text-left transition border-2 flex items-center justify-between ${
-                      active
-                        ? 'bg-[#4F46E5] text-white border-[#4338CA]'
-                        : isDark
-                          ? 'bg-slate-800 text-slate-200 border-slate-700'
-                          : 'bg-[#F8FAFC] text-slate-800 border-slate-300'
-                    }`}
-                    data-testid={`persona-pill-${persona}`}
-                  >
-                    <span>{PERSONA_LABELS[persona][language]}</span>
-                    {active && <Check className="w-4 h-4" />}
-                  </button>
-                );
-              })}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setRoleDropdownOpen((open) => !open)}
+                aria-expanded={roleDropdownOpen}
+                aria-haspopup="listbox"
+                className={`flex min-h-12 w-full items-center justify-between rounded-xl border-2 px-3.5 py-2 text-left text-sm font-bold ${
+                  isDark
+                    ? 'bg-slate-800 border-slate-700 text-slate-100'
+                    : 'bg-[#F8FAFC] border-slate-300 text-slate-800'
+                }`}
+                data-testid="persona-role-dropdown-btn"
+              >
+                <span>{PERSONA_LABELS[shellState.effectivePersona][language]}</span>
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 transition-transform ${
+                    roleDropdownOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+              {roleDropdownOpen && (
+                <div
+                  role="listbox"
+                  className={`absolute inset-x-0 top-[calc(100%+0.5rem)] z-30 grid gap-1.5 rounded-2xl border-2 p-2 shadow-xl ${
+                    isDark
+                      ? 'bg-slate-900 border-slate-700'
+                      : 'bg-white border-slate-200'
+                  }`}
+                  data-testid="persona-role-dropdown-menu"
+                >
+                  {shellState.availablePersonas.map((persona) => {
+                    const active = persona === shellState.effectivePersona;
+                    return (
+                      <button
+                        key={persona}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        onClick={() => {
+                          onSwitchPersona(persona);
+                          setRoleDropdownOpen(false);
+                        }}
+                        className={`flex min-h-11 items-center justify-between rounded-xl px-3 py-2 text-left text-sm font-bold transition ${
+                          active
+                            ? 'bg-[#4F46E5] text-white'
+                            : isDark
+                              ? 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                              : 'bg-[#F8FAFC] text-slate-800 hover:bg-slate-100'
+                        }`}
+                        data-testid={`persona-pill-${persona}`}
+                      >
+                        <span>{PERSONA_LABELS[persona][language]}</span>
+                        {active && <Check className="h-4 w-4" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
