@@ -1,30 +1,30 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Bell,
   CalendarClock,
   CalendarPlus,
-  Check,
   Compass,
   Globe2,
+  Home,
   Inbox,
   Lock,
-  Moon,
   Plane,
+  Plus,
   QrCode,
   ScanLine,
+  Search,
+  Send,
   ShieldCheck,
   Sliders,
   Sparkles,
   Stethoscope,
   Store,
-  Sun,
-  User,
   UserCheck,
   Users,
   WifiOff,
-  X,
+  ChevronDown,
 } from 'lucide-react';
 import {
-  MobileCapabilityTier,
   MobilePersonaType,
   MobileShellMode,
   MobileShellResolutionResult,
@@ -38,6 +38,9 @@ export interface MobileAppShellProps {
   onSelectTab: (tab: MobileTabDescriptor) => void;
   onSwitchPersona: (persona: MobilePersonaType) => void;
   onToggleMode: (targetMode: MobileShellMode) => void;
+  onQuickPlusAction?: () => void;
+  onNotificationBellClick?: () => void;
+  onBrandHeaderClick?: () => void;
   businessDisplayName?: string;
   branchDisplayName?: string;
   isOffline?: boolean;
@@ -45,53 +48,46 @@ export interface MobileAppShellProps {
   children: React.ReactNode;
 }
 
-const PERSONA_LABELS: Record<MobilePersonaType, { tr: string; en: string }> = {
-  salon_customer: { tr: 'Müşteri • Keşfet & Randevu', en: 'Customer • Explore' },
-  clinic_patient: { tr: 'Klinik & Muayenehane Hastası', en: 'Clinic Patient' },
-  ht_patient: { tr: 'Uluslararası Sağlık Turizmi', en: 'Medical Concierge' },
-  salon_partner: { tr: 'İşletme / Uzman Stüdyosu', en: 'Partner • Staff & POS' },
-  clinic_practitioner: { tr: 'Klinik Hekim (PHI)', en: 'Clinic Practitioner PHI' },
-  ht_coordinator: { tr: 'Sağlık Turizmi Koordinatörü', en: 'HT Lead Ops & Quote' },
-};
+function renderDockIcon(tab: MobileTabDescriptor, isActive: boolean, isDark: boolean) {
+  const cls = `w-7 h-7 transition-transform duration-150 ${
+    isActive
+      ? isDark
+        ? 'text-white scale-110 stroke-[2.5]'
+        : 'text-slate-950 scale-110 stroke-[2.5]'
+      : isDark
+        ? 'text-slate-400 stroke-[1.8]'
+        : 'text-slate-600 stroke-[1.8]'
+  }`;
 
-const TIER_BADGE_STYLES: Record<
-  MobileCapabilityTier,
-  { labelTr: string; labelEn: string; className: string }
-> = {
-  LIVE_ACTIVE: {
-    labelTr: 'CANLI YETKİLİ',
-    labelEn: 'LIVE ACTIVE',
-    className: 'bg-emerald-50 text-emerald-700 border-emerald-300',
-  },
-  LOCAL_OR_SANDBOX_ONLY: {
-    labelTr: 'YEREL / SANDBOX',
-    labelEn: 'SANDBOX MODE',
-    className: 'bg-amber-50 text-amber-800 border-amber-300',
-  },
-  DISABLED_EXTERNAL_HOLD: {
-    labelTr: 'DIŞ ONAY BEKLİYOR (HOLD)',
-    labelEn: 'EXTERNAL HOLD',
-    className: 'bg-rose-50 text-rose-700 border-rose-300',
-  },
-};
+  if (tab.id === 'explore' || tab.id === 'storefront') {
+    return (
+      <Home
+        className={cls}
+        fill={isActive ? (isDark ? '#FFFFFF' : '#0F172A') : 'none'}
+      />
+    );
+  }
+  if (tab.id === 'ai_style') {
+    return <Search className={cls} />;
+  }
+  if (tab.id === 'quick_book') {
+    return <Send className={cls} />;
+  }
+  if (tab.id === 'wallet') {
+    return <QrCode className={cls} />;
+  }
 
-function renderTabIcon(iconName: string, isActive: boolean) {
-  const cls = `w-7 h-7 transition-transform ${isActive ? 'scale-110 stroke-[2.4]' : 'stroke-[1.9]'}`;
-  switch (iconName) {
+  switch (tab.iconName) {
     case 'Store':
       return <Store className={cls} />;
     case 'Compass':
       return <Compass className={cls} />;
-    case 'QrCode':
-      return <QrCode className={cls} />;
     case 'CalendarPlus':
       return <CalendarPlus className={cls} />;
     case 'Plane':
       return <Plane className={cls} />;
     case 'Sparkles':
       return <Sparkles className={cls} />;
-    case 'UserCheck':
-      return <UserCheck className={cls} />;
     case 'CalendarClock':
       return <CalendarClock className={cls} />;
     case 'Inbox':
@@ -113,369 +109,244 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
   shellState,
   activeTabId,
   onSelectTab,
-  onSwitchPersona,
-  onToggleMode,
+  onQuickPlusAction,
+  onNotificationBellClick,
+  onBrandHeaderClick,
   businessDisplayName = 'LARİ',
-  branchDisplayName,
   isOffline = false,
   language = 'tr',
   children,
 }) => {
-  const { themeMode, toggleThemeMode, showToast } = useMobileAppSession();
+  const { themeMode, activeBooking } = useMobileAppSession();
   const isDark = themeMode === 'dark';
   const isPartner = shellState.effectiveMode === 'b2b_partner';
   const activeTab =
     shellState.tabs.find((t) => t.id === activeTabId) || shellState.tabs[0];
-  const tierMeta = TIER_BADGE_STYLES[activeTab.capabilityTier];
 
-  const [profileDrawerOpen, setProfileDrawerOpen] = useState(false);
-  const [bottomNavVisible, setBottomNavVisible] = useState(true);
+  const [dockVisible, setDockVisible] = useState(true);
   const lastScrollY = useRef(0);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    let idleTimer: ReturnType<typeof setTimeout> | null = null;
-    const onScroll = () => {
-      const y = window.scrollY || 0;
+
+    const getScrollY = () =>
+      Math.max(
+        window.scrollY || 0,
+        document.documentElement?.scrollTop || 0,
+        document.body?.scrollTop || 0
+      );
+
+    const scheduleReveal = () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = setTimeout(() => {
+        setDockVisible(true);
+      }, 700);
+    };
+
+    const handleScroll = () => {
+      const y = getScrollY();
       const delta = y - lastScrollY.current;
-      if (y <= 40) {
-        setBottomNavVisible(true);
-      } else if (delta > 12) {
-        setBottomNavVisible(false);
-      } else if (delta < -6) {
-        setBottomNavVisible(true);
+      if (y <= 48) {
+        setDockVisible(true);
+      } else if (delta > 8) {
+        setDockVisible(false);
+        scheduleReveal();
+      } else if (delta < -5) {
+        setDockVisible(true);
       }
       lastScrollY.current = y;
-      if (idleTimer) clearTimeout(idleTimer);
-      idleTimer = setTimeout(() => setBottomNavVisible(true), 650);
     };
-    window.addEventListener('scroll', onScroll, { passive: true });
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
-      window.removeEventListener('scroll', onScroll);
-      if (idleTimer) clearTimeout(idleTimer);
+      window.removeEventListener('scroll', handleScroll);
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     };
   }, []);
 
-  const hasPartnerAccess = shellState.availablePersonas.some((p) =>
-    ['salon_partner', 'clinic_practitioner', 'ht_coordinator'].includes(p)
-  );
-
   return (
     <div
-      className={`min-h-screen w-full max-w-full overflow-x-hidden flex flex-col transition-colors ${
-        isDark ? 'bg-slate-950 text-slate-100' : 'bg-[#F3F5F9] text-slate-900'
+      className={`min-h-screen w-full max-w-full overflow-x-clip flex flex-col transition-colors ${
+        isDark ? 'bg-slate-950 text-slate-100' : 'bg-[#F5F7FA] text-slate-900'
       }`}
       data-theme={themeMode}
       style={{
         paddingTop: shellState.layoutMetrics.safeAreaTopCss,
-        paddingBottom: `calc(84px + ${shellState.layoutMetrics.safeAreaBottomCss})`,
+        paddingBottom: `calc(96px + ${shellState.layoutMetrics.safeAreaBottomCss})`,
       }}
       data-testid="lari-mobile-app-shell"
       data-effective-mode={shellState.effectiveMode}
       data-effective-persona={shellState.effectivePersona}
     >
-      {/* Centered Corporate Top Header Bar */}
+      {/* Instagram-Inspired Clean Top Bar (Scrolls naturally with page - zero bounce/reflow!) */}
       <header
-        className={`sticky top-0 z-40 backdrop-blur-md border-b-2 px-4 py-3 transition-colors ${
+        className={`w-full border-b-2 px-4 py-3 ${
           isDark
-            ? 'bg-slate-900/95 border-slate-800'
-            : 'bg-white/95 border-slate-300'
+            ? 'bg-slate-950 border-slate-800'
+            : 'bg-white border-slate-200'
         }`}
       >
         <div className="max-w-lg mx-auto grid grid-cols-[44px_1fr_44px] items-center gap-2">
-          {/* Left Status Slot (Clean Offline or White-Label Badge) */}
+          {/* Left: Quick Action + (Just like Instagram top-left +) */}
           <div className="flex items-center justify-start">
+            {shellState.whiteLabelStorefrontLock.active ? (
+              <span
+                className="w-10 h-10 rounded-full bg-emerald-50 border-2 border-emerald-400 text-emerald-700 flex items-center justify-center"
+                data-testid="white-label-lock-badge"
+                title="%0 Komisyon Mağaza"
+              >
+                <ShieldCheck className="w-5 h-5" />
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={onQuickPlusAction}
+                style={{ minHeight: '42px', minWidth: '42px' }}
+                className={`w-10 h-10 rounded-full flex items-center justify-center transition active:scale-95 ${
+                  isDark ? 'text-white hover:bg-slate-800' : 'text-slate-900 hover:bg-slate-100'
+                }`}
+                aria-label="Hızlı Randevu Oluştur"
+                data-testid="header-quick-plus-btn"
+              >
+                <Plus className="w-7 h-7 stroke-[2.2]" />
+              </button>
+            )}
+          </div>
+
+          {/* Exact Center: LARİ Brand Mark & Quick Mode Switcher */}
+          <div className="flex items-center justify-center min-w-0">
+            <button
+              type="button"
+              onClick={onBrandHeaderClick}
+              className="inline-flex items-center gap-2 px-3 py-1 rounded-full hover:bg-slate-100/70 dark:hover:bg-slate-800/70 transition"
+              data-testid="header-brand-center-btn"
+            >
+              <span className="w-7 h-7 rounded-lg bg-[#4F46E5] text-white flex items-center justify-center font-black text-sm shadow-xs">
+                L
+              </span>
+              <span
+                className={`font-black text-lg tracking-tight truncate ${
+                  isDark ? 'text-white' : 'text-slate-950'
+                }`}
+              >
+                {businessDisplayName === 'LARİ Super-App'
+                  ? isPartner
+                    ? 'LARİ Partner'
+                    : 'LARİ'
+                  : businessDisplayName}
+              </span>
+              <ChevronDown className="w-4 h-4 text-slate-500 shrink-0" />
+            </button>
+          </div>
+
+          {/* Right: Notification Bell / Offline Vault Status */}
+          <div className="flex items-center justify-end">
             {isOffline ? (
               <span
-                className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-amber-50 text-amber-700 border-2 border-amber-300"
+                className="w-10 h-10 rounded-full bg-amber-50 border-2 border-amber-400 text-amber-700 flex items-center justify-center"
                 data-testid="offline-vault-indicator"
                 title="Offline QR Aktif"
               >
                 <WifiOff className="w-4 h-4" />
               </span>
-            ) : shellState.whiteLabelStorefrontLock.active ? (
-              <span
-                className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 border-2 border-emerald-300"
-                data-testid="white-label-lock-badge"
-                title="%0 Komisyon Mağaza"
-              >
-                <ShieldCheck className="w-4 h-4" />
-              </span>
             ) : (
-              <span className="w-9 h-9" />
-            )}
-          </div>
-
-          {/* Center: LARİ Brand Logo + Centered Name */}
-          <div className="flex flex-col items-center justify-center min-w-0 text-center">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-[#4F46E5] text-white flex items-center justify-center font-black text-base shadow-sm border border-[#4338CA]">
-                L
-              </div>
-              <span
-                className={`font-black text-lg tracking-tight truncate ${
-                  isDark ? 'text-white' : 'text-slate-900'
+              <button
+                type="button"
+                onClick={onNotificationBellClick}
+                style={{ minHeight: '42px', minWidth: '42px' }}
+                className={`relative w-10 h-10 rounded-full flex items-center justify-center transition active:scale-95 ${
+                  isDark ? 'text-white hover:bg-slate-800' : 'text-slate-900 hover:bg-slate-100'
                 }`}
+                aria-label="Bildirimler"
+                data-testid="header-notifications-btn"
               >
-                {businessDisplayName === 'LARİ Super-App' ? 'LARİ' : businessDisplayName}
-              </span>
-            </div>
-            <span
-              className={`text-xs font-semibold truncate max-w-full ${
-                isDark ? 'text-slate-400' : 'text-slate-500'
-              }`}
-            >
-              {isPartner ? 'Partner Stüdyo' : branchDisplayName || 'Müşteri Asistanı'}
-            </span>
-          </div>
-
-          {/* Right: Profile / Theme / Mode Switcher Trigger */}
-          <div className="flex items-center justify-end">
-            <button
-              type="button"
-              onClick={() => setProfileDrawerOpen(true)}
-              style={{ minHeight: '42px', minWidth: '42px' }}
-              className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition shadow-xs ${
-                isDark
-                  ? 'bg-slate-800 border-[#4F46E5] text-white'
-                  : 'bg-[#EEF2FF] border-[#4F46E5] text-[#4338CA]'
-              }`}
-              aria-label="Hesap ve Görünüm Menüsü"
-              data-testid="header-profile-menu-btn"
-            >
-              <User className="w-5 h-5 stroke-[2.2]" />
-            </button>
+                <Bell className="w-6 h-6 stroke-[2]" />
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 border-2 border-white dark:border-slate-950 absolute top-2 right-2" />
+              </button>
+            )}
           </div>
         </div>
       </header>
 
       {/* Main Viewport Content */}
-      <main className="flex-1 w-full max-w-lg mx-auto px-3.5 py-4 overflow-x-hidden">
+      <main className="flex-1 w-full max-w-lg mx-auto px-3.5 py-3 overflow-x-hidden">
         {children}
       </main>
 
-      {/* Instagram-Inspired Large Bottom Navigation Bar (Auto-Hides on Scroll Down) */}
+      {/* Instagram-Authentic Floating Glass Pill Bottom Dock (Icon-Only + Profile Avatar Slot 5) */}
       <nav
         aria-label={language === 'tr' ? 'Mobil Alt Navigasyon' : 'Mobile Bottom Navigation'}
-        className={`fixed bottom-0 left-0 right-0 z-50 backdrop-blur-lg border-t-2 transition-all duration-300 ${
-          isDark
-            ? 'bg-slate-900/95 border-slate-700'
-            : 'bg-white/95 border-slate-300'
-        } ${
-          bottomNavVisible
-            ? 'translate-y-0 opacity-100'
-            : 'translate-y-full opacity-0 pointer-events-none'
+        className={`fixed left-3.5 right-3.5 z-50 transition-all duration-300 pointer-events-none ${
+          dockVisible ? 'translate-y-0 opacity-100' : 'translate-y-28 opacity-0'
         }`}
         style={{
-          paddingBottom: shellState.layoutMetrics.safeAreaBottomCss,
+          bottom: `calc(14px + ${shellState.layoutMetrics.safeAreaBottomCss})`,
         }}
         data-testid="mobile-bottom-tab-bar"
       >
-        <div className="max-w-lg mx-auto grid grid-cols-5 gap-1 px-2 py-2">
+        <div
+          className={`pointer-events-auto max-w-md mx-auto h-16 rounded-full px-2.5 grid grid-cols-5 items-center border-2 backdrop-blur-2xl shadow-[0_10px_35px_rgba(15,23,42,0.16)] ${
+            isDark
+              ? 'bg-slate-900/90 border-slate-700'
+              : 'bg-white/90 border-slate-300/90'
+          }`}
+        >
           {shellState.tabs.map((tab) => {
             const isActive = tab.id === activeTab.id;
-            const isPrimaryCenter =
-              tab.id === 'quick_book' || tab.id === 'partner_pos';
+            const isProfileSlot =
+              tab.id === 'profile' || tab.id === 'partner_switch';
 
             return (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => onSelectTab(tab)}
-                style={{ minHeight: `${Math.max(58, tab.minTouchTargetPx)}px` }}
-                className={`relative flex flex-col items-center justify-center rounded-2xl px-1 py-1.5 transition active:scale-95 ${
-                  isPrimaryCenter
-                    ? isActive
-                      ? 'bg-[#4F46E5] text-white shadow-md'
-                      : isDark
-                        ? 'bg-slate-800 text-[#818CF8] border-2 border-[#4F46E5]/50'
-                        : 'bg-[#EEF2FF] text-[#4338CA] border-2 border-[#4F46E5]/40'
-                    : isActive
-                      ? isDark
-                        ? 'text-white bg-slate-800'
-                        : 'text-[#4F46E5] bg-[#EEF2FF]'
-                      : isDark
-                        ? 'text-slate-400 hover:text-white'
-                        : 'text-slate-600 hover:text-slate-900'
+                aria-label={language === 'tr' ? tab.labelTr : tab.labelEn}
+                style={{ minHeight: `${Math.max(48, tab.minTouchTargetPx)}px` }}
+                className={`relative flex items-center justify-center rounded-full h-12 transition active:scale-90 ${
+                  isActive
+                    ? isDark
+                      ? 'bg-white/10'
+                      : 'bg-slate-900/8'
+                    : 'hover:bg-slate-900/5 dark:hover:bg-white/5'
                 }`}
                 data-testid={`mobile-tab-${tab.id}`}
               >
-                {isActive && !isPrimaryCenter && (
-                  <span className="w-6 h-1 rounded-full bg-[#4F46E5] mb-1" />
+                {isProfileSlot ? (
+                  <div className="relative flex items-center justify-center">
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs border-2 transition ${
+                        isActive
+                          ? 'border-[#4F46E5] bg-[#4F46E5] text-white scale-110'
+                          : isDark
+                            ? 'border-slate-500 bg-slate-800 text-white'
+                            : 'border-slate-800 bg-[#EEF2FF] text-[#4338CA]'
+                      }`}
+                    >
+                      MÖ
+                    </div>
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 border-2 border-white dark:border-slate-900 -bottom-0.5 -right-0.5 absolute" />
+                  </div>
+                ) : (
+                  <div className="relative flex items-center justify-center">
+                    {renderDockIcon(tab, isActive, isDark)}
+                    {tab.id === 'quick_book' && activeBooking && (
+                      <span className="w-2 h-2 rounded-full bg-rose-500 absolute -top-0.5 -right-1" />
+                    )}
+                    {tab.requiresBiometricGate && (
+                      <Lock
+                        className="w-3 h-3 text-amber-600 absolute -top-1 -right-1.5"
+                        aria-label="Biometric Protected"
+                      />
+                    )}
+                  </div>
                 )}
-                <div className="relative flex items-center justify-center">
-                  {renderTabIcon(tab.iconName, isActive)}
-                  {tab.requiresBiometricGate && (
-                    <Lock
-                      className="w-3 h-3 text-amber-600 absolute -top-1 -right-2"
-                      aria-label="Biometric Protected"
-                    />
-                  )}
-                </div>
-                <span className="text-xs font-bold mt-1 leading-none truncate max-w-full">
-                  {language === 'tr' ? tab.labelTr : tab.labelEn}
-                </span>
               </button>
             );
           })}
         </div>
       </nav>
-
-      {/* Top-Right Profile Quick Sheet: Theme (Light/Dark), Mode (Customer/Partner) & Persona */}
-      {profileDrawerOpen && (
-        <div
-          className="fixed inset-0 z-[95] bg-slate-950/50 backdrop-blur-xs flex items-end sm:items-center justify-center"
-          data-testid="header-profile-drawer"
-          onClick={() => setProfileDrawerOpen(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className={`w-full max-w-lg rounded-t-3xl sm:rounded-3xl border-t-2 sm:border-2 p-5 space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto ${
-              isDark
-                ? 'bg-slate-900 border-slate-700 text-white'
-                : 'bg-white border-slate-300 text-slate-900'
-            }`}
-          >
-            <div className="flex items-center justify-between border-b-2 border-slate-200 dark:border-slate-700 pb-3">
-              <div>
-                <h3 className="text-base font-black">Hesap & Görünüm Ayarları</h3>
-                <p className="text-xs text-slate-500">
-                  Tema, Müşteri / Partner geçişi ve dikey rol seçimi
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setProfileDrawerOpen(false)}
-                className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center"
-                aria-label="Kapat"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* 1. Light / Dark Mode Switch */}
-            <div className="space-y-2">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-500">
-                Uygulama Teması
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isDark) toggleThemeMode();
-                    showToast('Açık (Kurumsal) mod aktif edildi.');
-                  }}
-                  style={{ minHeight: '46px' }}
-                  className={`rounded-xl border-2 px-3 py-2 text-sm font-bold flex items-center justify-center gap-2 ${
-                    !isDark
-                      ? 'bg-[#EEF2FF] border-[#4F46E5] text-[#4338CA]'
-                      : 'bg-slate-800 border-slate-700 text-slate-300'
-                  }`}
-                  data-testid="theme-light-btn"
-                >
-                  <Sun className="w-4 h-4" />
-                  Açık Mod
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!isDark) toggleThemeMode();
-                    showToast('Koyu mod aktif edildi.');
-                  }}
-                  style={{ minHeight: '46px' }}
-                  className={`rounded-xl border-2 px-3 py-2 text-sm font-bold flex items-center justify-center gap-2 ${
-                    isDark
-                      ? 'bg-[#4F46E5] border-[#4338CA] text-white'
-                      : 'bg-white border-slate-300 text-slate-700'
-                  }`}
-                  data-testid="theme-dark-btn"
-                >
-                  <Moon className="w-4 h-4" />
-                  Koyu Mod
-                </button>
-              </div>
-            </div>
-
-            {/* 2. Customer vs Partner Mode Toggle */}
-            {hasPartnerAccess && (
-              <div className="space-y-2">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-500">
-                  Çalışma Modu
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onToggleMode(isPartner ? 'b2c_customer' : 'b2b_partner');
-                    setProfileDrawerOpen(false);
-                  }}
-                  style={{ minHeight: '48px' }}
-                  className={`w-full rounded-xl px-4 py-2.5 text-sm font-bold border-2 flex items-center justify-between transition ${
-                    isPartner
-                      ? 'bg-[#4F46E5] border-[#4338CA] text-white'
-                      : 'bg-[#EEF2FF] border-[#4F46E5] text-[#4338CA]'
-                  }`}
-                  data-testid="mobile-mode-toggle-btn"
-                >
-                  <span>
-                    {isPartner
-                      ? 'Müşteri Moduna Geç (Keşfet & Randevu)'
-                      : 'Partner / İşletme Moduna Geç'}
-                  </span>
-                  <Check className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-
-            {/* 3. Persona Switcher */}
-            {shellState.availablePersonas.length > 1 && (
-              <div className="space-y-2">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-500">
-                  Deneyim / Rol Seçimi
-                </span>
-                <div className="grid grid-cols-1 gap-2">
-                  {shellState.availablePersonas.map((persona) => {
-                    const active = persona === shellState.effectivePersona;
-                    return (
-                      <button
-                        key={persona}
-                        type="button"
-                        onClick={() => {
-                          onSwitchPersona(persona);
-                          setProfileDrawerOpen(false);
-                        }}
-                        style={{ minHeight: '44px' }}
-                        className={`px-3.5 py-2 rounded-xl text-sm font-bold text-left transition border-2 flex items-center justify-between ${
-                          active
-                            ? 'bg-[#4F46E5] text-white border-[#4338CA]'
-                            : isDark
-                              ? 'bg-slate-800 text-slate-200 border-slate-700'
-                              : 'bg-slate-50 text-slate-800 border-slate-200'
-                        }`}
-                        data-testid={`persona-pill-${persona}`}
-                      >
-                        <span>{PERSONA_LABELS[persona][language]}</span>
-                        {active && <Check className="w-4 h-4" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            <div className="pt-2 border-t-2 border-slate-200 dark:border-slate-700 flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500">
-                Sistem Yetki Seviyesi
-              </span>
-              <span
-                className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold border ${tierMeta.className}`}
-                data-testid="capability-tier-badge"
-              >
-                {language === 'tr' ? tierMeta.labelTr : tierMeta.labelEn}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -260,6 +260,9 @@ export const MobileSuperAppContent: React.FC = () => {
             tenantId={tenantId}
             userId={currentUser?.id || 'usr-mobile-demo'}
             userRole={effectiveRole === 'guest' ? 'customer' : effectiveRole}
+            shellState={shellState}
+            onToggleMode={handleToggleMode}
+            onSwitchPersona={handleSwitchPersona}
           />
         );
       case 'partner_agenda':
@@ -301,21 +304,36 @@ export const MobileSuperAppContent: React.FC = () => {
         onSelectTab={handleSelectTab}
         onSwitchPersona={handleSwitchPersona}
         onToggleMode={handleToggleMode}
+        onQuickPlusAction={() => {
+          const first = DEFAULT_MOBILE_MARKETPLACE_LISTINGS[0];
+          handleOpenBooking({
+            ...first,
+            distanceKm: 0.4,
+            estimatedTravelMinutes: 5,
+          });
+        }}
+        onNotificationBellClick={() => {
+          setActiveTabId(shellState.effectiveMode === 'b2b_partner' ? 'partner_inbox' : 'wallet');
+        }}
+        onBrandHeaderClick={() => {
+          setActiveTabId(shellState.effectiveMode === 'b2b_partner' ? 'partner_switch' : 'profile');
+        }}
         businessDisplayName={
           tenantSlug ? `Mağaza: ${tenantSlug}` : 'LARİ Super-App'
         }
         branchDisplayName="Nişantaşı Merkez"
       >
-        {/* Top Interactive Story Reels & Full-Screen Onboarding Launcher */}
-        <div className="-mx-3.5 -mt-4 mb-3">
-          <MobileStoryOnboarding
-            onNavigateExperience={({ mode, persona, tabId }) => {
-              if (mode) setRequestedMode(mode);
-              if (persona) setRequestedPersona(persona);
-              if (tabId) setActiveTabId(tabId);
-            }}
-          />
-        </div>
+        {(activeTabId === 'explore' || activeTabId === 'storefront') && (
+          <div className="-mx-3.5 -mt-3 mb-3">
+            <MobileStoryOnboarding
+              onNavigateExperience={({ mode, persona, tabId }) => {
+                if (mode) setRequestedMode(mode);
+                if (persona) setRequestedPersona(persona);
+                if (tabId) setActiveTabId(tabId);
+              }}
+            />
+          </div>
+        )}
 
         {renderBody()}
       </MobileAppShell>

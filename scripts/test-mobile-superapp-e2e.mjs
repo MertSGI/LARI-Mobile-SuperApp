@@ -132,9 +132,9 @@ async function run() {
       await page.waitForSelector('[data-testid="ai-before-after-viewfinder"]');
       await page.waitForSelector('[data-testid="ai-comparison-slider"]');
 
-      // C) Open Top-Right Profile Menu -> Test Dark/Light toggle & Switch to HT Patient Concierge
-      await page.click('[data-testid="header-profile-menu-btn"]');
-      await page.waitForSelector('[data-testid="header-profile-drawer"]');
+      // C) Tap 5th Floating Avatar Tab (Profile) -> Test Dark/Light toggle & Switch to HT Patient Concierge
+      await page.click('[data-testid="mobile-tab-profile"]');
+      await page.waitForSelector('[data-testid="mobile-profile-settings-page"]');
       await page.click('[data-testid="theme-dark-btn"]');
       const darkTheme = await page.getAttribute('[data-testid="lari-mobile-app-shell"]', 'data-theme');
       assert.equal(darkTheme, 'dark');
@@ -144,8 +144,8 @@ async function run() {
       await page.waitForSelector('[data-testid="ht-itinerary-timeline"]');
       await page.waitForSelector('[data-testid="ht-postop-recovery-card"]');
 
-      // D) Open Top-Right Profile Menu -> Switch to Partner Mode, Commission Card & POS
-      await page.click('[data-testid="header-profile-menu-btn"]');
+      // D) Tap 5th Floating Avatar Tab (Profile) -> Switch to Partner Mode, Commission Card & POS
+      await page.click('[data-testid="mobile-tab-profile"]');
       await page.click('[data-testid="mobile-mode-toggle-btn"]');
       await page.waitForSelector('[data-testid="mobile-partner-agenda-page"]');
       await page.waitForSelector('[data-testid="partner-daily-commission-card"]');
@@ -153,8 +153,8 @@ async function run() {
       await page.waitForSelector('[data-testid="mobile-partner-pos-page"]');
       await page.click('[data-testid="partner-pos-cash-checkout-btn"]');
 
-      // E) Open Top-Right Profile Menu -> Switch to Clinic Practitioner PHI Persona & Touch Canvas
-      await page.click('[data-testid="header-profile-menu-btn"]');
+      // E) Tap 5th Floating Avatar Tab (Partner Switch/Profile) -> Switch to Clinic Practitioner PHI Persona & Touch Canvas
+      await page.click('[data-testid="mobile-tab-partner_switch"]');
       await page.click('[data-testid="persona-pill-clinic_practitioner"]');
       await page.waitForSelector('[data-testid="mobile-clinic-workspace"]');
       await page.waitForSelector('[data-testid="clinic-touch-drawing-studio"]');
