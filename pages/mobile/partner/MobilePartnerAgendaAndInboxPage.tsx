@@ -13,12 +13,15 @@ import {
   ExternalLink,
   Inbox,
   PackagePlus,
+  Pencil,
   ShieldAlert,
   Sparkles,
   Store,
   ToggleLeft,
   ToggleRight,
   TrendingUp,
+  Trash2,
+  UserPlus,
   Users,
   VolumeX,
   WalletCards,
@@ -112,8 +115,10 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     addCatalogItem,
     appendPassportFormula,
     partnerCatalog,
+    removeCatalogItem,
     showToast,
     themeMode,
+    updateCatalogItem,
   } = useMobileAppSession();
   const isDark = themeMode === 'dark';
   const access = verifyPartnerMobileAccess(userRole, tenantId, tenantId);
@@ -181,12 +186,21 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   ]);
   const [activeManagementTab, setActiveManagementTab] =
     useState<PartnerManagementTab>('agenda');
+  const [isAgendaAddOpen, setIsAgendaAddOpen] = useState(false);
+  const [newAgendaCustomer, setNewAgendaCustomer] = useState('');
+  const [newAgendaService, setNewAgendaService] = useState('');
+  const [newAgendaStaff, setNewAgendaStaff] = useState('Merve Yılmaz');
+  const [newAgendaTime, setNewAgendaTime] = useState('16:30');
+  const [newAgendaResource, setNewAgendaResource] = useState('');
   const [newCatalogName, setNewCatalogName] = useState('');
   const [newCatalogPrice, setNewCatalogPrice] = useState('');
   const [newCatalogDuration, setNewCatalogDuration] = useState('60');
   const [newCatalogKind, setNewCatalogKind] = useState<'beauty' | 'product'>(
     'beauty'
   );
+  const [editingCatalogId, setEditingCatalogId] = useState<string | null>(null);
+  const [editingCatalogName, setEditingCatalogName] = useState('');
+  const [editingCatalogPrice, setEditingCatalogPrice] = useState('');
   const [staffMembers, setStaffMembers] = useState<PartnerStaffMember[]>([
     {
       id: 'staff-merve',
@@ -213,6 +227,10 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
       commissionRate: 20,
     },
   ]);
+  const [isStaffAddOpen, setIsStaffAddOpen] = useState(false);
+  const [newStaffName, setNewStaffName] = useState('');
+  const [newStaffSpecialty, setNewStaffSpecialty] = useState('');
+  const [newStaffCommission, setNewStaffCommission] = useState('20');
   const [businessHours, setBusinessHours] = useState({
     weekdays: true,
     saturday: true,
@@ -239,6 +257,49 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     setInbox((prev) =>
       prev.map((r) => (r.requestId === reqId ? { ...r, status: decision } : r))
     );
+  };
+
+  const handleClearInboxRequest = (reqId: string) => {
+    setInbox((prev) => prev.filter((request) => request.requestId !== reqId));
+    showToast('Sonuçlandırılmış talep temizlendi.');
+  };
+
+  const handleAddAgendaItem = () => {
+    const customerName = newAgendaCustomer.trim();
+    const serviceName = newAgendaService.trim();
+    const staffName = newAgendaStaff.trim();
+    if (!customerName || !serviceName || !staffName || !newAgendaTime) {
+      showToast('Müşteri, hizmet, uzman ve saat alanlarını doldurun.');
+      return;
+    }
+
+    const created: PartnerAgendaItem = {
+      appointmentId: `apt-walkin-${Date.now().toString(36)}`,
+      tenantId,
+      customerName,
+      serviceName,
+      staffName,
+      scheduledTime: newAgendaTime,
+      resourceLabel: newAgendaResource.trim() || undefined,
+      noShowRiskLevel: 'low',
+      depositPaid: false,
+      status: 'confirmed',
+      lastPassportFormula: 'Henüz işlem formülü eklenmedi.',
+    };
+    setAgenda((prev) => [created, ...prev]);
+    setNewAgendaCustomer('');
+    setNewAgendaService('');
+    setNewAgendaResource('');
+    setIsAgendaAddOpen(false);
+    showToast(`${customerName} için yeni randevu ajandaya eklendi.`);
+  };
+
+  const handleDeleteAgendaItem = (appointmentId: string) => {
+    setAgenda((prev) => prev.filter((item) => item.appointmentId !== appointmentId));
+    setExpandedChairsideId((current) =>
+      current === appointmentId ? null : current
+    );
+    showToast('Randevu iptal edilerek ajandadan silindi.');
   };
 
   const handleStatusUpdate = (
@@ -306,6 +367,64 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     setNewCatalogName('');
     setNewCatalogPrice('');
     setNewCatalogDuration(newCatalogKind === 'product' ? '0' : '60');
+  };
+
+  const handleStartCatalogEdit = (item: (typeof partnerCatalog)[number]) => {
+    setEditingCatalogId(item.id);
+    setEditingCatalogName(item.name);
+    setEditingCatalogPrice(String(item.unitPriceMajor));
+  };
+
+  const handleSaveCatalogEdit = (item: (typeof partnerCatalog)[number]) => {
+    const normalizedName = editingCatalogName.trim();
+    const parsedPrice = Number(editingCatalogPrice);
+    if (!normalizedName || !Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+      showToast('Geçerli bir katalog adı ve fiyat girin.');
+      return;
+    }
+    updateCatalogItem(item.id, {
+      name: normalizedName,
+      unitPriceMajor: Math.round(parsedPrice),
+      keywords: normalizedName.toLocaleLowerCase('tr-TR').split(/\s+/),
+    });
+    setEditingCatalogId(null);
+  };
+
+  const handleAddStaffMember = () => {
+    const name = newStaffName.trim();
+    const specialty = newStaffSpecialty.trim();
+    const commissionRate = Number(newStaffCommission);
+    if (
+      !name ||
+      !specialty ||
+      !Number.isFinite(commissionRate) ||
+      commissionRate < 0 ||
+      commissionRate > 100
+    ) {
+      showToast('Uzman adı, uzmanlık alanı ve 0-100 arası prim oranı girin.');
+      return;
+    }
+    setStaffMembers((current) => [
+      {
+        id: `staff-custom-${Date.now().toString(36)}`,
+        name,
+        specialty,
+        active: true,
+        available: true,
+        commissionRate: Math.round(commissionRate),
+      },
+      ...current,
+    ]);
+    setNewStaffName('');
+    setNewStaffSpecialty('');
+    setNewStaffCommission('20');
+    setIsStaffAddOpen(false);
+    showToast(`${name} uzman kadrosuna eklendi.`);
+  };
+
+  const handleDeleteStaffMember = (staffId: string) => {
+    setStaffMembers((current) => current.filter((member) => member.id !== staffId));
+    showToast('Uzman personel kadrosundan çıkarıldı.');
   };
 
   const toggleStaffField = (
@@ -462,18 +581,115 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                 </button>
               </div>
             )}
+            {req.status !== 'pending' && (
+              <button
+                type="button"
+                onClick={() => handleClearInboxRequest(req.requestId)}
+                className="flex min-h-10 w-full items-center justify-center gap-1 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-700"
+                data-testid={`partner-inbox-clear-${req.requestId}`}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Temizle / Sil
+              </button>
+            )}
           </div>
         ))}
       </div>
 
       {/* Chairside Agenda with Hospitality & Passport Formula Drawer */}
       <div className="rounded-3xl bg-white border border-slate-200 p-4 space-y-3 shadow-sm">
-        <span className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
-          <CalendarClock className="w-4 h-4 text-[#5B5FEF]" />
-          {language === 'tr'
-            ? 'Koltuk Başı (Chairside) Ajanda & Müşteri Pasaportu'
-            : 'Chairside Agenda & Client Passport'}
-        </span>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
+            <CalendarClock className="w-4 h-4 text-[#5B5FEF]" />
+            {language === 'tr'
+              ? 'Koltuk Başı (Chairside) Ajanda & Müşteri Pasaportu'
+              : 'Chairside Agenda & Client Passport'}
+          </span>
+          <button
+            type="button"
+            aria-expanded={isAgendaAddOpen}
+            onClick={() => setIsAgendaAddOpen((current) => !current)}
+            className="shrink-0 rounded-lg bg-[#EEF2FF] px-2.5 py-2 text-[10px] font-black text-[#4338CA]"
+            data-testid="partner-agenda-add-toggle-btn"
+          >
+            {isAgendaAddOpen ? 'Formu Kapat' : '+ Yeni Randevu Ekle'}
+          </button>
+        </div>
+
+        {isAgendaAddOpen && (
+          <div className="grid grid-cols-2 gap-2 rounded-2xl border-2 border-indigo-200 bg-[#F8FAFF] p-3">
+            <label className="col-span-2 text-[10px] font-bold text-slate-600">
+              Müşteri Adı
+              <input
+                type="text"
+                value={newAgendaCustomer}
+                onChange={(event) => setNewAgendaCustomer(event.target.value)}
+                className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs text-slate-900"
+                data-testid="partner-agenda-customer-input"
+              />
+            </label>
+            <label className="col-span-2 text-[10px] font-bold text-slate-600">
+              Hizmet
+              <input
+                type="text"
+                list="partner-agenda-service-options"
+                value={newAgendaService}
+                onChange={(event) => setNewAgendaService(event.target.value)}
+                placeholder="Katalogdan seçin veya serbest yazın"
+                className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs text-slate-900"
+                data-testid="partner-agenda-service-input"
+              />
+              <datalist id="partner-agenda-service-options">
+                {visiblePartnerCatalog.map((item) => (
+                  <option key={item.id} value={item.name} />
+                ))}
+              </datalist>
+            </label>
+            <label className="text-[10px] font-bold text-slate-600">
+              Uzman
+              <select
+                value={newAgendaStaff}
+                onChange={(event) => setNewAgendaStaff(event.target.value)}
+                className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-2 text-xs text-slate-900"
+                data-testid="partner-agenda-staff-select"
+              >
+                {staffMembers.map((member) => (
+                  <option key={member.id} value={member.name}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-[10px] font-bold text-slate-600">
+              Saat
+              <input
+                type="time"
+                value={newAgendaTime}
+                onChange={(event) => setNewAgendaTime(event.target.value)}
+                className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-2 text-xs text-slate-900"
+                data-testid="partner-agenda-time-input"
+              />
+            </label>
+            <label className="col-span-2 text-[10px] font-bold text-slate-600">
+              Oda / Kaynak (opsiyonel)
+              <input
+                type="text"
+                value={newAgendaResource}
+                onChange={(event) => setNewAgendaResource(event.target.value)}
+                className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs text-slate-900"
+                data-testid="partner-agenda-resource-input"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={handleAddAgendaItem}
+              className="col-span-2 min-h-11 rounded-xl bg-[#4F46E5] text-xs font-black text-white"
+              data-testid="partner-agenda-add-submit-btn"
+            >
+              Ajandaya Ekle
+            </button>
+          </div>
+        )}
 
         {agenda.map((item) => {
           const isExpanded = expandedChairsideId === item.appointmentId;
@@ -481,6 +697,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
             <div
               key={item.appointmentId}
               className="rounded-2xl bg-[#F8F9FB] border border-slate-200 p-3.5 space-y-2.5"
+              data-testid={`partner-agenda-item-${item.appointmentId}`}
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-black text-[#111827] flex items-center gap-1.5">
@@ -568,11 +785,12 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                 )}
               </div>
 
-              <div className="flex items-center justify-between pt-1">
+              <div className="flex items-center justify-between gap-2 pt-1">
                 <span className="text-[10px] text-slate-500 flex items-center gap-1">
                   <ShieldAlert className="w-3 h-3 text-emerald-600" />
                   Durum: <strong className="text-[#111827]">{item.status}</strong>
                 </span>
+                <div className="flex items-center gap-1.5">
                 {item.status === 'confirmed' && (
                   <button
                     type="button"
@@ -584,6 +802,17 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                     Tamamlandı İşaretle
                   </button>
                 )}
+                  <button
+                    type="button"
+                    aria-label={`${item.customerName} randevusunu iptal et ve sil`}
+                    onClick={() => handleDeleteAgendaItem(item.appointmentId)}
+                    className="flex min-h-8 items-center gap-1 rounded-lg border border-rose-200 bg-white px-2 text-[10px] font-bold text-rose-700"
+                    data-testid={`partner-agenda-delete-${item.appointmentId}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    İptal / Sil
+                  </button>
+                </div>
               </div>
             </div>
           );
@@ -688,13 +917,45 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
               </span>
             </div>
             <div className="space-y-2">
-              {visiblePartnerCatalog.map((item) => (
+              {visiblePartnerCatalog.map((item) => {
+                const isEditing = editingCatalogId === item.id;
+                return (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-[#F8FAFC] p-3"
+                  className="rounded-2xl border border-slate-200 bg-[#F8FAFC] p-3"
                   data-testid={`partner-catalog-item-${item.id}`}
                 >
-                  <div className="min-w-0">
+                  {isEditing ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        value={editingCatalogName}
+                        onChange={(event) => setEditingCatalogName(event.target.value)}
+                        aria-label="Katalog kalemi adı"
+                        className="col-span-2 min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs text-slate-900"
+                        data-testid={`partner-catalog-edit-name-${item.id}`}
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        value={editingCatalogPrice}
+                        onChange={(event) => setEditingCatalogPrice(event.target.value)}
+                        aria-label="Katalog kalemi fiyatı"
+                        className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs text-slate-900"
+                        data-testid={`partner-catalog-edit-price-${item.id}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveCatalogEdit(item)}
+                        className="min-h-10 rounded-xl bg-[#4F46E5] text-xs font-black text-white"
+                        data-testid={`partner-catalog-save-${item.id}`}
+                      >
+                        Kaydet
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-black text-slate-900">
                       {item.name}
                     </p>
@@ -704,12 +965,35 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                         : `${item.durationMinutes ?? 60} dk hizmet`}{' '}
                       • KDV %{item.taxRateBps / 100}
                     </p>
-                  </div>
-                  <span className="shrink-0 text-sm font-black text-[#4338CA]">
-                    {item.unitPriceMajor.toLocaleString('tr-TR')} {item.currency}
-                  </span>
+                    <span className="mt-1 block text-sm font-black text-[#4338CA]">
+                      {item.unitPriceMajor.toLocaleString('tr-TR')} {item.currency}
+                    </span>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        type="button"
+                        aria-label={`${item.name} katalog kalemini düzenle`}
+                        onClick={() => handleStartCatalogEdit(item)}
+                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-indigo-200 bg-white text-[#4338CA]"
+                        data-testid={`partner-catalog-edit-${item.id}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`${item.name} katalog kalemini sil`}
+                        onClick={() => removeCatalogItem(item.id)}
+                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-700"
+                        data-testid={`partner-catalog-delete-${item.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                    </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -723,15 +1007,69 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
           data-testid="partner-management-staff-reports-panel"
         >
           <div className="rounded-3xl border-2 border-slate-300 bg-white p-4 shadow-sm">
-            <span className="mb-3 flex items-center gap-1.5 text-xs font-black text-slate-900">
+            <div className="mb-3 flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-xs font-black text-slate-900">
               <Users className="h-4 w-4 text-[#5B5FEF]" />
               İşletme Uzman Kadrosu
             </span>
+              <button
+                type="button"
+                aria-expanded={isStaffAddOpen}
+                onClick={() => setIsStaffAddOpen((current) => !current)}
+                className="flex min-h-9 shrink-0 items-center gap-1 rounded-lg bg-[#EEF2FF] px-2.5 text-[10px] font-black text-[#4338CA]"
+                data-testid="partner-staff-add-toggle-btn"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                {isStaffAddOpen ? 'Kapat' : '+ Personel Ekle'}
+              </button>
+            </div>
+            {isStaffAddOpen && (
+              <div className="mb-3 grid grid-cols-2 gap-2 rounded-2xl border-2 border-indigo-200 bg-[#F8FAFF] p-3">
+                <input
+                  type="text"
+                  value={newStaffName}
+                  onChange={(event) => setNewStaffName(event.target.value)}
+                  placeholder="Uzman adı soyadı"
+                  aria-label="Uzman adı soyadı"
+                  className="col-span-2 min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs text-slate-900"
+                  data-testid="partner-staff-name-input"
+                />
+                <input
+                  type="text"
+                  value={newStaffSpecialty}
+                  onChange={(event) => setNewStaffSpecialty(event.target.value)}
+                  placeholder="Uzmanlık alanı"
+                  aria-label="Uzmanlık alanı"
+                  className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs text-slate-900"
+                  data-testid="partner-staff-specialty-input"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={newStaffCommission}
+                  onChange={(event) => setNewStaffCommission(event.target.value)}
+                  placeholder="Prim %"
+                  aria-label="Prim oranı"
+                  className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs text-slate-900"
+                  data-testid="partner-staff-commission-input"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddStaffMember}
+                  className="col-span-2 min-h-11 rounded-xl bg-[#4F46E5] text-xs font-black text-white"
+                  data-testid="partner-staff-add-submit-btn"
+                >
+                  Uzmanı Ekle
+                </button>
+              </div>
+            )}
             <div className="space-y-2.5">
               {staffMembers.map((member) => (
                 <div
                   key={member.id}
                   className="rounded-2xl border border-slate-200 bg-[#F8FAFC] p-3"
+                  data-testid={`partner-staff-item-${member.id}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -740,9 +1078,20 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                       </p>
                       <p className="text-[10px] text-slate-500">{member.specialty}</p>
                     </div>
-                    <span className="shrink-0 rounded-lg bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-800">
-                      Prim %{member.commissionRate}
-                    </span>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <span className="rounded-lg bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-800">
+                        Prim %{member.commissionRate}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={`${member.name} personelini sil`}
+                        onClick={() => handleDeleteStaffMember(member.id)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-700"
+                        data-testid={`partner-staff-delete-${member.id}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <button

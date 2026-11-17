@@ -3,6 +3,7 @@ import {
   Barcode,
   BookPlus,
   CheckCircle2,
+  Minus,
   Mic,
   MicOff,
   PackageCheck,
@@ -290,6 +291,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
     admitCustomerByQr,
     publishCheckoutBreakdown,
     addCatalogItem,
+    removeCatalogItem,
     packageCreditsRemaining,
     showToast,
   } = useMobileAppSession();
@@ -316,8 +318,20 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
   const [newItemName, setNewItemName] = useState('');
   const [newItemPrice, setNewItemPrice] = useState('1500');
   const [newItemKeywords, setNewItemKeywords] = useState('');
+  const [newInventoryName, setNewInventoryName] = useState('');
+  const [newInventoryPrice, setNewInventoryPrice] = useState('850');
+  const [newInventoryStock, setNewInventoryStock] = useState('1');
+  const [inventoryStockById, setInventoryStockById] = useState<Record<string, number>>({
+    'cat-serum-urun': 12,
+  });
+  const [inventoryStockByName, setInventoryStockByName] = useState<
+    Record<string, number>
+  >({});
   const [checkoutStatus, setCheckoutStatus] = useState<string | null>(null);
   const [poStatus, setPoStatus] = useState<string | null>(null);
+
+  const tenantCatalog = partnerCatalog.filter((item) => item.tenantId === tenantId);
+  const inventoryItems = tenantCatalog.filter((item) => item.category === 'product');
 
   if (!access.allowed) {
     return (
@@ -525,6 +539,63 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
     });
     setNewItemName('');
     setNewItemKeywords('');
+  };
+
+  const handleCreateInventoryProduct = () => {
+    const name = newInventoryName.trim();
+    const price = Number(newInventoryPrice);
+    const stock = Number(newInventoryStock);
+    if (
+      !name ||
+      !Number.isFinite(price) ||
+      price <= 0 ||
+      !Number.isInteger(stock) ||
+      stock < 0
+    ) {
+      showToast('Ürün adı, geçerli fiyat ve sıfırdan küçük olmayan stok adedi girin.');
+      return;
+    }
+    addCatalogItem({
+      tenantId,
+      name,
+      category: 'product',
+      unitPriceMajor: Math.round(price),
+      durationMinutes: 0,
+      currency: 'TRY',
+      taxRateBps: 2000,
+      commissionRateBps: 1000,
+      packageEligible: false,
+      keywords: name.toLocaleLowerCase('tr-TR').split(/\s+/),
+    });
+    setInventoryStockByName((current) => ({ ...current, [name]: stock }));
+    setNewInventoryName('');
+    setNewInventoryPrice('850');
+    setNewInventoryStock('1');
+  };
+
+  const getInventoryStock = (item: PartnerCatalogItem) =>
+    inventoryStockById[item.id] ?? inventoryStockByName[item.name] ?? 0;
+
+  const handleAdjustInventoryStock = (item: PartnerCatalogItem, delta: number) => {
+    setInventoryStockById((current) => ({
+      ...current,
+      [item.id]: Math.max(
+        0,
+        (current[item.id] ?? inventoryStockByName[item.name] ?? 0) + delta
+      ),
+    }));
+  };
+
+  const handleDeleteInventoryItem = (item: PartnerCatalogItem) => {
+    setFolioLines((current) =>
+      current.filter((line) => line.catalogItem.id !== item.id)
+    );
+    setInventoryStockById((current) => {
+      const next = { ...current };
+      delete next[item.id];
+      return next;
+    });
+    removeCatalogItem(item.id);
   };
 
   const handleGenerateStorefrontQr = () => {
@@ -915,12 +986,12 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
             İşletme Kataloğu & Vitrin QR Oluşturucu
           </span>
           <span className="text-xs font-bold text-slate-500">
-            {partnerCatalog.length} Kayıt
+            {tenantCatalog.length} Kayıt
           </span>
         </div>
 
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-          {partnerCatalog.slice(0, 6).map((catItem) => (
+          {tenantCatalog.slice(0, 6).map((catItem) => (
             <button
               key={catItem.id}
               type="button"
@@ -964,6 +1035,108 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
           >
             Kataloğa Ekle
           </button>
+        </div>
+
+        <div className="space-y-2.5 border-t-2 border-slate-200 pt-3 dark:border-slate-700">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-xs font-black">
+              <ShoppingBag className="h-4 w-4 text-[#4F46E5]" />
+              Hızlı Stok / Envanter
+            </span>
+            <span className="text-[10px] font-bold text-slate-500">
+              {inventoryItems.length} ürün
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              type="text"
+              value={newInventoryName}
+              onChange={(event) => setNewInventoryName(event.target.value)}
+              placeholder="Yeni ürün adı"
+              aria-label="Yeni stok ürünü adı"
+              className={`col-span-2 min-h-10 rounded-xl px-3 text-xs font-medium ${innerSurface}`}
+              data-testid="partner-inventory-name-input"
+            />
+            <input
+              type="number"
+              min="1"
+              value={newInventoryPrice}
+              onChange={(event) => setNewInventoryPrice(event.target.value)}
+              placeholder="Fiyat (TRY)"
+              aria-label="Yeni stok ürünü fiyatı"
+              className={`min-h-10 rounded-xl px-3 text-xs font-medium ${innerSurface}`}
+              data-testid="partner-inventory-price-input"
+            />
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={newInventoryStock}
+              onChange={(event) => setNewInventoryStock(event.target.value)}
+              placeholder="Stok"
+              aria-label="Yeni stok ürünü adedi"
+              className={`min-h-10 rounded-xl px-3 text-xs font-medium ${innerSurface}`}
+              data-testid="partner-inventory-stock-input"
+            />
+            <button
+              type="button"
+              onClick={handleCreateInventoryProduct}
+              className="col-span-2 min-h-11 rounded-xl bg-emerald-600 px-4 text-xs font-black text-white"
+              data-testid="partner-inventory-add-btn"
+            >
+              Ürünü Stoğa Ekle
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {inventoryItems.map((item) => {
+              const stock = getInventoryStock(item);
+              return (
+                <div
+                  key={item.id}
+                  className={`flex items-center justify-between gap-2 rounded-xl p-2.5 ${innerSurface}`}
+                  data-testid={`partner-inventory-item-${item.id}`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[11px] font-black">{item.name}</p>
+                    <p className="text-[10px] text-slate-500">
+                      {item.unitPriceMajor.toLocaleString('tr-TR')} TRY • Stok: {stock}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      aria-label={`${item.name} stok azalt`}
+                      onClick={() => handleAdjustInventoryStock(item, -1)}
+                      disabled={stock === 0}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 disabled:opacity-40"
+                      data-testid={`partner-inventory-decrement-${item.id}`}
+                    >
+                      <Minus className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`${item.name} stok artır`}
+                      onClick={() => handleAdjustInventoryStock(item, 1)}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-300 bg-white text-emerald-700"
+                      data-testid={`partner-inventory-increment-${item.id}`}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`${item.name} stok kalemini sil`}
+                      onClick={() => handleDeleteInventoryItem(item)}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-white text-rose-700"
+                      data-testid={`partner-inventory-delete-${item.id}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <div className="pt-2 border-t-2 border-slate-200 dark:border-slate-700 space-y-2.5">

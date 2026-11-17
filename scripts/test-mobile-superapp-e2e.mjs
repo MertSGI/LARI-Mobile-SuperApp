@@ -201,7 +201,27 @@ async function run() {
       await page.waitForSelector('[data-testid="mobile-partner-agenda-page"]');
       await page.waitForSelector('[data-testid="partner-daily-commission-card"]');
 
-      // D.1) Business Management Center -> catalog mutation, staff reports and direct storefront
+      // D.1) Business Management Center -> agenda, catalog and staff CRUD + direct storefront
+      await page.click('[data-testid="partner-agenda-add-toggle-btn"]');
+      await page.fill('[data-testid="partner-agenda-customer-input"]', 'E2E Walk-in Müşteri');
+      await page.fill('[data-testid="partner-agenda-service-input"]', 'E2E Hızlı Bakım');
+      await page.fill('[data-testid="partner-agenda-time-input"]', '16:45');
+      await page.fill('[data-testid="partner-agenda-resource-input"]', 'E2E Oda 3');
+      await page.click('[data-testid="partner-agenda-add-submit-btn"]');
+      const addedAgendaItem = page
+        .locator('[data-testid^="partner-agenda-item-"]')
+        .filter({ hasText: 'E2E Walk-in Müşteri' });
+      await addedAgendaItem.waitFor();
+      assert.match(await addedAgendaItem.innerText(), /E2E Hızlı Bakım/);
+      await addedAgendaItem.locator('[data-testid^="partner-agenda-delete-"]').click();
+      await addedAgendaItem.waitFor({ state: 'detached' });
+
+      await page.click('[data-testid="approve-req-req-101"]');
+      await page.click('[data-testid="partner-inbox-clear-req-101"]');
+      await page.waitForSelector('[data-testid="partner-inbox-clear-req-101"]', {
+        state: 'detached',
+      });
+
       await page.click('[data-testid="partner-management-tab-catalog"]');
       await page.waitForSelector('[data-testid="partner-management-catalog-panel"]');
       await page.fill('[data-testid="partner-catalog-name-input"]', 'E2E VIP Bakım');
@@ -213,8 +233,35 @@ async function run() {
         .filter({ hasText: 'E2E VIP Bakım' });
       await addedCatalogItem.waitFor();
       assert.match(await addedCatalogItem.innerText(), /4\.200 TRY/);
+      const addedCatalogTestId = await addedCatalogItem.getAttribute('data-testid');
+      assert.ok(addedCatalogTestId);
+      const addedCatalogRow = page.locator(`[data-testid="${addedCatalogTestId}"]`);
+      await addedCatalogRow.locator('[data-testid^="partner-catalog-edit-"]').click();
+      await addedCatalogRow
+        .locator('[data-testid^="partner-catalog-edit-name-"]')
+        .fill('E2E VIP Bakım Güncel');
+      await addedCatalogRow.locator('[data-testid^="partner-catalog-edit-price-"]').fill('4500');
+      await addedCatalogRow.locator('[data-testid^="partner-catalog-save-"]').click();
+      assert.match(await addedCatalogRow.innerText(), /E2E VIP Bakım Güncel/);
+      assert.match(await addedCatalogRow.innerText(), /4\.500 TRY/);
+      await addedCatalogRow.locator('[data-testid^="partner-catalog-delete-"]').click();
+      await addedCatalogRow.waitFor({ state: 'detached' });
+
       await page.click('[data-testid="partner-management-tab-staff_reports"]');
       await page.waitForSelector('[data-testid="partner-management-staff-reports-panel"]');
+      await page.click('[data-testid="partner-staff-add-toggle-btn"]');
+      await page.fill('[data-testid="partner-staff-name-input"]', 'E2E Uzman Deniz');
+      await page.fill('[data-testid="partner-staff-specialty-input"]', 'E2E Renk Uzmanı');
+      await page.fill('[data-testid="partner-staff-commission-input"]', '22');
+      await page.click('[data-testid="partner-staff-add-submit-btn"]');
+      const addedStaffMember = page
+        .locator('[data-testid^="partner-staff-item-"]')
+        .filter({ hasText: 'E2E Uzman Deniz' });
+      await addedStaffMember.waitFor();
+      assert.match(await addedStaffMember.innerText(), /Prim %22/);
+      await addedStaffMember.locator('[data-testid^="partner-staff-delete-"]').click();
+      await addedStaffMember.waitFor({ state: 'detached' });
+
       await page.click('[data-testid="partner-management-tab-storefront"]');
       await page.waitForSelector('[data-testid="partner-management-storefront-panel"]');
       await page.waitForSelector('[data-testid="partner-copy-storefront-link-btn"]');
@@ -227,6 +274,22 @@ async function run() {
 
       await page.click('[data-testid="mobile-tab-partner_pos"]');
       await page.waitForSelector('[data-testid="mobile-partner-pos-page"]');
+      await page.fill('[data-testid="partner-inventory-name-input"]', 'E2E Onarım Şampuanı');
+      await page.fill('[data-testid="partner-inventory-price-input"]', '690');
+      await page.fill('[data-testid="partner-inventory-stock-input"]', '4');
+      await page.click('[data-testid="partner-inventory-add-btn"]');
+      const addedInventoryItem = page
+        .locator('[data-testid^="partner-inventory-item-"]')
+        .filter({ hasText: 'E2E Onarım Şampuanı' });
+      await addedInventoryItem.waitFor();
+      assert.match(await addedInventoryItem.innerText(), /Stok: 4/);
+      await addedInventoryItem.locator('[data-testid^="partner-inventory-increment-"]').click();
+      assert.match(await addedInventoryItem.innerText(), /Stok: 5/);
+      await addedInventoryItem.locator('[data-testid^="partner-inventory-decrement-"]').click();
+      assert.match(await addedInventoryItem.innerText(), /Stok: 4/);
+      await addedInventoryItem.locator('[data-testid^="partner-inventory-delete-"]').click();
+      await addedInventoryItem.waitFor({ state: 'detached' });
+
       await page.click('[data-testid="partner-admit-ht-qr-btn"]');
       await page.waitForSelector('[data-testid="partner-admitted-patient-banner"]');
       await page.click('[data-testid="partner-voice-match-btn"]');

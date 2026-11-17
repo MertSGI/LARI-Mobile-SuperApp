@@ -86,6 +86,11 @@ export interface MobileAppSessionValue {
   incrementStamp: () => void;
   redeemGiftCode: (code: string) => void;
   addCatalogItem: (item: Omit<PartnerCatalogItem, 'id'>) => void;
+  updateCatalogItem: (
+    id: string,
+    patch: Partial<Omit<PartnerCatalogItem, 'id'>>
+  ) => void;
+  removeCatalogItem: (id: string) => void;
   admitCustomerByQr: (rawPayload: string, expectedTenantId?: string) => DecodedQrAdmissionResult;
   publishCheckoutBreakdown: (breakdown: CompletedAppointmentBreakdown, paymentQr: MobileQrArtifact) => void;
   completeQrPayment: (optionalTipMajor: number) => void;
@@ -198,6 +203,8 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   incrementStamp: noop,
   redeemGiftCode: noop,
   addCatalogItem: noop,
+  updateCatalogItem: noop,
+  removeCatalogItem: noop,
   admitCustomerByQr: () => ({ valid: false, reasonCode: 'MALFORMED_QR' }),
   publishCheckoutBreakdown: noop,
   completeQrPayment: noop,
@@ -359,6 +366,24 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     [showToast]
   );
 
+  const updateCatalogItem = useCallback(
+    (id: string, patch: Partial<Omit<PartnerCatalogItem, 'id'>>) => {
+      setPartnerCatalog((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, ...patch } : item))
+      );
+      showToast('Katalog kalemi güncellendi.');
+    },
+    [showToast]
+  );
+
+  const removeCatalogItem = useCallback(
+    (id: string) => {
+      setPartnerCatalog((prev) => prev.filter((item) => item.id !== id));
+      showToast('Katalog kalemi silindi.');
+    },
+    [showToast]
+  );
+
   const admitCustomerByQr = useCallback(
     (rawPayload: string, expectedTenantId?: string): DecodedQrAdmissionResult => {
       const res = verifyMobileQrTokenOrPayload(rawPayload, expectedTenantId);
@@ -484,6 +509,8 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       incrementStamp,
       redeemGiftCode,
       addCatalogItem,
+      updateCatalogItem,
+      removeCatalogItem,
       admitCustomerByQr,
       publishCheckoutBreakdown,
       completeQrPayment,
@@ -517,6 +544,8 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       incrementStamp,
       redeemGiftCode,
       addCatalogItem,
+      updateCatalogItem,
+      removeCatalogItem,
       admitCustomerByQr,
       publishCheckoutBreakdown,
       completeQrPayment,
