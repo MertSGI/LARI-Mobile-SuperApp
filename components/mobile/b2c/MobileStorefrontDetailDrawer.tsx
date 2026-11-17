@@ -205,7 +205,7 @@ const LOOKBOOK_PORTFOLIO: StorefrontLookbookItem[] = [
 export const MobileStorefrontDetailDrawer: React.FC<
   MobileStorefrontDetailDrawerProps
 > = ({ listing, onClose, onProceedToBooking }) => {
-  const { showToast } = useMobileAppSession();
+  const { customVenuePhotos, showToast } = useMobileAppSession();
   const [activeTab, setActiveTab] = useState<
     'services' | 'specialists' | 'portfolio' | 'hospitality'
   >('services');
@@ -216,11 +216,14 @@ export const MobileStorefrontDetailDrawer: React.FC<
   const services = getExtraServicesForListing(listing);
   const specialists = getSpecialistsForVertical(listing.vertical);
   const visual = VENUE_VISUAL_CATALOG[listing.slug];
-  const heroImages = visual?.galleryPhotoUrls?.length
+  const catalogHeroImages = visual?.galleryPhotoUrls?.length
     ? visual.galleryPhotoUrls
     : visual
       ? [visual.coverPhotoUrl]
       : [];
+  const heroImages = Array.from(
+    new Set([...(customVenuePhotos[listing.slug] ?? []), ...catalogHeroImages])
+  );
 
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([
     services[0]?.id || '',

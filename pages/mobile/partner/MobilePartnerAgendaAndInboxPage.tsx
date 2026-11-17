@@ -11,7 +11,9 @@ import {
   Coffee,
   Copy,
   ExternalLink,
+  ImagePlus,
   Inbox,
+  Megaphone,
   PackagePlus,
   Pencil,
   ShieldAlert,
@@ -86,6 +88,75 @@ interface PartnerStaffMember {
   commissionRate: number;
 }
 
+type RevenuePeriod = 'daily' | 'weekly' | 'monthly' | 'quarterly';
+type BusinessHoursKey = 'weekdays' | 'saturday' | 'sunday';
+
+interface BusinessHoursSchedule {
+  label: string;
+  open: boolean;
+  openTime: string;
+  closeTime: string;
+}
+
+interface PartnerCampaign {
+  id: string;
+  code: string;
+  discountPercent: number;
+  active: boolean;
+}
+
+const PARTNER_TENANT_SLUG = 'atelier-nisantasi';
+const PARTNER_BUSINESS_NAME = 'Atelier Nişantaşı Hair & Spa';
+const QUICK_GALLERY_PHOTO_URL =
+  'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1200&q=85';
+
+const REVENUE_REPORTS: Record<
+  RevenuePeriod,
+  {
+    label: string;
+    revenue: number;
+    serviceRevenue: number;
+    productRevenue: number;
+    estimatedNetRevenue: number;
+    completedAppointments: number;
+  }
+> = {
+  daily: {
+    label: 'Günlük',
+    revenue: 12450,
+    serviceRevenue: 9710,
+    productRevenue: 2740,
+    estimatedNetRevenue: 9960,
+    completedAppointments: 6,
+  },
+  weekly: {
+    label: 'Haftalık',
+    revenue: 68400,
+    serviceRevenue: 53350,
+    productRevenue: 15050,
+    estimatedNetRevenue: 54720,
+    completedAppointments: 34,
+  },
+  monthly: {
+    label: 'Aylık',
+    revenue: 274800,
+    serviceRevenue: 214344,
+    productRevenue: 60456,
+    estimatedNetRevenue: 219840,
+    completedAppointments: 138,
+  },
+  quarterly: {
+    label: 'Son 3 Ay',
+    revenue: 798500,
+    serviceRevenue: 622830,
+    productRevenue: 175670,
+    estimatedNetRevenue: 638800,
+    completedAppointments: 402,
+  },
+};
+
+const REVENUE_PERIODS = Object.keys(REVENUE_REPORTS) as RevenuePeriod[];
+
 export function verifyPartnerMobileAccess(
   userRole: Role | 'guest',
   actorTenantId: string,
@@ -113,9 +184,13 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
 > = ({ tenantId, userRole, language = 'tr' }) => {
   const {
     addCatalogItem,
+    addVenuePhoto,
     appendPassportFormula,
+    customVenuePhotos,
     partnerCatalog,
+    publishSocialPost,
     removeCatalogItem,
+    removeVenuePhoto,
     showToast,
     themeMode,
     updateCatalogItem,
@@ -231,16 +306,32 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   const [newStaffName, setNewStaffName] = useState('');
   const [newStaffSpecialty, setNewStaffSpecialty] = useState('');
   const [newStaffCommission, setNewStaffCommission] = useState('20');
-  const [businessHours, setBusinessHours] = useState({
-    weekdays: true,
-    saturday: true,
-    sunday: false,
+  const [selectedRevenuePeriod, setSelectedRevenuePeriod] =
+    useState<RevenuePeriod>('daily');
+  const [businessHours, setBusinessHours] = useState<
+    Record<BusinessHoursKey, BusinessHoursSchedule>
+  >({
+    weekdays: { label: 'Hafta İçi', open: true, openTime: '09:00', closeTime: '20:00' },
+    saturday: { label: 'Cumartesi', open: true, openTime: '10:00', closeTime: '19:00' },
+    sunday: { label: 'Pazar', open: false, openTime: '10:00', closeTime: '17:00' },
   });
+  const [galleryUrl, setGalleryUrl] = useState(QUICK_GALLERY_PHOTO_URL);
+  const [selectedGalleryPhoto, setSelectedGalleryPhoto] = useState<string | null>(
+    null
+  );
+  const [socialCaption, setSocialCaption] = useState('Yeni çalışmamızı keşfedin.');
+  const [campaigns, setCampaigns] = useState<PartnerCampaign[]>([
+    { id: 'lari15', code: 'LARİ15', discountPercent: 15, active: true },
+  ]);
+  const [newCampaignCode, setNewCampaignCode] = useState('');
+  const [newCampaignDiscount, setNewCampaignDiscount] = useState('10');
 
   const visiblePartnerCatalog = partnerCatalog.filter(
     (item) => item.tenantId === tenantId
   );
   const storefrontUrl = `https://app.randevulari.com/#/m?slug=atelier-nisantasi`;
+  const venuePhotos = customVenuePhotos[PARTNER_TENANT_SLUG] ?? [];
+  const selectedRevenue = REVENUE_REPORTS[selectedRevenuePeriod];
 
   if (!access.allowed) {
     return (
@@ -436,6 +527,101 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
         member.id === staffId ? { ...member, [field]: !member[field] } : member
       )
     );
+  };
+
+  const handleToggleBusinessDay = (key: BusinessHoursKey) => {
+    setBusinessHours((current) => ({
+      ...current,
+      [key]: { ...current[key], open: !current[key].open },
+    }));
+  };
+
+  const handleBusinessTimeChange = (
+    key: BusinessHoursKey,
+    field: 'openTime' | 'closeTime',
+    value: string
+  ) => {
+    setBusinessHours((current) => ({
+      ...current,
+      [key]: { ...current[key], [field]: value },
+    }));
+    showToast(`${businessHours[key].label} çalışma saati ${value} olarak güncellendi.`);
+  };
+
+  const handleGalleryFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') return;
+      addVenuePhoto(PARTNER_TENANT_SLUG, reader.result);
+      setSelectedGalleryPhoto(reader.result);
+      showToast('İşletme fotoğrafı galeriye eklendi.');
+    };
+    reader.onerror = () => showToast('Fotoğraf okunamadı. Lütfen yeniden deneyin.');
+    reader.readAsDataURL(file);
+    event.target.value = '';
+  };
+
+  const handleAddGalleryUrl = () => {
+    const normalizedUrl = galleryUrl.trim();
+    if (!normalizedUrl) {
+      showToast('Geçerli bir fotoğraf URL’si girin.');
+      return;
+    }
+    addVenuePhoto(PARTNER_TENANT_SLUG, normalizedUrl);
+    setSelectedGalleryPhoto(normalizedUrl);
+    showToast('Hızlı fotoğraf galeriye eklendi.');
+  };
+
+  const handleRemoveGalleryPhoto = (photoUrl: string) => {
+    removeVenuePhoto(PARTNER_TENANT_SLUG, photoUrl);
+    setSelectedGalleryPhoto((current) => (current === photoUrl ? null : current));
+    showToast('Fotoğraf işletme galerisinden silindi.');
+  };
+
+  const handlePublishSocialPost = () => {
+    const caption = socialCaption.trim();
+    if (!selectedGalleryPhoto || !caption) {
+      showToast('Paylaşım için bir fotoğraf seçin ve kısa açıklama girin.');
+      return;
+    }
+    publishSocialPost({
+      tenantSlug: PARTNER_TENANT_SLUG,
+      businessName: PARTNER_BUSINESS_NAME,
+      specialist: 'Merve Yılmaz • Kuaför & Güzellik',
+      caption,
+      serviceTag: 'Soft Balayage & Bakım',
+      photoUrl: selectedGalleryPhoto,
+    });
+    setSocialCaption('');
+    showToast('Gönderi Topluluk Akışında yayınlandı.');
+  };
+
+  const handleAddCampaign = () => {
+    const code = newCampaignCode.trim().toLocaleUpperCase('tr-TR');
+    const discountPercent = Number(newCampaignDiscount);
+    if (
+      !code ||
+      !Number.isFinite(discountPercent) ||
+      discountPercent <= 0 ||
+      discountPercent > 100
+    ) {
+      showToast('Kampanya kodu ve 1-100 arası indirim oranı girin.');
+      return;
+    }
+    setCampaigns((current) => [
+      {
+        id: `campaign-${Date.now().toString(36)}`,
+        code,
+        discountPercent: Math.round(discountPercent),
+        active: true,
+      },
+      ...current,
+    ]);
+    setNewCampaignCode('');
+    setNewCampaignDiscount('10');
+    showToast(`${code} kampanyası aktif edildi.`);
   };
 
   const handleCopyStorefrontLink = async () => {
@@ -1129,30 +1315,68 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
               <ChartNoAxesColumn className="h-4 w-4 text-[#5B5FEF]" />
               Ciro & Tahsilat Raporu
             </span>
+            <div className="mb-3 grid grid-cols-4 gap-1.5">
+              {REVENUE_PERIODS.map((period) => (
+                <button
+                  key={period}
+                  type="button"
+                  aria-pressed={selectedRevenuePeriod === period}
+                  onClick={() => setSelectedRevenuePeriod(period)}
+                  className={`min-h-10 rounded-xl px-1 text-[9px] font-black transition-colors ${
+                    selectedRevenuePeriod === period
+                      ? 'bg-[#4F46E5] text-white'
+                      : 'border border-indigo-200 bg-[#F8FAFF] text-[#4338CA]'
+                  }`}
+                  data-testid={`partner-revenue-period-${period}`}
+                >
+                  {REVENUE_REPORTS[period].label}
+                </button>
+              ))}
+            </div>
             <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-2xl bg-[#EEF2FF] p-3">
-                <span className="text-[10px] font-bold text-[#4338CA]">Günlük Ciro</span>
-                <p className="mt-1 text-base font-black text-[#312E81]">
-                  {(12450).toLocaleString('tr-TR')} TRY
-                </p>
-              </div>
-              <div className="rounded-2xl bg-emerald-50 p-3">
-                <span className="text-[10px] font-bold text-emerald-700">Haftalık Ciro</span>
-                <p className="mt-1 text-base font-black text-emerald-900">
-                  {(68400).toLocaleString('tr-TR')} TRY
-                </p>
-              </div>
+              {REVENUE_PERIODS.map((period) => {
+                const report = REVENUE_REPORTS[period];
+                return (
+                  <div
+                    key={period}
+                    className={`rounded-2xl p-3 ${
+                      selectedRevenuePeriod === period
+                        ? 'bg-[#E0E7FF] ring-2 ring-[#5B5FEF]'
+                        : 'bg-[#F8FAFC]'
+                    }`}
+                  >
+                    <span className="text-[10px] font-bold text-[#4338CA]">
+                      {report.label} Ciro
+                    </span>
+                    <p className="mt-1 text-sm font-black text-[#312E81]">
+                      {report.revenue.toLocaleString('tr-TR')} TRY
+                    </p>
+                  </div>
+                );
+              })}
             </div>
             <div className="mt-3 space-y-2 rounded-2xl border border-slate-200 bg-[#F8FAFC] p-3 text-[11px]">
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-1 text-slate-600">
-                  <TrendingUp className="h-3.5 w-3.5" /> Hizmet geliri • %78
+                  <TrendingUp className="h-3.5 w-3.5" /> Hizmet Geliri
                 </span>
-                <strong>{(9710).toLocaleString('tr-TR')} TRY</strong>
+                <strong>{selectedRevenue.serviceRevenue.toLocaleString('tr-TR')} TRY</strong>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-600">Ürün geliri • %22</span>
-                <strong>{(2740).toLocaleString('tr-TR')} TRY</strong>
+                <span className="text-slate-600">Ürün Geliri</span>
+                <strong>{selectedRevenue.productRevenue.toLocaleString('tr-TR')} TRY</strong>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600">Tahmini Net Gelir</span>
+                <strong>
+                  {selectedRevenue.estimatedNetRevenue.toLocaleString('tr-TR')} TRY
+                </strong>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600">Tamamlanan Randevu</span>
+                <strong>
+                  {selectedRevenue.completedAppointments.toLocaleString('tr-TR')}
+                </strong>
               </div>
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2 text-center">
@@ -1185,41 +1409,232 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
               İşletme Çalışma Saatleri
             </span>
             <div className="space-y-2">
-              {(
-                [
-                  { key: 'weekdays', label: 'Hafta İçi', hours: '09:00 – 20:00' },
-                  { key: 'saturday', label: 'Cumartesi', hours: '10:00 – 19:00' },
-                  { key: 'sunday', label: 'Pazar', hours: 'Kapalı' },
-                ] as const
-              ).map((schedule) => {
-                const isOpen = businessHours[schedule.key];
+              {(Object.entries(businessHours) as [BusinessHoursKey, BusinessHoursSchedule][]).map(
+                ([key, schedule]) => {
+                const isOpen = schedule.open;
                 return (
-                  <button
-                    key={schedule.key}
-                    type="button"
-                    aria-pressed={isOpen}
-                    onClick={() =>
-                      setBusinessHours((current) => ({
-                        ...current,
-                        [schedule.key]: !current[schedule.key],
-                      }))
-                    }
-                    className="flex min-h-12 w-full items-center justify-between rounded-2xl border border-slate-200 bg-[#F8FAFC] px-3 text-left"
+                  <div
+                    key={key}
+                    className="rounded-2xl border border-slate-200 bg-[#F8FAFC] p-3"
                   >
-                    <span>
-                      <strong className="block text-xs text-slate-900">{schedule.label}</strong>
-                      <span className="text-[10px] text-slate-500">
-                        {isOpen ? schedule.hours.replace('Kapalı', '10:00 – 17:00') : 'Kapalı'}
+                    <button
+                      type="button"
+                      aria-pressed={isOpen}
+                      onClick={() => handleToggleBusinessDay(key)}
+                      className="flex min-h-10 w-full items-center justify-between text-left"
+                      data-testid={`partner-hours-toggle-${key}`}
+                    >
+                      <span>
+                        <strong className="block text-xs text-slate-900">
+                          {schedule.label}
+                        </strong>
+                        <span className="text-[10px] text-slate-500">
+                          {isOpen
+                            ? `${schedule.openTime} – ${schedule.closeTime}`
+                            : 'Kapalı'}
+                        </span>
                       </span>
-                    </span>
-                    {isOpen ? (
-                      <ToggleRight className="h-6 w-6 text-emerald-600" />
-                    ) : (
-                      <ToggleLeft className="h-6 w-6 text-slate-400" />
+                      {isOpen ? (
+                        <ToggleRight className="h-6 w-6 text-emerald-600" />
+                      ) : (
+                        <ToggleLeft className="h-6 w-6 text-slate-400" />
+                      )}
+                    </button>
+                    {isOpen && (
+                      <div className="mt-2 grid grid-cols-2 gap-2 border-t border-slate-200 pt-2">
+                        <label className="text-[10px] font-bold text-slate-600">
+                          Açılış
+                          <input
+                            type="time"
+                            value={schedule.openTime}
+                            onChange={(event) =>
+                              handleBusinessTimeChange(key, 'openTime', event.target.value)
+                            }
+                            className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-2 text-xs text-slate-900"
+                            data-testid={`partner-hours-open-${key}`}
+                          />
+                        </label>
+                        <label className="text-[10px] font-bold text-slate-600">
+                          Kapanış
+                          <input
+                            type="time"
+                            value={schedule.closeTime}
+                            onChange={(event) =>
+                              handleBusinessTimeChange(key, 'closeTime', event.target.value)
+                            }
+                            className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-2 text-xs text-slate-900"
+                            data-testid={`partner-hours-close-${key}`}
+                          />
+                        </label>
+                      </div>
                     )}
-                  </button>
+                  </div>
                 );
               })}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border-2 border-slate-300 bg-white p-4 shadow-sm">
+            <span className="mb-3 flex items-center gap-1.5 text-xs font-black text-slate-900">
+              <ImagePlus className="h-4 w-4 text-[#5B5FEF]" />
+              İşletme Fotoğraf Galerisi
+            </span>
+            <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-indigo-300 bg-[#F8FAFF] px-3 text-xs font-black text-[#4338CA]">
+              <ImagePlus className="h-4 w-4" />
+              Cihazdan Fotoğraf Yükle
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleGalleryFileChange}
+                className="sr-only"
+                data-testid="partner-gallery-file-input"
+              />
+            </label>
+            <div className="mt-2 flex gap-2">
+              <input
+                type="url"
+                value={galleryUrl}
+                onChange={(event) => setGalleryUrl(event.target.value)}
+                aria-label="Hızlı fotoğraf URL’si"
+                className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 text-[10px] text-slate-900"
+                data-testid="partner-gallery-url-input"
+              />
+              <button
+                type="button"
+                onClick={handleAddGalleryUrl}
+                className="min-h-11 shrink-0 rounded-xl bg-[#4F46E5] px-3 text-[10px] font-black text-white"
+                data-testid="partner-gallery-add-url-btn"
+              >
+                URL Ekle
+              </button>
+            </div>
+
+            {venuePhotos.length > 0 ? (
+              <div className="mt-3 grid grid-cols-3 gap-2" data-testid="partner-gallery-grid">
+                {venuePhotos.map((photoUrl, index) => (
+                  <div
+                    key={photoUrl}
+                    className={`relative overflow-hidden rounded-xl border-2 ${
+                      selectedGalleryPhoto === photoUrl
+                        ? 'border-[#4F46E5]'
+                        : 'border-slate-200'
+                    }`}
+                    data-testid={`partner-gallery-photo-${index}`}
+                  >
+                    <button
+                      type="button"
+                      aria-label={`${index + 1}. fotoğrafı paylaşım için seç`}
+                      onClick={() => setSelectedGalleryPhoto(photoUrl)}
+                      className="block h-24 w-full"
+                    >
+                      <img
+                        src={photoUrl}
+                        alt={`İşletme galerisi ${index + 1}`}
+                        className="h-full w-full object-cover"
+                      />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`${index + 1}. fotoğrafı sil`}
+                      onClick={() => handleRemoveGalleryPhoto(photoUrl)}
+                      className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-rose-600 text-white shadow"
+                      data-testid={`partner-gallery-delete-${index}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 rounded-xl bg-slate-50 p-3 text-center text-[10px] text-slate-500">
+                Henüz özel işletme fotoğrafı eklenmedi.
+              </p>
+            )}
+
+            <div className="mt-3 rounded-2xl border border-indigo-200 bg-[#F8FAFF] p-3">
+              <span className="flex items-center gap-1 text-[10px] font-black text-[#4338CA]">
+                <Megaphone className="h-3.5 w-3.5" /> Topluluk Akışında Paylaş
+              </span>
+              <textarea
+                value={socialCaption}
+                onChange={(event) => setSocialCaption(event.target.value)}
+                placeholder="Kısa bir açıklama yazın"
+                rows={2}
+                className="mt-2 w-full resize-none rounded-xl border border-slate-300 bg-white p-2 text-xs text-slate-900"
+                data-testid="partner-social-caption-input"
+              />
+              <button
+                type="button"
+                onClick={handlePublishSocialPost}
+                disabled={!selectedGalleryPhoto || !socialCaption.trim()}
+                className="mt-2 min-h-11 w-full rounded-xl bg-[#4F46E5] text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-45"
+                data-testid="partner-publish-social-post-btn"
+              >
+                Seçili Fotoğrafı Yayınla
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border-2 border-amber-300 bg-amber-50 p-4 shadow-sm">
+            <span className="mb-3 flex items-center gap-1.5 text-xs font-black text-amber-950">
+              <Sparkles className="h-4 w-4 text-amber-600" />
+              Hızlı Kampanya & İndirim Kodları
+            </span>
+            <div className="space-y-2">
+              {campaigns.map((campaign) => (
+                <button
+                  key={campaign.id}
+                  type="button"
+                  aria-pressed={campaign.active}
+                  onClick={() =>
+                    setCampaigns((current) =>
+                      current.map((item) =>
+                        item.id === campaign.id ? { ...item, active: !item.active } : item
+                      )
+                    )
+                  }
+                  className={`flex min-h-11 w-full items-center justify-between rounded-xl border px-3 text-xs font-black ${
+                    campaign.active
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                      : 'border-slate-300 bg-white text-slate-500'
+                  }`}
+                  data-testid={`partner-campaign-toggle-${campaign.id}`}
+                >
+                  <span>
+                    {campaign.code} • %{campaign.discountPercent.toLocaleString('tr-TR')} İndirim
+                  </span>
+                  <span>{campaign.active ? 'Aktif' : 'Pasif'}</span>
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 grid grid-cols-[1fr_80px] gap-2">
+              <input
+                type="text"
+                value={newCampaignCode}
+                onChange={(event) => setNewCampaignCode(event.target.value)}
+                placeholder="Kampanya kodu"
+                aria-label="Yeni kampanya kodu"
+                className="min-h-10 min-w-0 rounded-xl border border-amber-300 bg-white px-3 text-xs text-slate-900"
+                data-testid="partner-campaign-code-input"
+              />
+              <input
+                type="number"
+                min="1"
+                max="100"
+                value={newCampaignDiscount}
+                onChange={(event) => setNewCampaignDiscount(event.target.value)}
+                aria-label="İndirim yüzdesi"
+                className="min-h-10 rounded-xl border border-amber-300 bg-white px-2 text-xs text-slate-900"
+                data-testid="partner-campaign-discount-input"
+              />
+              <button
+                type="button"
+                onClick={handleAddCampaign}
+                className="col-span-2 min-h-11 rounded-xl bg-amber-600 text-xs font-black text-white"
+                data-testid="partner-campaign-add-btn"
+              >
+                Yeni Kampanyayı Etkinleştir
+              </button>
             </div>
           </div>
 

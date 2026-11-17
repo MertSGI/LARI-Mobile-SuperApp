@@ -266,6 +266,50 @@ const MOBILE_CATEGORY_OPTIONS = [
   { id: 'personal_trainer', label: 'Pilates & Fitness', visualId: 'personal_trainer', vertical: 'personal_trainer' },
 ] as const;
 
+interface SocialShowcasePost {
+  postId: string;
+  tenantSlug: string;
+  businessName: string;
+  specialist: string;
+  caption: string;
+  baseLikes: number;
+  serviceTag: string;
+  photoUrl?: string;
+}
+
+const DEFAULT_SOCIAL_SHOWCASE_POSTS: SocialShowcasePost[] = [
+  {
+    postId: 'post-balayage-merve',
+    tenantSlug: 'atelier-nisantasi',
+    businessName: 'Atelier Nişantaşı Hair & Spa',
+    specialist: 'Merve Yılmaz • Kuaför & Güzellik',
+    caption:
+      '9.12 Soğuk Bej Balayage + Olaplex No.2 onarımı tamamlandı. Bakım formülü müşterinin dijital pasaportuna işlendi.',
+    baseLikes: 142,
+    serviceTag: 'Soft Balayage & Bakım',
+  },
+  {
+    postId: 'post-maslak-auto',
+    tenantSlug: 'maslak-auto-studio',
+    businessName: 'Maslak Auto Studio • Bakım & Servis',
+    specialist: 'Kemal Usta • Oto Servis & Detailing',
+    caption:
+      'Seramik boya koruma + 60.000 km periyodik bakım & bilgisayarlı arıza tespiti şeffaf fiyat dökümü ile teslim edildi.',
+    baseLikes: 98,
+    serviceTag: 'Periyodik Bakım & Bilgisayarlı Kontrol',
+  },
+  {
+    postId: 'post-dent-smile',
+    tenantSlug: 'lari-dent-kadikoy',
+    businessName: 'LARİ Dent & Estetik Kliniği',
+    specialist: 'Dr. Ece Aksoy • Diş & Gülüş Kliniği',
+    caption:
+      'Üst çene OM1 doğal ton E-Max lamina önizleme ve QR kabul ile 45 dakikada dijital prova.',
+    baseLikes: 116,
+    serviceTag: 'Dijital Gülüş Tasarımı Muayenesi',
+  },
+];
+
 export interface MobileExploreMarketplacePageProps {
   whiteLabelLockedTenantSlug?: string | null;
   pastAppointments?: PastAppointmentSnapshot[];
@@ -290,12 +334,17 @@ export const MobileExploreMarketplacePage: React.FC<
   const {
     showToast,
     themeMode,
+    customSocialPosts,
     likedSocialPosts,
     savedSocialPosts,
     toggleLikeSocialPost,
     toggleSaveSocialPost,
   } = useMobileAppSession();
   const isDark = themeMode === 'dark';
+  const socialShowcasePosts: SocialShowcasePost[] = [
+    ...customSocialPosts,
+    ...DEFAULT_SOCIAL_SHOWCASE_POSTS,
+  ];
 
   const [vertical, setVertical] = useState<LariBusinessVertical | 'all'>('all');
   const [queryText, setQueryText] = useState('');
@@ -794,42 +843,12 @@ export const MobileExploreMarketplacePage: React.FC<
             <span className="text-xs font-bold text-[#4F46E5]">Tüm Kesimler</span>
           </div>
 
-          {[
-            {
-              postId: 'post-balayage-merve',
-              tenantSlug: 'atelier-nisantasi',
-              businessName: 'Atelier Nişantaşı Hair & Spa',
-              specialist: 'Merve Yılmaz • Kuaför & Güzellik',
-              caption:
-                '9.12 Soğuk Bej Balayage + Olaplex No.2 onarımı tamamlandı. Bakım formülü müşterinin dijital pasaportuna işlendi.',
-              baseLikes: 142,
-              serviceTag: 'Soft Balayage & Bakım',
-            },
-            {
-              postId: 'post-maslak-auto',
-              tenantSlug: 'maslak-auto-studio',
-              businessName: 'Maslak Auto Studio • Bakım & Servis',
-              specialist: 'Kemal Usta • Oto Servis & Detailing',
-              caption:
-                'Seramik boya koruma + 60.000 km periyodik bakım & bilgisayarlı arıza tespiti şeffaf fiyat dökümü ile teslim edildi.',
-              baseLikes: 98,
-              serviceTag: 'Periyodik Bakım & Bilgisayarlı Kontrol',
-            },
-            {
-              postId: 'post-dent-smile',
-              tenantSlug: 'lari-dent-kadikoy',
-              businessName: 'LARİ Dent & Estetik Kliniği',
-              specialist: 'Dr. Ece Aksoy • Diş & Gülüş Kliniği',
-              caption:
-                'Üst çene OM1 doğal ton E-Max lamina önizleme ve QR kabul ile 45 dakikada dijital prova.',
-              baseLikes: 116,
-              serviceTag: 'Dijital Gülüş Tasarımı Muayenesi',
-            },
-          ].map((post) => {
+          {socialShowcasePosts.map((post) => {
             const listing = DEFAULT_MOBILE_MARKETPLACE_LISTINGS.find(
               (l) => l.slug === post.tenantSlug
             );
             const visual = VENUE_VISUAL_CATALOG[post.tenantSlug];
+            const postPhotoUrl = post.photoUrl ?? visual?.coverPhotoUrl;
             const isLiked = likedSocialPosts.includes(post.postId);
             const isSaved = savedSocialPosts.includes(post.postId);
 
@@ -837,6 +856,7 @@ export const MobileExploreMarketplacePage: React.FC<
               <article
                 key={post.postId}
                 className={`rounded-3xl overflow-hidden shadow-sm ${cardSurface}`}
+                data-testid={`social-post-${post.postId}`}
               >
                 <div className="px-4 py-3 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0">
@@ -851,13 +871,13 @@ export const MobileExploreMarketplacePage: React.FC<
                   <ShieldCheck className="w-4 h-4 text-[#4F46E5] shrink-0" />
                 </div>
 
-                {visual && (
+                {postPhotoUrl && (
                   <img
-                    src={visual.coverPhotoUrl}
+                    src={postPhotoUrl}
                     alt={post.caption}
                     onError={(e) => {
                       const img = e.currentTarget;
-                      if (img.src !== visual.fallbackSvgUrl) {
+                      if (visual && img.src !== visual.fallbackSvgUrl) {
                         img.src = visual.fallbackSvgUrl;
                       }
                     }}

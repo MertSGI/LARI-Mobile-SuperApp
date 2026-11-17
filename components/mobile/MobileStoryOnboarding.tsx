@@ -172,10 +172,10 @@ export const MobileStoryOnboarding: React.FC<MobileStoryOnboardingProps> = ({
     <>
       {/* Instagram-Authentic Circular Photo Story Strip (Scrolls cleanly with zero layout jump!) */}
       <div
-        className={`w-full overflow-x-auto no-scrollbar border-b-2 px-3 py-3 ${
+        className={`w-full overflow-x-auto no-scrollbar border-b px-3 py-3 ${
           isDark
-            ? 'bg-slate-950 border-slate-800'
-            : 'bg-white border-slate-200'
+            ? 'bg-gradient-to-b from-slate-950 via-slate-900/95 to-slate-950 border-slate-800'
+            : 'bg-gradient-to-b from-white via-[#F4F6FF] to-[#F5F7FA] border-indigo-100/80'
         }`}
         data-testid="mobile-story-reels-strip"
       >
@@ -283,11 +283,40 @@ export const MobileStoryOnboarding: React.FC<MobileStoryOnboardingProps> = ({
                 }}
                 className="w-full h-full object-cover"
               />
+              <button
+                type="button"
+                aria-label="Önceki hikaye"
+                onClick={() =>
+                  setActiveStoryIndex(Math.max(0, activeStoryIndex - 1))
+                }
+                className="absolute inset-y-0 left-0 z-10 flex w-1/3 items-center justify-start bg-transparent px-3 text-white/80"
+                data-testid="story-tap-prev"
+              >
+                <span className="rounded-full bg-slate-950/30 px-2 py-1 text-lg">‹</span>
+              </button>
+              <button
+                type="button"
+                aria-label="Sonraki hikaye"
+                onClick={() =>
+                  setActiveStoryIndex(
+                    activeStoryIndex < MOBILE_STORY_HIGHLIGHTS.length - 1
+                      ? activeStoryIndex + 1
+                      : null
+                  )
+                }
+                className="absolute inset-y-0 right-0 z-10 flex w-2/3 items-center justify-end bg-transparent px-3 text-white/80"
+                data-testid="story-tap-next"
+              >
+                <span className="rounded-full bg-slate-950/30 px-2 py-1 text-lg">›</span>
+              </button>
             </div>
 
             <div className="p-5 space-y-4">
               <div className="space-y-1.5">
-                <h2 className="text-xl font-black text-slate-900 leading-snug">
+                <h2
+                  className="text-xl font-black text-slate-900 leading-snug"
+                  data-testid="active-story-title"
+                >
                   {activeStory.titleTr}
                 </h2>
                 <p className="text-sm text-slate-600 leading-relaxed">

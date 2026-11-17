@@ -58,6 +58,22 @@ export interface AdmittedPatientSession {
   admittedAtIso: string;
 }
 
+export interface MobileCustomSocialPost {
+  postId: string;
+  tenantSlug: string;
+  businessName: string;
+  specialist: string;
+  caption: string;
+  serviceTag: string;
+  photoUrl: string;
+  baseLikes: number;
+}
+
+export type PublishSocialPostInput = Omit<
+  MobileCustomSocialPost,
+  'postId' | 'baseLikes'
+>;
+
 export interface MobileAppSessionValue {
   themeMode: 'light' | 'dark';
   activeBooking: MobileActiveBooking | null;
@@ -74,6 +90,8 @@ export interface MobileAppSessionValue {
   activePaymentQr: MobileQrArtifact | null;
   likedSocialPosts: string[];
   savedSocialPosts: string[];
+  customVenuePhotos: Record<string, string[]>;
+  customSocialPosts: MobileCustomSocialPost[];
   setThemeMode: (mode: 'light' | 'dark') => void;
   toggleThemeMode: () => void;
   showToast: (message: string) => void;
@@ -96,6 +114,9 @@ export interface MobileAppSessionValue {
   completeQrPayment: (optionalTipMajor: number) => void;
   toggleLikeSocialPost: (postId: string) => void;
   toggleSaveSocialPost: (postId: string) => void;
+  addVenuePhoto: (tenantSlug: string, photoUrl: string) => void;
+  removeVenuePhoto: (tenantSlug: string, photoUrl: string) => void;
+  publishSocialPost: (post: PublishSocialPostInput) => void;
 }
 
 const INITIAL_PASSPORT_ENTRIES: MobilePassportEntry[] = [
@@ -191,6 +212,8 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   activePaymentQr: null,
   likedSocialPosts: [],
   savedSocialPosts: [],
+  customVenuePhotos: {},
+  customSocialPosts: [],
   setThemeMode: noop,
   toggleThemeMode: noop,
   showToast: noop,
@@ -210,6 +233,9 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   completeQrPayment: noop,
   toggleLikeSocialPost: noop,
   toggleSaveSocialPost: noop,
+  addVenuePhoto: noop,
+  removeVenuePhoto: noop,
+  publishSocialPost: noop,
 };
 
 const MobileAppSessionContext = createContext<MobileAppSessionValue | null>(null);
@@ -243,6 +269,12 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     useState<MobileQrArtifact | null>(null);
   const [likedSocialPosts, setLikedSocialPosts] = useState<string[]>([]);
   const [savedSocialPosts, setSavedSocialPosts] = useState<string[]>([]);
+  const [customVenuePhotos, setCustomVenuePhotos] = useState<Record<string, string[]>>(
+    {}
+  );
+  const [customSocialPosts, setCustomSocialPosts] = useState<MobileCustomSocialPost[]>(
+    []
+  );
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
@@ -480,6 +512,34 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     [showToast]
   );
 
+  const addVenuePhoto = useCallback((tenantSlug: string, photoUrl: string) => {
+    const normalizedUrl = photoUrl.trim();
+    if (!normalizedUrl) return;
+    setCustomVenuePhotos((current) => {
+      const existing = current[tenantSlug] ?? [];
+      if (existing.includes(normalizedUrl)) return current;
+      return { ...current, [tenantSlug]: [normalizedUrl, ...existing] };
+    });
+  }, []);
+
+  const removeVenuePhoto = useCallback((tenantSlug: string, photoUrl: string) => {
+    setCustomVenuePhotos((current) => ({
+      ...current,
+      [tenantSlug]: (current[tenantSlug] ?? []).filter((url) => url !== photoUrl),
+    }));
+  }, []);
+
+  const publishSocialPost = useCallback((post: PublishSocialPostInput) => {
+    setCustomSocialPosts((current) => [
+      {
+        ...post,
+        postId: `post-custom-${Date.now().toString(36)}`,
+        baseLikes: 0,
+      },
+      ...current,
+    ]);
+  }, []);
+
   const value = useMemo<MobileAppSessionValue>(
     () => ({
       themeMode,
@@ -497,6 +557,8 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       activePaymentQr,
       likedSocialPosts,
       savedSocialPosts,
+      customVenuePhotos,
+      customSocialPosts,
       setThemeMode,
       toggleThemeMode,
       showToast,
@@ -516,6 +578,9 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       completeQrPayment,
       toggleLikeSocialPost,
       toggleSaveSocialPost,
+      addVenuePhoto,
+      removeVenuePhoto,
+      publishSocialPost,
     }),
     [
       themeMode,
@@ -533,6 +598,8 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       activePaymentQr,
       likedSocialPosts,
       savedSocialPosts,
+      customVenuePhotos,
+      customSocialPosts,
       toggleThemeMode,
       showToast,
       confirmBooking,
@@ -551,6 +618,9 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       completeQrPayment,
       toggleLikeSocialPost,
       toggleSaveSocialPost,
+      addVenuePhoto,
+      removeVenuePhoto,
+      publishSocialPost,
     ]
   );
 

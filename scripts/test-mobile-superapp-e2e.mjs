@@ -112,6 +112,18 @@ async function run() {
       await page.waitForSelector('[data-testid="marketplace-card-maslak-auto-studio"]');
       await page.waitForSelector('[data-testid="lari-social-showcase-feed"]');
 
+      // Story modal advances with the right-side tap zone.
+      await page.click('[data-testid="story-bubble-story-flash-nisantasi"]');
+      await page.waitForSelector('[data-testid="mobile-story-fullscreen-modal"]');
+      const firstStoryTitle = await page.locator('[data-testid="active-story-title"]').innerText();
+      await page.click('[data-testid="story-tap-next"]');
+      const secondStoryTitle = await page.locator('[data-testid="active-story-title"]').innerText();
+      assert.notEqual(secondStoryTitle, firstStoryTitle, `Story must advance on ${vp.name}`);
+      await page.click('[data-testid="close-story-modal-btn"]');
+      await page.waitForSelector('[data-testid="mobile-story-fullscreen-modal"]', {
+        state: 'detached',
+      });
+
       // Search clear affordance + expanded real-photo category catalog
       await page.fill('[data-testid="explore-search-input"]', 'Nişantaşı');
       await page.click('[data-testid="explore-search-clear-btn"]');
@@ -262,9 +274,41 @@ async function run() {
       await addedStaffMember.locator('[data-testid^="partner-staff-delete-"]').click();
       await addedStaffMember.waitFor({ state: 'detached' });
 
+      await page.click('[data-testid="partner-revenue-period-monthly"]');
+      assert.equal(
+        await page.getAttribute('[data-testid="partner-revenue-period-monthly"]', 'aria-pressed'),
+        'true'
+      );
+      await page.click('[data-testid="partner-revenue-period-quarterly"]');
+      assert.equal(
+        await page.getAttribute('[data-testid="partner-revenue-period-quarterly"]', 'aria-pressed'),
+        'true'
+      );
+      assert.match(
+        await page.locator('[data-testid="partner-management-staff-reports-panel"]').innerText(),
+        /798\.500 TRY/
+      );
+
       await page.click('[data-testid="partner-management-tab-storefront"]');
       await page.waitForSelector('[data-testid="partner-management-storefront-panel"]');
       await page.waitForSelector('[data-testid="partner-copy-storefront-link-btn"]');
+      await page.fill('[data-testid="partner-hours-open-weekdays"]', '08:30');
+      await page.fill('[data-testid="partner-hours-close-weekdays"]', '21:00');
+      assert.equal(await page.inputValue('[data-testid="partner-hours-open-weekdays"]'), '08:30');
+      assert.equal(await page.inputValue('[data-testid="partner-hours-close-weekdays"]'), '21:00');
+
+      await page.setInputFiles('[data-testid="partner-gallery-file-input"]', {
+        name: 'e2e-gallery.svg',
+        mimeType: 'image/svg+xml',
+        buffer: Buffer.from(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80"><rect width="120" height="80" fill="#4F46E5"/></svg>'
+        ),
+      });
+      await page.waitForSelector('[data-testid="partner-gallery-photo-0"]');
+      await page.click('[data-testid="partner-gallery-delete-0"]');
+      await page.waitForSelector('[data-testid="partner-gallery-photo-0"]', {
+        state: 'detached',
+      });
       const overflowPartner = await page.evaluate(
         () => document.documentElement.scrollWidth > window.innerWidth
       );
