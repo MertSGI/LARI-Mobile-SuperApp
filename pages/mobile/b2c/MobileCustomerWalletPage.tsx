@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   BookOpen,
   Calendar,
   CalendarPlus,
@@ -12,11 +13,13 @@ import {
   Receipt,
   RefreshCw,
   Share2,
+  ShieldCheck,
   Sparkles,
   Stamp,
   Star,
   Wallet,
   WifiOff,
+  X,
   XCircle,
 } from 'lucide-react';
 import {
@@ -73,6 +76,8 @@ export const MobileCustomerWalletPage: React.FC<
   const [customerTipRate, setCustomerTipRate] = useState<0 | 5 | 10 | 15>(0);
   const [liveStage, setLiveStage] = useState<1 | 2 | 3 | 4>(2);
   const [cancelledEmpty, setCancelledEmpty] = useState(false);
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('Programım değişti');
   const [showRescheduleSlots, setShowRescheduleSlots] = useState(false);
   const [routineChecks, setRoutineChecks] = useState<Record<string, boolean>>({
     morning_serum: true,
@@ -598,6 +603,25 @@ export const MobileCustomerWalletPage: React.FC<
                     </div>
                   )}
 
+                  {/* Cancellation & Reschedule Policy Rules */}
+                  <div
+                    className={`rounded-2xl border-2 p-3 space-y-1 text-[11px] ${
+                      isDark
+                        ? 'bg-slate-800 border-slate-700 text-slate-300'
+                        : 'bg-amber-50/70 border-amber-200 text-amber-950'
+                    }`}
+                    data-testid="wallet-cancellation-policy-card"
+                  >
+                    <span className="font-black flex items-center gap-1.5 text-xs">
+                      <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
+                      Rezervasyon İptal & Erteleme Kuralları
+                    </span>
+                    <ul className="space-y-0.5 pl-1 opacity-90">
+                      <li>• Randevu saatinden <strong>4 saat öncesine kadar</strong> ücretsiz iptal ve erteleme.</li>
+                      <li>• Son 4 saat içindeki iptallerde işletme kapora / no-show kuralı uygulanabilir.</li>
+                    </ul>
+                  </div>
+
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
@@ -610,12 +634,10 @@ export const MobileCustomerWalletPage: React.FC<
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        cancelActiveBooking();
-                        setCancelledEmpty(true);
-                      }}
+                      onClick={() => setCancelModalOpen(true)}
                       style={{ minHeight: '42px' }}
                       className="rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-xs font-semibold text-rose-700 flex items-center justify-center gap-1"
+                      data-testid="wallet-cancel-open-btn"
                     >
                       <XCircle className="w-3.5 h-3.5" />
                       İptal Et
@@ -997,6 +1019,108 @@ export const MobileCustomerWalletPage: React.FC<
           {reviewStatus && (
             <p className="text-[11px] text-emerald-700 font-semibold">{reviewStatus}</p>
           )}
+        </div>
+      )}
+      {/* Reservation Cancellation Confirmation Modal */}
+      {cancelModalOpen && displayedBooking && (
+        <div
+          className="fixed inset-0 z-[95] bg-slate-950/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+          data-testid="wallet-cancel-confirm-modal"
+          onClick={() => setCancelModalOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`w-full max-w-md rounded-3xl border-2 p-5 space-y-4 shadow-2xl ${cardSurface}`}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2.5 text-rose-600">
+                <span className="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">
+                    Randevuyu İptal Etmek İstediğinize Emin misiniz?
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {displayedBooking.businessName} • {displayedBooking.scheduledDate}{' '}
+                    {displayedBooking.scheduledTime}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCancelModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 flex items-center justify-center shrink-0"
+                aria-label="Kapat"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className={`rounded-2xl p-3 text-xs space-y-1.5 ${innerSurface}`}>
+              <p className="font-black text-[#4F46E5]">İptal & İade Kuralları</p>
+              <p>
+                • İşlem saatinden <strong>4 saat öncesine kadar</strong> tüm iptaller ücretsizdir; ön ödeme/paket hakkınız kesintisiz iade edilir.
+              </p>
+              <p>
+                • 4 saatten az kalan iptallerde uzman saati kilitlendiği için no-show kuralı uygulanabilir. İsterseniz doğrudan yeni güne erteleyebilirsiniz.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-black uppercase text-slate-500 block">
+                İptal Nedeni (İsteğe Bağlı)
+              </span>
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  'Programım değişti',
+                  'Başka güne alacağım',
+                  'Hizmeti değiştireceğim',
+                  'Diğer',
+                ].map((reason) => (
+                  <button
+                    key={reason}
+                    type="button"
+                    onClick={() => setCancelReason(reason)}
+                    className={`rounded-xl border-2 px-2.5 py-2 text-xs font-bold text-left transition ${
+                      cancelReason === reason
+                        ? 'bg-[#EEF2FF] border-[#4F46E5] text-[#4338CA]'
+                        : isDark
+                          ? 'bg-slate-800 border-slate-700 text-slate-300'
+                          : 'bg-white border-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {reason}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setCancelModalOpen(false)}
+                style={{ minHeight: '46px' }}
+                className="rounded-xl border-2 border-slate-300 dark:border-slate-700 text-xs font-black"
+                data-testid="wallet-cancel-dismiss-btn"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  cancelActiveBooking(cancelReason);
+                  setCancelledEmpty(true);
+                  setCancelModalOpen(false);
+                }}
+                style={{ minHeight: '46px' }}
+                className="rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black"
+                data-testid="wallet-cancel-confirm-btn"
+              >
+                Evet, Randevuyu İptal Et
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

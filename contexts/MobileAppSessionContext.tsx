@@ -74,6 +74,34 @@ export type PublishSocialPostInput = Omit<
   'postId' | 'baseLikes'
 >;
 
+export interface PartnerSubscriptionSnapshot {
+  planId: string;
+  planName: string;
+  billingPeriod: 'monthly' | 'annual';
+  businessName: string;
+  category: string;
+  city: string;
+  district: string;
+  ownerName: string;
+  staffName?: string;
+  activatedAtIso: string;
+}
+
+export interface UpgradePartnerInput {
+  planId: string;
+  planName: string;
+  billingPeriod: 'monthly' | 'annual';
+  businessName: string;
+  category: string;
+  city: string;
+  district: string;
+  ownerName: string;
+  staffName?: string;
+  initialServiceName?: string;
+  initialServicePrice?: number;
+  initialServiceDuration?: number;
+}
+
 export interface MobileAppSessionValue {
   themeMode: 'light' | 'dark';
   activeBooking: MobileActiveBooking | null;
@@ -92,12 +120,13 @@ export interface MobileAppSessionValue {
   savedSocialPosts: string[];
   customVenuePhotos: Record<string, string[]>;
   customSocialPosts: MobileCustomSocialPost[];
+  partnerSubscription: PartnerSubscriptionSnapshot | null;
   setThemeMode: (mode: 'light' | 'dark') => void;
   toggleThemeMode: () => void;
   showToast: (message: string) => void;
   confirmBooking: (input: ConfirmBookingInput) => void;
   rescheduleActiveBooking: (newDate: string, newTime: string) => void;
-  cancelActiveBooking: () => void;
+  cancelActiveBooking: (reason?: string) => void;
   setHospitalityPreferences: (drink: string, quiet: boolean) => void;
   appendPassportFormula: (entry: MobilePassportEntry) => void;
   addLoyaltyPoints: (delta: number) => void;
@@ -117,6 +146,7 @@ export interface MobileAppSessionValue {
   addVenuePhoto: (tenantSlug: string, photoUrl: string) => void;
   removeVenuePhoto: (tenantSlug: string, photoUrl: string) => void;
   publishSocialPost: (post: PublishSocialPostInput) => void;
+  upgradeToPartnerAccount: (input: UpgradePartnerInput) => void;
 }
 
 const INITIAL_PASSPORT_ENTRIES: MobilePassportEntry[] = [
@@ -214,6 +244,7 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   savedSocialPosts: [],
   customVenuePhotos: {},
   customSocialPosts: [],
+  partnerSubscription: null,
   setThemeMode: noop,
   toggleThemeMode: noop,
   showToast: noop,
@@ -236,6 +267,7 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   addVenuePhoto: noop,
   removeVenuePhoto: noop,
   publishSocialPost: noop,
+  upgradeToPartnerAccount: noop,
 };
 
 const MobileAppSessionContext = createContext<MobileAppSessionValue | null>(null);
@@ -275,6 +307,8 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
   const [customSocialPosts, setCustomSocialPosts] = useState<MobileCustomSocialPost[]>(
     []
   );
+  const [partnerSubscription, setPartnerSubscription] =
+    useState<PartnerSubscriptionSnapshot | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
@@ -329,21 +363,28 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     [showToast]
   );
 
-  const cancelActiveBooking = useCallback(() => {
-    setActiveBooking((booking) => {
-      if (booking) {
-        setBookingHistory((prev) =>
-          prev.map((item) =>
-            item.appointmentId === booking.appointmentId
-              ? { ...item, status: 'cancelled' }
-              : item
-          )
-        );
-      }
-      return null;
-    });
-    showToast('Randevu iptal edildi. Yeni bir deneyim keşfedebilirsiniz.');
-  }, [showToast]);
+  const cancelActiveBooking = useCallback(
+    (reason?: string) => {
+      setActiveBooking((booking) => {
+        if (booking) {
+          setBookingHistory((prev) =>
+            prev.map((item) =>
+              item.appointmentId === booking.appointmentId
+                ? { ...item, status: 'cancelled' }
+                : item
+            )
+          );
+        }
+        return null;
+      });
+      showToast(
+        reason
+          ? `Randevu iptal edildi (${reason}).`
+          : 'Randevu iptal edildi. Yeni bir deneyim keşfedebilirsiniz.'
+      );
+    },
+    [showToast]
+  );
 
   const setHospitalityPreferences = useCallback(
     (drink: string, quiet: boolean) => {
@@ -540,6 +581,48 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     ]);
   }, []);
 
+  const upgradeToPartnerAccount = useCallback(
+    (input: UpgradePartnerInput) => {
+      setPartnerSubscription({
+        planId: input.planId,
+        planName: input.planName,
+        billingPeriod: input.billingPeriod,
+        businessName: input.businessName,
+        category: input.category,
+        city: input.city,
+        district: input.district,
+        ownerName: input.ownerName,
+        staffName: input.staffName,
+        activatedAtIso: new Date().toISOString(),
+      });
+      if (input.initialServiceName && input.initialServicePrice) {
+        setPartnerCatalog((current) => [
+          {
+            id: `cat-onboard-${Date.now().toString(36)}`,
+            tenantId: 'ten-atelier-nisantasi',
+            name: input.initialServiceName!,
+            category: 'beauty',
+            unitPriceMajor: input.initialServicePrice!,
+            durationMinutes: input.initialServiceDuration || 60,
+            currency: 'TRY',
+            taxRateBps: 2000,
+            commissionRateBps: 2500,
+            packageEligible: true,
+            keywords: input.initialServiceName!
+              .toLocaleLowerCase('tr-TR')
+              .split(/\s+/)
+              .filter(Boolean),
+          },
+          ...current,
+        ]);
+      }
+      showToast(
+        `${input.businessName} için ${input.planName} Partner hesabı aktif edildi!`
+      );
+    },
+    [showToast]
+  );
+
   const value = useMemo<MobileAppSessionValue>(
     () => ({
       themeMode,
@@ -559,6 +642,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       savedSocialPosts,
       customVenuePhotos,
       customSocialPosts,
+      partnerSubscription,
       setThemeMode,
       toggleThemeMode,
       showToast,
@@ -581,6 +665,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       addVenuePhoto,
       removeVenuePhoto,
       publishSocialPost,
+      upgradeToPartnerAccount,
     }),
     [
       themeMode,
@@ -600,6 +685,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       savedSocialPosts,
       customVenuePhotos,
       customSocialPosts,
+      partnerSubscription,
       toggleThemeMode,
       showToast,
       confirmBooking,
@@ -621,6 +707,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       addVenuePhoto,
       removeVenuePhoto,
       publishSocialPost,
+      upgradeToPartnerAccount,
     ]
   );
 

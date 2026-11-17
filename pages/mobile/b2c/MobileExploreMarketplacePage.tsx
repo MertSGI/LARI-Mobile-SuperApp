@@ -7,6 +7,7 @@ import {
   Compass,
   ExternalLink,
   Heart,
+  LayoutDashboard,
   Map,
   MapPin,
   Mic,
@@ -320,6 +321,7 @@ export interface MobileExploreMarketplacePageProps {
     serviceNames?: string[]
   ) => void;
   onOneTapRebook?: (tenantSlug: string, date: string, time: string) => void;
+  onOpenPartnerOnboarding?: () => void;
 }
 
 export const MobileExploreMarketplacePage: React.FC<
@@ -330,6 +332,7 @@ export const MobileExploreMarketplacePage: React.FC<
   language = 'tr',
   onOpenBookingSheet,
   onOneTapRebook,
+  onOpenPartnerOnboarding,
 }) => {
   const {
     showToast,
@@ -834,6 +837,46 @@ export const MobileExploreMarketplacePage: React.FC<
       </div>
 
       {/* Instagram-Style Community "Yapılan İşler & Randevu Akışı" across Every Sector */}
+      {!searchResult.storefrontLockActive && (
+        <section
+          className="relative overflow-hidden rounded-3xl border-2 border-indigo-300 bg-gradient-to-br from-[#EEF2FF] via-white to-violet-50 p-5 text-slate-900 shadow-sm dark:border-indigo-700 dark:from-indigo-950 dark:via-slate-900 dark:to-violet-950 dark:text-white"
+          data-testid="explore-partner-invite-card"
+        >
+          <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-violet-300/30 blur-2xl" />
+          <div className="relative">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white/80 px-3 py-1 text-[10px] font-black tracking-wider text-[#4338CA] dark:border-indigo-700 dark:bg-slate-900/70 dark:text-indigo-300">
+              <Store className="h-3.5 w-3.5" />
+              İŞLETME SAHİBİ MİSİNİZ?
+            </span>
+            <h2 className="mt-3 text-xl font-black leading-tight">
+              Kendi işletmeni LARİ’de müşterinin gözüyle gör.
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+              Kendi vitrinini ücretsiz önizle, %0 komisyon QR mağazanı ve Cep POS&apos;unu 2 dakikada aç.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {['%0 Komisyon', 'QR & Cep POS', 'Canlı İşletme Önizleme'].map((badge) => (
+                <span
+                  key={badge}
+                  className="rounded-full border border-indigo-200 bg-white/80 px-2.5 py-1 text-[10px] font-black text-[#4338CA] dark:border-indigo-700 dark:bg-slate-800 dark:text-indigo-300"
+                >
+                  {badge}
+                </span>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => onOpenPartnerOnboarding?.()}
+              className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] px-4 py-3 text-sm font-black text-white shadow-lg shadow-indigo-200/40 dark:shadow-none"
+              data-testid="explore-open-partner-onboarding-btn"
+            >
+              İşletmeni Önizle & Partner Ol
+              <LayoutDashboard className="h-4 w-4" />
+            </button>
+          </div>
+        </section>
+      )}
+
       {!searchResult.storefrontLockActive && (
         <section className="space-y-3" data-testid="lari-social-showcase-feed">
           <div className="flex items-center justify-between">

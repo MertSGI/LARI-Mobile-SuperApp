@@ -47,6 +47,7 @@ export interface MobileProfileSettingsPageProps {
   onToggleMode?: (targetMode: MobileShellMode) => void;
   onSwitchPersona?: (persona: MobilePersonaType) => void;
   onAccountDeleted?: (result: AccountDeletionResult) => void;
+  onOpenPartnerOnboarding?: () => void;
 }
 
 export const MobileProfileSettingsPage: React.FC<
@@ -61,6 +62,7 @@ export const MobileProfileSettingsPage: React.FC<
   onToggleMode,
   onSwitchPersona,
   onAccountDeleted,
+  onOpenPartnerOnboarding,
 }) => {
   const {
     showToast,
@@ -343,7 +345,8 @@ export const MobileProfileSettingsPage: React.FC<
               type="button"
               onClick={() => {
                 if (!hasPartnerAccess) {
-                  showToast('Partner / İşletme Modu yalnızca yetkili işletme hesaplarına açıktır.');
+                  showToast('LARİ Partner Ekosistemi & İşletme Başvurusu açılıyor...');
+                  onOpenPartnerOnboarding?.();
                   return;
                 }
                 if (!isPartner && onToggleMode) onToggleMode('b2b_partner');

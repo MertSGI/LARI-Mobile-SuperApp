@@ -110,6 +110,7 @@ async function run() {
       await page.waitForSelector('[data-testid="mobile-explore-marketplace-page"]');
       await page.waitForSelector('[data-testid="interactive-radar-map-card"]');
       await page.waitForSelector('[data-testid="marketplace-card-maslak-auto-studio"]');
+      await page.waitForSelector('[data-testid="explore-partner-invite-card"]');
       await page.waitForSelector('[data-testid="lari-social-showcase-feed"]');
 
       // Story modal advances with the right-side tap zone.
@@ -180,6 +181,28 @@ async function run() {
       await page.waitForSelector('[data-testid="wallet-booking-history-card"]');
       await page.waitForSelector('[data-testid="wallet-qr-pass-card"]');
       await page.waitForSelector('[data-testid="lari-qr-svg-container"]');
+      await page.waitForSelector('[data-testid="wallet-cancellation-policy-card"]');
+      await page.click('[data-testid="wallet-cancel-open-btn"]');
+      await page.waitForSelector('[data-testid="wallet-cancel-confirm-modal"]');
+      assert.match(
+        await page.locator('[data-testid="wallet-cancel-confirm-modal"]').innerText(),
+        /Emin misiniz\?/
+      );
+      await page.click('[data-testid="wallet-cancel-dismiss-btn"]');
+      await page.waitForSelector('[data-testid="wallet-cancel-confirm-modal"]', {
+        state: 'detached',
+      });
+      await page.click('[data-testid="wallet-cancel-open-btn"]');
+      await page.waitForSelector('[data-testid="wallet-cancel-confirm-btn"]');
+      assert.equal(
+        await page.locator('[data-testid="wallet-cancel-confirm-btn"]').isEnabled(),
+        true,
+        `Cancellation confirmation must be actionable on ${vp.name}`
+      );
+      await page.click('[data-testid="wallet-cancel-dismiss-btn"]');
+      await page.waitForSelector('[data-testid="wallet-cancel-confirm-modal"]', {
+        state: 'detached',
+      });
       await page.click('[data-testid="wallet-qr-mode-package"]');
       await page.click('[data-testid="wallet-subtab-passport"]');
       await page.waitForSelector('[data-testid="wallet-care-passport-panel"]');
@@ -373,6 +396,38 @@ async function run() {
         await page.getAttribute('[data-testid="lari-mobile-app-shell"]', 'data-effective-mode'),
         'b2c_customer',
         `Guest must not enter partner mode on ${vp.name}`
+      );
+      await page.waitForSelector('[data-testid="mobile-partner-onboarding-funnel"]');
+      await page.waitForSelector('[data-testid="partner-funnel-step-showcase"]');
+      await page.click('[data-testid="partner-funnel-open-preview-btn"]');
+      await page.waitForSelector('[data-testid="partner-funnel-step-preview"]');
+      await page.fill(
+        '[data-testid="partner-funnel-business-name-input"]',
+        'E2E LARİ Partner Stüdyo'
+      );
+      await page.click('[data-testid="partner-funnel-preview-management-tab"]');
+      await page.waitForSelector('[data-testid="partner-funnel-management-preview"]');
+      await page.click('[data-testid="partner-funnel-preview-continue-btn"]');
+      await page.waitForSelector('[data-testid="partner-funnel-step-pricing"]');
+      await page.click('[data-testid="partner-funnel-billing-annual"]');
+      await page.click('[data-testid="partner-funnel-plan-professional"]');
+      await page.fill('[data-testid="partner-funnel-owner-name-input"]', 'E2E İşletme Sahibi');
+      await page.fill('[data-testid="partner-funnel-phone-input"]', '05321234567');
+      await page.fill('[data-testid="partner-funnel-email-input"]', 'partner-e2e@lari.app');
+      await page.check('[data-testid="partner-funnel-kvkk-checkbox"]');
+      await page.click('[data-testid="partner-funnel-checkout-btn"]');
+      await page.waitForSelector('[data-testid="partner-funnel-step-setup"]');
+      await page.fill('[data-testid="partner-funnel-service-name-input"]', 'E2E İmza Bakım');
+      await page.fill('[data-testid="partner-funnel-staff-name-input"]', 'E2E Uzman Ada');
+      await page.click('[data-testid="partner-funnel-activate-btn"]');
+      await page.waitForSelector('[data-testid="mobile-partner-onboarding-funnel"]', {
+        state: 'detached',
+      });
+      await page.waitForSelector('[data-testid="mobile-partner-agenda-page"]');
+      assert.equal(
+        await page.getAttribute('[data-testid="lari-mobile-app-shell"]', 'data-effective-mode'),
+        'b2b_partner',
+        `Completed guest onboarding must activate partner mode on ${vp.name}`
       );
 
       // G) White-Label Storefront Lock (/m?slug=atelier-nisantasi)

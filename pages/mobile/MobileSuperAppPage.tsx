@@ -21,6 +21,7 @@ import MobileExploreMarketplacePage, {
 } from './b2c/MobileExploreMarketplacePage';
 import MobileBookingBottomSheet from '../../components/mobile/b2c/MobileBookingBottomSheet';
 import { StorefrontSpecialistProfile } from '../../components/mobile/b2c/MobileStorefrontDetailDrawer';
+import MobilePartnerOnboardingFunnel from '../../components/mobile/partner/MobilePartnerOnboardingFunnel';
 import MobileCustomerWalletPage from './b2c/MobileCustomerWalletPage';
 import MobileAIStyleVisualizerPage from './b2c/MobileAIStyleVisualizerPage';
 import MobileHealthTourismConciergePage from './b2c/MobileHealthTourismConciergePage';
@@ -35,7 +36,7 @@ export const MobileSuperAppContent: React.FC = () => {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const { currentUser } = useAuth();
-  const { activeBooking, toastMessage, confirmBooking } =
+  const { activeBooking, toastMessage, confirmBooking, partnerSubscription } =
     useMobileAppSession();
 
   const windowSearchParams =
@@ -56,8 +57,10 @@ export const MobileSuperAppContent: React.FC = () => {
       Boolean((window as any).Capacitor?.isNativePlatform?.()));
 
   const effectiveRole: Role | 'guest' =
-    explicitRoleParam === 'guest'
+    explicitRoleParam === 'guest' && !partnerSubscription
       ? 'guest'
+      : partnerSubscription
+        ? 'tenant_owner'
       : currentUser?.role
         ? currentUser.role
         : isLocalOrNativePreviewHost || initialModeParam === 'partner'
@@ -91,6 +94,7 @@ export const MobileSuperAppContent: React.FC = () => {
         ? 'storefront'
         : 'explore'
   );
+  const [partnerOnboardingOpen, setPartnerOnboardingOpen] = useState(false);
   const [bookingListing, setBookingListing] =
     useState<MobileDiscoveryListingItem | null>(null);
   const [bookingSpecialistName, setBookingSpecialistName] = useState<
@@ -230,6 +234,7 @@ export const MobileSuperAppContent: React.FC = () => {
                 estimatedTravelMinutes: 5,
               });
             }}
+            onOpenPartnerOnboarding={() => setPartnerOnboardingOpen(true)}
           />
         );
       case 'wallet':
@@ -266,6 +271,7 @@ export const MobileSuperAppContent: React.FC = () => {
             shellState={shellState}
             onToggleMode={handleToggleMode}
             onSwitchPersona={handleSwitchPersona}
+            onOpenPartnerOnboarding={() => setPartnerOnboardingOpen(true)}
           />
         );
       case 'partner_agenda':
@@ -294,6 +300,7 @@ export const MobileSuperAppContent: React.FC = () => {
           <MobileExploreMarketplacePage
             whiteLabelLockedTenantSlug={tenantSlug}
             onOpenBookingSheet={handleOpenBooking}
+            onOpenPartnerOnboarding={() => setPartnerOnboardingOpen(true)}
           />
         );
     }
@@ -393,6 +400,20 @@ export const MobileSuperAppContent: React.FC = () => {
           }}
         />
       )}
+
+      {partnerOnboardingOpen ? (
+        <MobilePartnerOnboardingFunnel
+          onClose={() => setPartnerOnboardingOpen(false)}
+          onCompleted={({ switchToPartnerMode }) => {
+            setPartnerOnboardingOpen(false);
+            if (switchToPartnerMode) {
+              setRequestedMode('b2b_partner');
+              setRequestedPersona('salon_partner');
+              setActiveTabId('partner_agenda');
+            }
+          }}
+        />
+      ) : null}
     </>
   );
 };
