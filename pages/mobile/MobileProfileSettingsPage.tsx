@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Fingerprint,
   Globe,
+  Lock,
   Moon,
   ShieldCheck,
   Sparkles,
@@ -300,57 +301,72 @@ export const MobileProfileSettingsPage: React.FC<
           </button>
         </div>
 
-        {/* Dual Segmented Working Mode */}
-        {hasPartnerAccess && onToggleMode && (
-          <div className="space-y-1.5">
-            <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 block">
+        {/* Dual Segmented Working Mode (Partner button visible but muted/locked for Customer accounts) */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">
               Çalışma Modu
             </span>
-            <div
-              className={`grid grid-cols-2 gap-1.5 rounded-2xl p-1.5 border-2 ${
-                isDark
-                  ? 'bg-slate-800 border-slate-700'
-                  : 'bg-[#F8FAFC] border-slate-200'
-              }`}
-              data-testid="mobile-mode-toggle-group"
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  if (isPartner) onToggleMode('b2c_customer');
-                }}
-                style={{ minHeight: '44px' }}
-                className={`rounded-xl px-3 py-2 text-xs font-black transition ${
-                  !isPartner
-                    ? 'bg-[#4F46E5] text-white shadow-sm'
-                    : isDark
-                      ? 'text-slate-300 hover:text-white'
-                      : 'text-slate-600 hover:text-slate-900'
-                }`}
-                data-testid="mobile-mode-customer-btn"
-              >
-                Müşteri Modu
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!isPartner) onToggleMode('b2b_partner');
-                }}
-                style={{ minHeight: '44px' }}
-                className={`rounded-xl px-3 py-2 text-xs font-black transition ${
-                  isPartner
-                    ? 'bg-[#4F46E5] text-white shadow-sm'
-                    : isDark
-                      ? 'text-slate-300 hover:text-white'
-                      : 'text-slate-600 hover:text-slate-900'
-                }`}
-                data-testid="mobile-mode-partner-btn"
-              >
-                Partner / İşletme Modu
-              </button>
-            </div>
+            {!hasPartnerAccess && (
+              <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                <Lock className="w-3 h-3" />
+                İşletme Yetkisi Gerekir
+              </span>
+            )}
           </div>
-        )}
+          <div
+            className={`grid grid-cols-2 gap-1.5 rounded-2xl p-1.5 border-2 ${
+              isDark
+                ? 'bg-slate-800 border-slate-700'
+                : 'bg-[#F8FAFC] border-slate-200'
+            }`}
+            data-testid="mobile-mode-toggle-group"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                if (isPartner && onToggleMode) onToggleMode('b2c_customer');
+              }}
+              style={{ minHeight: '44px' }}
+              className={`rounded-xl px-3 py-2 text-xs font-black transition ${
+                !isPartner
+                  ? 'bg-[#4F46E5] text-white shadow-sm'
+                  : isDark
+                    ? 'text-slate-300 hover:text-white'
+                    : 'text-slate-600 hover:text-slate-900'
+              }`}
+              data-testid="mobile-mode-customer-btn"
+            >
+              Müşteri Modu
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!hasPartnerAccess) {
+                  showToast('Partner / İşletme Modu yalnızca yetkili işletme hesaplarına açıktır.');
+                  return;
+                }
+                if (!isPartner && onToggleMode) onToggleMode('b2b_partner');
+              }}
+              aria-disabled={!hasPartnerAccess}
+              data-locked={!hasPartnerAccess ? 'true' : 'false'}
+              style={{ minHeight: '44px' }}
+              className={`rounded-xl px-3 py-2 text-xs font-black transition flex items-center justify-center gap-1.5 ${
+                !hasPartnerAccess
+                  ? 'opacity-45 cursor-not-allowed bg-slate-200/70 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400'
+                  : isPartner
+                    ? 'bg-[#4F46E5] text-white shadow-sm'
+                    : isDark
+                      ? 'text-slate-300 hover:text-white'
+                      : 'text-slate-600 hover:text-slate-900'
+              }`}
+              data-testid="mobile-mode-partner-btn"
+            >
+              {!hasPartnerAccess && <Lock className="w-3.5 h-3.5 shrink-0" />}
+              <span>Partner / İşletme Modu</span>
+            </button>
+          </div>
+        </div>
 
         {/* Role Selector Dropdown */}
         {shellState && shellState.availablePersonas.length > 1 && onSwitchPersona && (

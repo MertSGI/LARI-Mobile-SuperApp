@@ -58,7 +58,7 @@ export const MobilePartnerCustomer360Page: React.FC = () => {
                   <Crown className="w-3.5 h-3.5 text-amber-500" />
                   Selin Demir (VIP Segment)
                 </p>
-                <p className="text-slate-500 text-[11px]">Toplam Harcama: 18,450 TRY • 14 Ziyaret</p>
+                <p className="text-slate-500 text-[11px]">Toplam Harcama: {(18450).toLocaleString('tr-TR')} TRY • 14 Ziyaret</p>
               </div>
               <span className="px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold">Sadık</span>
             </div>

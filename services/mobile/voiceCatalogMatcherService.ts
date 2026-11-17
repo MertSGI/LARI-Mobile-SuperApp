@@ -6,6 +6,7 @@ export interface PartnerCatalogItem {
   name: string;
   category: CatalogVerticalCategory;
   unitPriceMajor: number;
+  durationMinutes?: number;
   currency: 'TRY' | 'EUR' | 'USD' | 'GBP';
   taxRateBps: number; // e.g., 2000 = %20, 1000 = %10
   commissionRateBps: number;
@@ -64,6 +65,7 @@ export const INITIAL_PARTNER_CATALOG: PartnerCatalogItem[] = [
     name: 'Soft Balayage & Tonlama',
     category: 'beauty',
     unitPriceMajor: 3500,
+    durationMinutes: 150,
     currency: 'TRY',
     taxRateBps: 2000,
     commissionRateBps: 3000,
@@ -76,6 +78,7 @@ export const INITIAL_PARTNER_CATALOG: PartnerCatalogItem[] = [
     name: 'Koltuk Başı Keratin Onarım Bakımı',
     category: 'beauty',
     unitPriceMajor: 1200,
+    durationMinutes: 45,
     currency: 'TRY',
     taxRateBps: 2000,
     commissionRateBps: 2500,
@@ -88,6 +91,7 @@ export const INITIAL_PARTNER_CATALOG: PartnerCatalogItem[] = [
     name: 'Tasarım Kesim & Fön',
     category: 'beauty',
     unitPriceMajor: 950,
+    durationMinutes: 60,
     currency: 'TRY',
     taxRateBps: 2000,
     commissionRateBps: 3000,
@@ -100,6 +104,7 @@ export const INITIAL_PARTNER_CATALOG: PartnerCatalogItem[] = [
     name: 'Keratin Serum 100ml (Ev Bakım Ürünü)',
     category: 'product',
     unitPriceMajor: 850,
+    durationMinutes: 0,
     currency: 'TRY',
     taxRateBps: 2000,
     commissionRateBps: 1000,
@@ -112,6 +117,7 @@ export const INITIAL_PARTNER_CATALOG: PartnerCatalogItem[] = [
     name: 'Zirkonyum Estetik Kron (Diş Başı)',
     category: 'clinical_ht',
     unitPriceMajor: 4800,
+    durationMinutes: 90,
     currency: 'TRY',
     taxRateBps: 1000,
     commissionRateBps: 2500,
@@ -124,6 +130,7 @@ export const INITIAL_PARTNER_CATALOG: PartnerCatalogItem[] = [
     name: '3D Panoramik Röntgen & Dijital Tarama',
     category: 'clinical_ht',
     unitPriceMajor: 1100,
+    durationMinutes: 30,
     currency: 'TRY',
     taxRateBps: 1000,
     commissionRateBps: 1500,
@@ -136,6 +143,7 @@ export const INITIAL_PARTNER_CATALOG: PartnerCatalogItem[] = [
     name: 'Periyodik Yağ & Filtre Bakımı',
     category: 'auto',
     unitPriceMajor: 2900,
+    durationMinutes: 120,
     currency: 'TRY',
     taxRateBps: 2000,
     commissionRateBps: 2000,
@@ -148,6 +156,7 @@ export const INITIAL_PARTNER_CATALOG: PartnerCatalogItem[] = [
     name: 'Ön Fren Balata Değişimi & Kalibrasyon',
     category: 'auto',
     unitPriceMajor: 2400,
+    durationMinutes: 90,
     currency: 'TRY',
     taxRateBps: 2000,
     commissionRateBps: 2000,

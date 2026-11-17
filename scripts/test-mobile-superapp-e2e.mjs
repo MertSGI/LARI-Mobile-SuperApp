@@ -200,6 +200,31 @@ async function run() {
       await page.click('[data-testid="mobile-mode-partner-btn"]');
       await page.waitForSelector('[data-testid="mobile-partner-agenda-page"]');
       await page.waitForSelector('[data-testid="partner-daily-commission-card"]');
+
+      // D.1) Business Management Center -> catalog mutation, staff reports and direct storefront
+      await page.click('[data-testid="partner-management-tab-catalog"]');
+      await page.waitForSelector('[data-testid="partner-management-catalog-panel"]');
+      await page.fill('[data-testid="partner-catalog-name-input"]', 'E2E VIP Bakım');
+      await page.fill('[data-testid="partner-catalog-price-input"]', '4200');
+      await page.fill('[data-testid="partner-catalog-duration-input"]', '75');
+      await page.click('[data-testid="partner-catalog-add-btn"]');
+      const addedCatalogItem = page
+        .locator('[data-testid^="partner-catalog-item-"]')
+        .filter({ hasText: 'E2E VIP Bakım' });
+      await addedCatalogItem.waitFor();
+      assert.match(await addedCatalogItem.innerText(), /4\.200 TRY/);
+      await page.click('[data-testid="partner-management-tab-staff_reports"]');
+      await page.waitForSelector('[data-testid="partner-management-staff-reports-panel"]');
+      await page.click('[data-testid="partner-management-tab-storefront"]');
+      await page.waitForSelector('[data-testid="partner-management-storefront-panel"]');
+      await page.waitForSelector('[data-testid="partner-copy-storefront-link-btn"]');
+      const overflowPartner = await page.evaluate(
+        () => document.documentElement.scrollWidth > window.innerWidth
+      );
+      assert.equal(overflowPartner, false, `Horizontal overflow detected on ${vp.name} Partner`);
+      await page.click('[data-testid="partner-management-tab-agenda"]');
+      await page.waitForSelector('[data-testid="partner-management-agenda-panel"]');
+
       await page.click('[data-testid="mobile-tab-partner_pos"]');
       await page.waitForSelector('[data-testid="mobile-partner-pos-page"]');
       await page.click('[data-testid="partner-admit-ht-qr-btn"]');
@@ -227,11 +252,21 @@ async function run() {
       await page.waitForSelector('[data-testid="clinic-touch-drawing-studio"]');
       await page.waitForSelector('[data-testid="clinic-consultation-canvas"]');
 
-      // F) Role-Based Panel Isolation (?app=1&role=guest must lock out Partner toggle)
+      // F) Role-Based Panel Isolation (?app=1&role=guest must show Partner button as muted/locked and block entry)
       await page.goto(`${url}/?app=1&role=guest#/`, { waitUntil: 'networkidle' });
       await page.click('[data-testid="mobile-tab-profile"]');
       await page.waitForSelector('[data-testid="panel-visibility-boundaries-card"]');
-      assert.equal(await page.locator('[data-testid="mobile-mode-toggle-group"]').count(), 0);
+      assert.equal(
+        await page.getAttribute('[data-testid="mobile-mode-partner-btn"]', 'data-locked'),
+        'true',
+        `Partner button must be muted/locked for guest role on ${vp.name}`
+      );
+      await page.click('[data-testid="mobile-mode-partner-btn"]', { force: true });
+      assert.equal(
+        await page.getAttribute('[data-testid="lari-mobile-app-shell"]', 'data-effective-mode'),
+        'b2c_customer',
+        `Guest must not enter partner mode on ${vp.name}`
+      );
 
       // G) White-Label Storefront Lock (/m?slug=atelier-nisantasi)
       await page.goto(`${url}/#/m?slug=atelier-nisantasi`, { waitUntil: 'networkidle' });

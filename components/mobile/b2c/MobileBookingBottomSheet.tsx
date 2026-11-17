@@ -213,7 +213,7 @@ export const MobileBookingBottomSheet: React.FC<
               </p>
             </div>
             <span className="font-black text-[#4F46E5] text-base shrink-0">
-              {primaryService.priceMajor} {primaryService.currency}
+              {primaryService.priceMajor.toLocaleString('tr-TR')} {primaryService.currency}
             </span>
           </div>
         )}
@@ -458,7 +458,7 @@ export const MobileBookingBottomSheet: React.FC<
             <CheckCircle2 className="w-5 h-5" />
             {confirmed
               ? 'Randevunuz Onaylandı ✓'
-              : `Hemen Randevu Al (${primaryService?.priceMajor || 0} ${primaryService?.currency || 'TRY'})`}
+              : `Hemen Randevu Al (${(primaryService?.priceMajor || 0).toLocaleString('tr-TR')} ${primaryService?.currency || 'TRY'})`}
           </button>
 
           <button

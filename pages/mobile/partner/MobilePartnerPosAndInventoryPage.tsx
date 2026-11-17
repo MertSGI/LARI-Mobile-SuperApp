@@ -559,7 +559,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
       tipMinorUnits: liveBreakdown.optionalTipMajor * 100,
     });
     setCheckoutStatus(
-      `${res.reasonCode} • Tahsilat: ${(res.totalMinorUnits / 100).toFixed(2)} TRY • Bahşiş: ${(res.tipMinorUnits / 100).toFixed(2)} TRY • Prim: ${(res.staffCommissionMinor / 100).toFixed(2)} TRY`
+      `${res.reasonCode} • Tahsilat: ${(res.totalMinorUnits / 100).toLocaleString('tr-TR')} TRY • Bahşiş: ${(res.tipMinorUnits / 100).toLocaleString('tr-TR')} TRY • Prim: ${(res.staffCommissionMinor / 100).toLocaleString('tr-TR')} TRY`
     );
   };
 
@@ -769,7 +769,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
                 <p className="text-[11px] text-slate-500">
                   {fl.coveredByPackage
                     ? 'Paket Kapsamında Düşüldü (₺0)'
-                    : `${fl.catalogItem.unitPriceMajor} TRY/br + KDV`}
+                    : `${fl.catalogItem.unitPriceMajor.toLocaleString('tr-TR')} TRY/br + KDV`}
                 </p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
@@ -803,7 +803,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
               <span className="font-black text-[#4F46E5]">
                 {liveBreakdown.optionalTipMajor === 0
                   ? 'Bahşiş Yok (0 TRY)'
-                  : `+${liveBreakdown.optionalTipMajor} TRY`}
+                  : `+${liveBreakdown.optionalTipMajor.toLocaleString('tr-TR')} TRY`}
               </span>
             </div>
             <div className="grid grid-cols-4 gap-1.5">
@@ -928,7 +928,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
               className={`px-3 py-1.5 rounded-xl border-2 text-xs font-bold whitespace-nowrap flex items-center gap-1 ${innerSurface}`}
             >
               <Plus className="w-3.5 h-3.5 text-[#4F46E5]" />
-              {catItem.name} ({catItem.unitPriceMajor}₺)
+              {catItem.name} ({catItem.unitPriceMajor.toLocaleString('tr-TR')}₺)
             </button>
           ))}
         </div>

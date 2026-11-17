@@ -281,7 +281,7 @@ export function evaluateMobileHtPatientConcierge(
 }
 
 function formatMinorMoney(minor: number, currency: SupportedHtCurrency): string {
-  const major = (minor / 100).toLocaleString('en-US', {
+  const major = (minor / 100).toLocaleString('tr-TR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });

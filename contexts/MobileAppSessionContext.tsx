@@ -335,7 +335,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     (code: string) => {
       if (code.trim().toUpperCase() === 'LARI500') {
         setWalletBalanceMinor((balance) => balance + 50000);
-        showToast('LARI500 ile 500,00 TRY cüzdanınıza eklendi.');
+        showToast(`LARI500 ile ${(500).toLocaleString('tr-TR')} TRY cüzdanınıza eklendi.`);
         return;
       }
       showToast('Hediye kodu geçersiz.');
@@ -431,7 +431,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       setLoyaltyPoints((p) => p + 50);
       showToast(
         safeTip > 0
-          ? `QR Ödeme (+${safeTip} TRY isteğe bağlı bahşiş) tamamlandı • +50 Puan!`
+          ? `QR Ödeme (+${safeTip.toLocaleString('tr-TR')} TRY isteğe bağlı bahşiş) tamamlandı • +50 Puan!`
           : 'QR Ödeme (Bahşişsiz) tamamlandı • +50 Puan!'
       );
     },

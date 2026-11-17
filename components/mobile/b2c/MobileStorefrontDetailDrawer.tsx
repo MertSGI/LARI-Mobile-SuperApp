@@ -549,7 +549,7 @@ export const MobileStorefrontDetailDrawer: React.FC<
                     </div>
                     <div className="flex items-center gap-3 text-[11px] text-slate-600 pt-1 border-t border-slate-100">
                       <span className="font-bold text-[#111827]">
-                        {srv.priceMajor} {srv.currency}
+                        {srv.priceMajor.toLocaleString('tr-TR')} {srv.currency}
                       </span>
                       <span>•</span>
                       <span className="inline-flex items-center gap-1">
@@ -695,7 +695,7 @@ export const MobileStorefrontDetailDrawer: React.FC<
               {selectedServices.length} Hizmet • {totalMinutes} dk • {selectedSpecialist.name}
             </span>
             <span className="text-base font-black text-[#111827]">
-              {totalPrice} TRY
+              {totalPrice.toLocaleString('tr-TR')} TRY
             </span>
           </div>
           <button

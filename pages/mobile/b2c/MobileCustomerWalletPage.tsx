@@ -189,7 +189,7 @@ export const MobileCustomerWalletPage: React.FC<
   const handleRedeemGiftCard = () => {
     if (giftCode.trim().toUpperCase() === 'LARI500') {
       redeemGiftCode(giftCode);
-      setGiftMessage('LARI500 (+500.00 TRY) cüzdana eklendi!');
+      setGiftMessage(`LARI500 (+${(50000 / 100).toLocaleString('tr-TR')} TRY) cüzdana eklendi!`);
       setGiftCode('');
     } else {
       setGiftMessage('Geçersiz hediye kartı kodu (Örn: LARI500)');
@@ -824,7 +824,7 @@ export const MobileCustomerWalletPage: React.FC<
                 LARİ PLATINUM CÜZDAN
               </span>
               <p className="text-xl font-black text-white mt-1">
-                {(walletBalanceMinor / 100).toFixed(2)} TRY
+                {(walletBalanceMinor / 100).toLocaleString('tr-TR')} TRY
               </p>
             </div>
             <div className="text-right">

@@ -332,6 +332,9 @@ export const MobileExploreMarketplacePage: React.FC<
   const pinnedItem =
     searchResult.items.find((i) => i.slug === selectedMapPinSlug) ||
     searchResult.items[0];
+  const orderedMapPins = pinnedItem
+    ? [pinnedItem, ...searchResult.items.filter((item) => item.slug !== pinnedItem.slug)]
+    : searchResult.items;
 
   const activeFilterCount =
     (vertical !== 'all' ? 1 : 0) +
@@ -372,8 +375,14 @@ export const MobileExploreMarketplacePage: React.FC<
         <div className="space-y-4">
           {/* Search + Business Filters + Map Toggle */}
           <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
+            <div
+              className={`flex-1 min-w-0 flex items-center gap-2 rounded-2xl border-2 px-3 min-h-[46px] ${
+                isDark
+                  ? 'bg-slate-900 border-slate-700 text-white'
+                  : 'bg-white border-slate-300 text-slate-900'
+              }`}
+            >
+              <Search className="w-4 h-4 text-slate-500 shrink-0" />
               <input
                 type="text"
                 value={queryText}
@@ -383,11 +392,7 @@ export const MobileExploreMarketplacePage: React.FC<
                     ? 'Salon, klinik, oto servis veya işlem...'
                     : 'Search salon, clinic, auto service...'
                 }
-                className={`w-full flex-1 rounded-2xl border-2 pl-10 pr-20 py-2.5 text-sm font-medium ${
-                  isDark
-                    ? 'bg-slate-900 border-slate-700 text-white placeholder-slate-400'
-                    : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400'
-                  }`}
+                className="flex-1 min-w-0 bg-transparent text-sm font-medium outline-none placeholder-slate-400"
                 data-testid="explore-search-input"
               />
               {queryText && (
@@ -395,7 +400,7 @@ export const MobileExploreMarketplacePage: React.FC<
                   type="button"
                   onClick={() => setQueryText('')}
                   aria-label="Aramayı temizle"
-                  className="absolute right-11 top-2 flex h-8 w-8 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
                   data-testid="explore-search-clear-btn"
                 >
                   <X className="h-4 w-4" />
@@ -407,7 +412,7 @@ export const MobileExploreMarketplacePage: React.FC<
                 onClick={() =>
                   showToast('Sesli arama: Örn. "Maslak oto servis" veya "Nişantaşı" diyebilirsiniz')
                 }
-                className="absolute right-2 top-2 w-8 h-8 rounded-xl bg-[#EEF2FF] text-[#4F46E5] flex items-center justify-center"
+                className="w-8 h-8 rounded-xl shrink-0 bg-[#EEF2FF] text-[#4F46E5] flex items-center justify-center"
                 data-testid="explore-voice-search-btn"
               >
                 <Mic className="w-4 h-4" />
@@ -417,8 +422,8 @@ export const MobileExploreMarketplacePage: React.FC<
             <button
               type="button"
               onClick={() => setFilterDrawerOpen(true)}
-              style={{ minHeight: '46px' }}
-              className={`px-3 py-2 rounded-2xl text-xs font-black border-2 flex items-center gap-1.5 shrink-0 ${
+              aria-label="Filtreleri aç"
+              className={`relative h-[46px] w-[46px] shrink-0 justify-center p-0 rounded-2xl border-2 flex items-center ${
                 activeFilterCount > 0
                   ? 'bg-[#4F46E5] text-white border-[#4338CA]'
                   : isDark
@@ -428,14 +433,18 @@ export const MobileExploreMarketplacePage: React.FC<
               data-testid="explore-filter-drawer-btn"
             >
               <SlidersHorizontal className="w-4 h-4" />
-              <span>Filtre{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</span>
+              {activeFilterCount > 0 && (
+                <span className="absolute -right-1 -top-1 min-w-5 h-5 px-1 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center border-2 border-white dark:border-slate-950">
+                  {activeFilterCount}
+                </span>
+              )}
             </button>
 
             <button
               type="button"
               onClick={() => setShowRadarMap((v) => !v)}
-              style={{ minHeight: '46px' }}
-              className={`px-3 py-2 rounded-2xl text-xs font-black border-2 flex items-center gap-1.5 shrink-0 ${
+              aria-label={showRadarMap ? 'Haritayı gizle' : 'Haritayı göster'}
+              className={`h-[46px] w-[46px] shrink-0 justify-center p-0 rounded-2xl border-2 flex items-center ${
                 showRadarMap
                   ? 'bg-[#EEF2FF] text-[#4338CA] border-[#4F46E5]'
                   : isDark
@@ -445,7 +454,6 @@ export const MobileExploreMarketplacePage: React.FC<
               data-testid="explore-radar-map-toggle"
             >
               <Map className="w-4 h-4" />
-              <span>{showRadarMap ? 'Harita' : 'Liste'}</span>
             </button>
           </div>
 
@@ -529,10 +537,9 @@ export const MobileExploreMarketplacePage: React.FC<
               data-testid="interactive-radar-map-card"
             >
               {/* Google Maps Venue Selector Bar */}
-              <div className="p-3 border-b-2 border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2">
-                <div className="flex-1 min-w-0 overflow-x-auto no-scrollbar whitespace-nowrap">
-                  <div className="flex items-center gap-1.5">
-                  {searchResult.items.map((pin) => {
+              <div className="p-3 border-b-2 border-slate-200 dark:border-slate-700 flex items-center">
+                <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto no-scrollbar pr-2">
+                  {orderedMapPins.map((pin) => {
                     const isSelectedPin = pinnedItem.slug === pin.slug;
                     return (
                       <button
@@ -553,23 +560,24 @@ export const MobileExploreMarketplacePage: React.FC<
                       </button>
                     );
                   })}
-                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setGpsEnabled((prev) => !prev)}
-                  className={`ml-2 px-2.5 py-1.5 rounded-xl text-xs font-bold border-2 flex items-center gap-1 shrink-0 ${
-                    gpsEnabled
-                      ? 'bg-[#4F46E5] text-white border-[#4338CA]'
-                      : isDark
-                        ? 'bg-slate-800 text-slate-200 border-slate-700'
-                        : 'bg-white text-slate-700 border-slate-300'
-                  }`}
-                  data-testid="explore-gps-btn"
-                >
-                  <Compass className="w-3.5 h-3.5" />
-                  <span>GPS</span>
-                </button>
+                <div className="shrink-0 pl-2.5 ml-1 border-l-2 border-slate-200 dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setGpsEnabled((prev) => !prev)}
+                    className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border-2 flex items-center gap-1 shrink-0 ${
+                      gpsEnabled
+                        ? 'bg-[#4F46E5] text-white border-[#4338CA]'
+                        : isDark
+                          ? 'bg-slate-800 text-slate-200 border-slate-700'
+                          : 'bg-white text-slate-700 border-slate-300'
+                    }`}
+                    data-testid="explore-gps-btn"
+                  >
+                    <Compass className="w-3.5 h-3.5" />
+                    <span>GPS</span>
+                  </button>
+                </div>
               </div>
 
               {/* Embedded Real Google Maps Iframe */}
@@ -595,7 +603,7 @@ export const MobileExploreMarketplacePage: React.FC<
                   <p className="text-sm font-black truncate">{pinnedItem.name}</p>
                   <p className="text-xs text-emerald-700 font-bold truncate mt-0.5">
                     İlk Müsait: {pinnedItem.nextAvailableSlot} •{' '}
-                    {pinnedItem.popularServices[0]?.priceMajor} TRY
+                    {pinnedItem.popularServices[0]?.priceMajor.toLocaleString('tr-TR')} TRY
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -732,7 +740,7 @@ export const MobileExploreMarketplacePage: React.FC<
                       </span>
                     </div>
                     <span className="font-black shrink-0 text-base">
-                      {item.popularServices[0].priceMajor}{' '}
+                      {item.popularServices[0].priceMajor.toLocaleString('tr-TR')}{' '}
                       {item.popularServices[0].currency}
                     </span>
                   </div>
