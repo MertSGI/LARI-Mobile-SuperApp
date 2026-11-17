@@ -3,17 +3,22 @@ import {
   Award,
   CalendarPlus,
   Check,
+  ChevronLeft,
   Clock,
   Coffee,
   MapPin,
+  MessageCircle,
+  Navigation,
+  Phone,
+  Share2,
   ShieldCheck,
   Sparkles,
   Star,
-  UserCheck,
   VolumeX,
-  X,
 } from 'lucide-react';
 import { MobileDiscoveryListingItem } from '../../../services/mobile/mobileDiscoveryService';
+import { VENUE_VISUAL_CATALOG } from '../../../services/mobile/mobileVisualAssets';
+import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
 
 export interface StorefrontSpecialistProfile {
   id: string;
@@ -32,7 +37,6 @@ export interface StorefrontLookbookItem {
   durationMinutes: number;
   beforeLabelTr: string;
   afterLabelTr: string;
-  accentGradient: string;
 }
 
 export interface MobileStorefrontDetailDrawerProps {
@@ -122,6 +126,7 @@ function getExtraServicesForListing(listing: MobileDiscoveryListingItem) {
       {
         id: 'srv-bleaching-laser',
         name: 'Lazer Diş Beyazlatma (Ofis Tipi)',
+        descriptionTr: 'Tek seansta 3-4 ton açılma sağlayan hassasiyet korumalı klinik beyazlatma.',
         durationMinutes: 60,
         priceMajor: 4500,
         currency: 'TRY' as const,
@@ -129,6 +134,7 @@ function getExtraServicesForListing(listing: MobileDiscoveryListingItem) {
       {
         id: 'srv-pano-checkup',
         name: '3D Panoramik Görüntüleme & Konsültasyon',
+        descriptionTr: 'Dijital tarama ile kişiye özel tedavi yol haritası ve fiyatlandırma.',
         durationMinutes: 30,
         priceMajor: 950,
         currency: 'TRY' as const,
@@ -141,13 +147,15 @@ function getExtraServicesForListing(listing: MobileDiscoveryListingItem) {
       {
         id: 'srv-vip-groom',
         name: 'VIP Damat / Özel Gün Bakım Paketi',
+        descriptionTr: 'Saç tasarımı, sıcak havlu tıraş, kil maskesi ve buharlı bakım ritüeli.',
         durationMinutes: 90,
         priceMajor: 2200,
         currency: 'TRY' as const,
       },
       {
         id: 'srv-black-mask',
-        name: 'Buharlı Gözenek Temizliği & Siyah Maske',
+        name: 'Buharlı Gözenek Temizliği & Maske',
+        descriptionTr: 'Aktif karbon maske ile arındırıcı ekspres yüz bakımı.',
         durationMinutes: 30,
         priceMajor: 550,
         currency: 'TRY' as const,
@@ -159,6 +167,7 @@ function getExtraServicesForListing(listing: MobileDiscoveryListingItem) {
     {
       id: 'srv-keratin-glass',
       name: 'Glass Hair Keratin & Kolajen Terapisi',
+      descriptionTr: 'Elektriklenmeyi önleyen, 3 aya kadar kalıcı ipeksi parlaklık bakımı.',
       durationMinutes: 75,
       priceMajor: 2600,
       currency: 'TRY' as const,
@@ -166,6 +175,7 @@ function getExtraServicesForListing(listing: MobileDiscoveryListingItem) {
     {
       id: 'srv-brow-lamination',
       name: 'Kaş Laminasyonu & İpek Kirpik Lifting',
+      descriptionTr: 'Vitamin serumu destekli doğal hacim ve kalkık form uygulaması.',
       durationMinutes: 45,
       priceMajor: 1350,
       currency: 'TRY' as const,
@@ -181,7 +191,6 @@ const LOOKBOOK_PORTFOLIO: StorefrontLookbookItem[] = [
     durationMinutes: 120,
     beforeLabelTr: 'ÖNCE: Mat & Kırık Uçlar',
     afterLabelTr: 'SONRA: Işıltılı Geçiş & İpeksi Doku',
-    accentGradient: 'from-amber-600/40 via-rose-600/30 to-slate-900',
   },
   {
     id: 'lb-2',
@@ -190,18 +199,22 @@ const LOOKBOOK_PORTFOLIO: StorefrontLookbookItem[] = [
     durationMinutes: 60,
     beforeLabelTr: 'ÖNCE: Asimetrik Diş Hattı',
     afterLabelTr: 'SONRA: Dudak Uyumlu Doğal Gülüş',
-    accentGradient: 'from-cyan-600/40 via-blue-600/30 to-slate-900',
   },
 ];
 
 export const MobileStorefrontDetailDrawer: React.FC<
   MobileStorefrontDetailDrawerProps
 > = ({ listing, onClose, onProceedToBooking }) => {
+  const { showToast } = useMobileAppSession();
   const [activeTab, setActiveTab] = useState<
     'services' | 'specialists' | 'portfolio' | 'hospitality'
   >('services');
+  const [showMessageComposer, setShowMessageComposer] = useState(false);
+  const [messageText, setMessageText] = useState('');
+
   const services = getExtraServicesForListing(listing);
   const specialists = getSpecialistsForVertical(listing.vertical);
+  const visual = VENUE_VISUAL_CATALOG[listing.slug];
 
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([
     services[0]?.id || '',
@@ -228,65 +241,182 @@ export const MobileStorefrontDetailDrawer: React.FC<
     0
   );
 
+  const handleShare = async () => {
+    const shareUrl = `https://randevulari.com/${listing.slug}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: listing.name,
+          text: `${listing.name} - LARİ üzerinden hemen randevu al`,
+          url: shareUrl,
+        });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(shareUrl);
+      }
+      showToast(`${listing.name} mağaza bağlantısı paylaşıma hazır!`);
+    } catch {
+      showToast(`Bağlantı kopyalandı: ${shareUrl}`);
+    }
+  };
+
+  const handleCall = () => {
+    const tel = visual?.phone || '+90 212 555 01 40';
+    if (typeof window !== 'undefined') {
+      window.open(`tel:${tel.replace(/\s+/g, '')}`, '_self');
+    }
+    showToast(`İşletme aranıyor: ${tel}`);
+  };
+
+  const handleDirections = () => {
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${listing.latitude},${listing.longitude}`;
+    if (typeof window !== 'undefined') {
+      window.open(mapsUrl, '_blank', 'noopener,noreferrer');
+    }
+    showToast(`${listing.district} yol tarifi haritada açılıyor`);
+  };
+
+  const handleSendMessage = () => {
+    if (!messageText.trim()) {
+      showToast('Lütfen göndermek istediğiniz notu yazın.');
+      return;
+    }
+    showToast(`Mesajınız ${listing.name} resepsiyonuna iletildi!`);
+    setMessageText('');
+    setShowMessageComposer(false);
+  };
+
   return (
     <div
-      className="fixed inset-0 z-[80] bg-slate-950/95 backdrop-blur-xl flex flex-col overflow-hidden"
+      className="fixed inset-0 z-[80] bg-[#F8F9FB] flex flex-col overflow-hidden text-[#111827]"
       data-testid="mobile-storefront-detail-drawer"
     >
-      {/* Hero Banner */}
-      <div className="relative bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 border-b border-slate-800 p-4 pt-5 shrink-0">
+      {/* Minimal Corporate Top Bar + Storefront Hero */}
+      <div className="bg-white border-b border-slate-200 px-4 pt-3 pb-3 shrink-0 shadow-xs">
         <div className="max-w-lg mx-auto space-y-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  <ShieldCheck className="w-3 h-3" />
-                  Doğrulanmış LARİ Partner
-                </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  <Star className="w-3 h-3 fill-amber-300" />
-                  {listing.rating} ({listing.reviewCount} doğrulama)
-                </span>
-              </div>
-              <h2 className="text-lg font-black text-white mt-1.5">
-                {listing.name}
-              </h2>
-              <p className="text-xs text-slate-300 flex items-center gap-1 mt-0.5">
-                <MapPin className="w-3.5 h-3.5 text-blue-400" />
-                {listing.district}, {listing.city} • En yakın saat:{' '}
-                <strong className="text-emerald-300">
-                  {listing.nextAvailableSlot}
-                </strong>
-              </p>
-            </div>
+          {/* Minimal Top Bar */}
+          <div className="flex items-center justify-between">
             <button
               type="button"
               onClick={onClose}
-              className="w-9 h-9 rounded-full bg-slate-800/90 text-slate-200 flex items-center justify-center border border-slate-700"
+              className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-[#111827] flex items-center justify-center"
               data-testid="close-storefront-drawer-btn"
+              aria-label="Kapat"
             >
-              <X className="w-4 h-4" />
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <span className="text-[11px] font-bold text-emerald-700 inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Doğrulanmış Mağaza
+            </span>
+            <button
+              type="button"
+              onClick={handleShare}
+              className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-[#111827] flex items-center justify-center"
+              data-testid="storefront-share-btn"
+              aria-label="Paylaş"
+            >
+              <Share2 className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Hospitality & App-Exclusive Perks Strip */}
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pt-1">
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-900/90 border border-slate-800 text-[10px] font-semibold text-slate-300 whitespace-nowrap">
-              <Coffee className="w-3 h-3 text-amber-400" />
-              Ücretsiz Barista Kahve & Matcha
-            </span>
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-900/90 border border-slate-800 text-[10px] font-semibold text-slate-300 whitespace-nowrap">
-              <VolumeX className="w-3 h-3 text-indigo-400" />
-              Sessiz Seans Seçeneği
-            </span>
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-900/90 border border-slate-800 text-[10px] font-semibold text-slate-300 whitespace-nowrap">
-              <Sparkles className="w-3 h-3 text-pink-400" />
-              Formül Pasaporta İşlenir
-            </span>
+          {/* Logo Monogram Badge + Name + Single-Line Metadata */}
+          <div className="flex items-start gap-3">
+            <div
+              className="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-white text-sm shrink-0 shadow-sm"
+              style={{ backgroundColor: visual?.logoBgColor || '#5B5FEF' }}
+            >
+              {visual?.logoMonogram || listing.name.slice(0, 2).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-base font-black text-[#111827] leading-tight">
+                {listing.name}
+              </h2>
+              <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+                {visual?.address || `${listing.district}, ${listing.city}`}
+              </p>
+              <p className="text-[11px] text-slate-700 font-semibold mt-1 flex items-center gap-1.5 flex-wrap">
+                <span className="inline-flex items-center gap-0.5 text-amber-600 font-bold">
+                  <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                  {listing.rating}
+                </span>
+                <span>•</span>
+                <span>{visual?.totalBookingsCount || listing.reviewCount} Randevu</span>
+                <span>•</span>
+                <span className="text-emerald-700">Bugün {listing.nextAvailableSlot}</span>
+              </p>
+            </div>
           </div>
 
+          {/* One-Tap Action Row (Book + Call + Message + Directions) */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                onProceedToBooking(
+                  listing,
+                  selectedSpecialist,
+                  selectedServices.map((s) => s.name)
+                )
+              }
+              style={{ minHeight: '42px' }}
+              className="flex-1 rounded-xl bg-[#5B5FEF] hover:bg-[#4A4EE0] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm"
+            >
+              <CalendarPlus className="w-4 h-4" />
+              Hemen Randevu Al
+            </button>
+            <button
+              type="button"
+              onClick={handleCall}
+              style={{ minHeight: '42px' }}
+              className="w-11 rounded-xl bg-[#EEF0FF] hover:bg-indigo-100 text-[#5B5FEF] flex items-center justify-center"
+              aria-label="Ara"
+              data-testid="storefront-call-btn"
+            >
+              <Phone className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowMessageComposer((v) => !v)}
+              style={{ minHeight: '42px' }}
+              className="w-11 rounded-xl bg-[#EEF0FF] hover:bg-indigo-100 text-[#5B5FEF] flex items-center justify-center"
+              aria-label="Mesaj Gönder"
+              data-testid="storefront-message-btn"
+            >
+              <MessageCircle className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={handleDirections}
+              style={{ minHeight: '42px' }}
+              className="w-11 rounded-xl bg-[#EEF0FF] hover:bg-indigo-100 text-[#5B5FEF] flex items-center justify-center"
+              aria-label="Yol Tarifi"
+              data-testid="storefront-directions-btn"
+            >
+              <Navigation className="w-4 h-4" />
+            </button>
+          </div>
+
+          {showMessageComposer && (
+            <div className="rounded-xl bg-[#F8F9FB] border border-slate-200 p-2.5 flex gap-2">
+              <input
+                type="text"
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+                placeholder="Örn: Otopark durumu veya randevu öncesi sorum var..."
+                className="flex-1 rounded-lg bg-white border border-slate-200 px-2.5 py-1.5 text-xs text-[#111827]"
+              />
+              <button
+                type="button"
+                onClick={handleSendMessage}
+                className="px-3 py-1.5 rounded-lg bg-[#5B5FEF] text-white text-xs font-bold"
+              >
+                Gönder
+              </button>
+            </div>
+          )}
+
           {/* 4 Storefront Navigation Tabs */}
-          <div className="grid grid-cols-4 gap-1 bg-slate-950/90 p-1 rounded-xl border border-slate-800">
+          <div className="grid grid-cols-4 gap-1 bg-slate-100 p-1 rounded-xl">
             {(
               [
                 { id: 'services', label: 'Hizmetler' },
@@ -301,8 +431,8 @@ export const MobileStorefrontDetailDrawer: React.FC<
                 onClick={() => setActiveTab(t.id)}
                 className={`py-2 rounded-lg text-[11px] font-bold transition ${
                   activeTab === t.id
-                    ? 'bg-blue-600 text-white shadow'
-                    : 'text-slate-400 hover:text-slate-200'
+                    ? 'bg-white text-[#5B5FEF] shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
                 }`}
                 data-testid={`storefront-tab-${t.id}`}
               >
@@ -313,50 +443,70 @@ export const MobileStorefrontDetailDrawer: React.FC<
         </div>
       </div>
 
-      {/* Scrollable Drawer Content */}
+      {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="max-w-lg mx-auto space-y-3 pb-24">
           {activeTab === 'services' && (
             <div className="space-y-2.5">
-              <p className="text-xs text-slate-400">
-                Birden fazla hizmeti kombine ederek tek randevuda birleştirebilirsin:
-              </p>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black tracking-wider text-slate-500 uppercase">
+                  HİZMET MENÜSÜ
+                </span>
+                <span className="text-[11px] text-slate-500">
+                  Çoklu seçim yapabilirsiniz
+                </span>
+              </div>
               {services.map((srv) => {
                 const isSelected = selectedServiceIds.includes(srv.id);
                 return (
-                  <button
+                  <div
                     key={srv.id}
-                    type="button"
-                    onClick={() => toggleService(srv.id)}
-                    className={`w-full text-left rounded-2xl p-3.5 border transition flex items-center justify-between gap-3 ${
-                      isSelected
-                        ? 'bg-blue-950/50 border-blue-500 text-white'
-                        : 'bg-slate-900 border-slate-800 text-slate-200'
+                    className={`rounded-2xl bg-white p-3.5 border transition space-y-2 shadow-xs ${
+                      isSelected ? 'border-[#5B5FEF] ring-1 ring-[#5B5FEF]/20' : 'border-slate-200'
                     }`}
                     data-testid={`storefront-service-item-${srv.id}`}
                   >
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-white">{srv.name}</p>
-                      <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
-                        <Clock className="w-3 h-3" /> {srv.durationMinutes} dk •
-                        Pasaporta formül kaydı dahil
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2.5 shrink-0">
-                      <span className="text-xs font-black text-white">
-                        {srv.priceMajor} {srv.currency}
-                      </span>
-                      <span
-                        className={`w-6 h-6 rounded-full flex items-center justify-center border ${
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-[#111827]">
+                          {srv.name}
+                        </p>
+                        {'descriptionTr' in srv && srv.descriptionTr && (
+                          <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                            {srv.descriptionTr}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleService(srv.id)}
+                        className={`px-3 py-1 rounded-full text-[11px] font-bold shrink-0 flex items-center gap-1 transition ${
                           isSelected
-                            ? 'bg-blue-600 border-blue-400 text-white'
-                            : 'border-slate-700 text-transparent'
+                            ? 'bg-[#5B5FEF] text-white'
+                            : 'bg-[#EEF0FF] text-[#5B5FEF] hover:bg-indigo-100'
                         }`}
                       >
-                        <Check className="w-3.5 h-3.5" />
+                        {isSelected ? (
+                          <>
+                            <Check className="w-3 h-3" />
+                            Seçildi
+                          </>
+                        ) : (
+                          'Seç'
+                        )}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-3 text-[11px] text-slate-600 pt-1 border-t border-slate-100">
+                      <span className="font-bold text-[#111827]">
+                        {srv.priceMajor} {srv.currency}
+                      </span>
+                      <span>•</span>
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-slate-400" />
+                        {srv.durationMinutes} dk
                       </span>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -370,16 +520,14 @@ export const MobileStorefrontDetailDrawer: React.FC<
                   <div
                     key={sp.id}
                     onClick={() => setSelectedSpecialist(sp)}
-                    className={`rounded-2xl p-4 border cursor-pointer transition space-y-2 ${
-                      isPicked
-                        ? 'bg-indigo-950/50 border-indigo-500'
-                        : 'bg-slate-900 border-slate-800'
+                    className={`rounded-2xl bg-white p-4 border cursor-pointer transition space-y-2 shadow-xs ${
+                      isPicked ? 'border-[#5B5FEF] ring-1 ring-[#5B5FEF]/20' : 'border-slate-200'
                     }`}
                     data-testid={`storefront-specialist-${sp.id}`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center font-black text-white text-sm">
+                        <div className="w-11 h-11 rounded-2xl bg-[#EEF0FF] text-[#5B5FEF] flex items-center justify-center font-black text-sm">
                           {sp.name
                             .split(' ')
                             .map((n) => n[0])
@@ -387,25 +535,25 @@ export const MobileStorefrontDetailDrawer: React.FC<
                             .slice(0, 2)}
                         </div>
                         <div>
-                          <h4 className="text-xs font-bold text-white">
+                          <h4 className="text-xs font-bold text-[#111827]">
                             {sp.name}
                           </h4>
-                          <p className="text-[11px] text-indigo-300">
+                          <p className="text-[11px] text-[#5B5FEF] font-semibold">
                             {sp.titleTr}
                           </p>
                         </div>
                       </div>
-                      <span className="px-2 py-1 rounded-lg bg-amber-500/15 text-amber-300 text-xs font-bold flex items-center gap-1">
-                        <Star className="w-3 h-3 fill-amber-300" />
+                      <span className="px-2 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold flex items-center gap-1">
+                        <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
                         {sp.rating}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
                       {sp.signatureNoteTr}
                     </p>
-                    <div className="flex items-center justify-between pt-1 text-[10px] text-slate-400">
+                    <div className="flex items-center justify-between pt-1 text-[10px] text-slate-500">
                       <span>{sp.experienceYears} Yıl Deneyim • {sp.reviewCount} Değerlendirme</span>
-                      <span className="font-bold text-blue-400">
+                      <span className="font-bold text-[#5B5FEF]">
                         {isPicked ? '✓ Seçili Uzman' : 'Bu Uzmanı Seç'}
                       </span>
                     </div>
@@ -420,29 +568,29 @@ export const MobileStorefrontDetailDrawer: React.FC<
               {LOOKBOOK_PORTFOLIO.map((item) => (
                 <div
                   key={item.id}
-                  className={`rounded-2xl bg-gradient-to-br ${item.accentGradient} border border-slate-800 p-4 space-y-2.5`}
+                  className="rounded-2xl bg-white border border-slate-200 p-4 space-y-2.5 shadow-xs"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white">
+                    <span className="text-xs font-bold text-[#111827]">
                       {item.titleTr}
                     </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-white/10 text-white">
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-[#EEF0FF] text-[#4338CA] font-semibold">
                       {item.durationMinutes} dk işlem
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-xl bg-slate-950/80 border border-slate-800 p-3 text-center">
-                      <span className="text-[10px] font-bold text-rose-300 block">
+                    <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-center">
+                      <span className="text-[10px] font-bold text-rose-700 block">
                         {item.beforeLabelTr}
                       </span>
                     </div>
-                    <div className="rounded-xl bg-emerald-950/60 border border-emerald-500/40 p-3 text-center">
-                      <span className="text-[10px] font-bold text-emerald-300 block">
+                    <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-center">
+                      <span className="text-[10px] font-bold text-emerald-700 block">
                         {item.afterLabelTr}
                       </span>
                     </div>
                   </div>
-                  <p className="text-[11px] text-slate-300 font-mono bg-black/30 p-2 rounded-lg">
+                  <p className="text-[11px] text-slate-700 font-mono bg-[#F8F9FB] border border-slate-200 p-2 rounded-lg">
                     {item.formulaOrProtocolTr}
                   </p>
                 </div>
@@ -452,24 +600,35 @@ export const MobileStorefrontDetailDrawer: React.FC<
 
           {activeTab === 'hospitality' && (
             <div className="space-y-3">
-              <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-2">
-                <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <Award className="w-4 h-4 text-amber-400" />
+              <div className="rounded-2xl bg-white border border-slate-200 p-4 space-y-2 shadow-xs">
+                <h4 className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
+                  <Award className="w-4 h-4 text-[#5B5FEF]" />
                   Uygulamaya Özel VIP Karşılama Standartları
                 </h4>
-                <p className="text-[11px] text-slate-300 leading-relaxed">
-                  Randevunuzu uygulama üzerinden aldığınızda salona girmeden kahve/içecek tercihinizi ve &ldquo;Sessiz Seans&rdquo; isteğinizi belirleyebilirsiniz. Uzmanınız koltuğunuzu tercihinize göre hazırlar.
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F8F9FB] border border-slate-200 text-[10px] font-semibold text-slate-700">
+                    <Coffee className="w-3 h-3 text-amber-600" /> Barista Kahve & Matcha
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F8F9FB] border border-slate-200 text-[10px] font-semibold text-slate-700">
+                    <VolumeX className="w-3 h-3 text-[#5B5FEF]" /> Sessiz Seans
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F8F9FB] border border-slate-200 text-[10px] font-semibold text-slate-700">
+                    <Sparkles className="w-3 h-3 text-emerald-600" /> Pasaport Formül Kaydı
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed pt-1">
+                  Salona gelmeden içecek tercihinizi ve sessiz seans isteğinizi seçin; uzmanınız koltuğunuzu ve formül geçmişinizi önceden hazırlasın.
                 </p>
               </div>
-              <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-2">
+              <div className="rounded-2xl bg-white border border-slate-200 p-4 space-y-2 shadow-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-white">
-                    Zeynep K. • Doğrulanmış QR Check-in Müşterisi
+                  <span className="text-xs font-bold text-[#111827]">
+                    Zeynep K. • Doğrulanmış QR Check-in
                   </span>
-                  <span className="text-xs font-bold text-amber-300">★★★★★ 5.0</span>
+                  <span className="text-xs font-bold text-amber-600">★★★★★ 5.0</span>
                 </div>
-                <p className="text-[11px] text-slate-300">
-                  &ldquo;Uygulamadan filtre kahvemi ve sessiz seans istediğimi seçip girdim. Kapıdan girdiğimde kahvem hazırdı ve Merve Hanım geçen ayki boya formülümü pasaportumdan direkt gördü!&rdquo;
+                <p className="text-[11px] text-slate-600">
+                  &ldquo;Uygulamadan filtre kahvemi ve sessiz seans istediğimi seçip girdim. Kapıdan girdiğimde kahvem hazırdı ve geçen ayki boya formülüm pasaportumdan açıldı!&rdquo;
                 </p>
               </div>
             </div>
@@ -478,14 +637,13 @@ export const MobileStorefrontDetailDrawer: React.FC<
       </div>
 
       {/* Sticky Bottom Bundle Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-[85] bg-slate-900/95 backdrop-blur-xl border-t border-slate-800 p-3.5">
+      <div className="fixed bottom-0 left-0 right-0 z-[85] bg-white/95 backdrop-blur-md border-t border-slate-200 p-3.5 shadow-lg">
         <div className="max-w-lg mx-auto flex items-center justify-between gap-3">
           <div>
-            <span className="text-[10px] text-slate-400 block">
-              {selectedServices.length} Hizmet • {totalMinutes} dk •{' '}
-              {selectedSpecialist.name}
+            <span className="text-[10px] text-slate-500 block">
+              {selectedServices.length} Hizmet • {totalMinutes} dk • {selectedSpecialist.name}
             </span>
-            <span className="text-base font-black text-white">
+            <span className="text-base font-black text-[#111827]">
               {totalPrice} TRY
             </span>
           </div>
@@ -499,7 +657,7 @@ export const MobileStorefrontDetailDrawer: React.FC<
               )
             }
             style={{ minHeight: '46px' }}
-            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black flex items-center gap-2 shadow-lg shadow-blue-600/30"
+            className="px-5 py-2.5 rounded-xl bg-[#5B5FEF] hover:bg-[#4A4EE0] text-white text-xs font-bold flex items-center gap-2 shadow-sm"
             data-testid="storefront-proceed-booking-btn"
           >
             <CalendarPlus className="w-4 h-4" />

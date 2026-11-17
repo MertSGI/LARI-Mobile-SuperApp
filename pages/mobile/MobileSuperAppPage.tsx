@@ -1,7 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Compass } from 'lucide-react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { Role } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
+import {
+  MobileAppSessionProvider,
+  useMobileAppSession,
+} from '../../contexts/MobileAppSessionContext';
 import {
   MobilePersonaType,
   MobileShellMode,
@@ -26,10 +31,12 @@ import MobilePartnerClinicWorkspacePage from './partner/MobilePartnerClinicWorks
 import MobilePartnerHtLeadOpsPage from './partner/MobilePartnerHtLeadOpsPage';
 import MobilePartnerCustomer360Page from './partner/MobilePartnerCustomer360Page';
 
-export const MobileSuperAppPage: React.FC = () => {
+export const MobileSuperAppContent: React.FC = () => {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const { currentUser } = useAuth();
+  const { activeBooking, toastMessage, confirmBooking } =
+    useMobileAppSession();
 
   const initialModeParam = searchParams.get('mode');
   const initialSlugParam = searchParams.get('slug');
@@ -150,6 +157,12 @@ export const MobileSuperAppPage: React.FC = () => {
     }
   };
 
+  const handleGoToExplore = () => {
+    setRequestedMode('b2c_customer');
+    setRequestedPersona('salon_customer');
+    setActiveTabId(tenantSlug ? 'storefront' : 'explore');
+  };
+
   const handleToggleMode = (targetMode: MobileShellMode) => {
     setRequestedMode(targetMode);
     if (targetMode === 'b2b_partner') {
@@ -206,7 +219,12 @@ export const MobileSuperAppPage: React.FC = () => {
           />
         );
       case 'wallet':
-        return <MobileCustomerWalletPage tenantId={tenantId} />;
+        return (
+          <MobileCustomerWalletPage
+            tenantId={tenantId}
+            onGoToExplore={handleGoToExplore}
+          />
+        );
       case 'ai_style':
         return (
           <MobileAIStyleVisualizerPage
@@ -291,12 +309,51 @@ export const MobileSuperAppPage: React.FC = () => {
         {renderBody()}
       </MobileAppShell>
 
+      {toastMessage ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed left-1/2 top-4 z-[100] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-2xl border border-[#5B5FEF]/20 bg-white/95 px-4 py-3 text-center text-sm font-semibold text-[#4338CA] shadow-lg backdrop-blur-md"
+          data-testid="mobile-session-toast"
+        >
+          {toastMessage}
+        </div>
+      ) : null}
+
       {bookingListing && (
         <MobileBookingBottomSheet
           listing={bookingListing}
           preselectedSpecialistName={bookingSpecialistName}
           preselectedServiceNames={bookingServiceNames}
           attachedStyleNote={attachedAiStyleNote}
+          onBookingConfirmed={(summary) => {
+            const primaryService = bookingListing.popularServices[0];
+            confirmBooking({
+              appointmentId: 'apt-mobile-' + Date.now(),
+              tenantId: summary.tenantId,
+              tenantSlug: bookingListing.slug,
+              businessName: bookingListing.name,
+              branchLabel: bookingListing.district + ' Şubesi',
+              serviceName:
+                bookingServiceNames?.[0] ||
+                primaryService?.name ||
+                'LARİ Randevusu',
+              specialistName:
+                bookingSpecialistName || 'İlk uygun uzman',
+              scheduledDate: '2026-11-18',
+              scheduledTime: summary.slotTime,
+              priceMajor: primaryService?.priceMajor || 0,
+              currency: primaryService?.currency || 'TRY',
+              hospitalityDrink:
+                summary.hospitalityDrink || 'Filtre Kahve',
+              quietSession: summary.quietSession || false,
+              attachedStyleNote: attachedAiStyleNote,
+            });
+            setBookingListing(null);
+            setBookingSpecialistName(undefined);
+            setBookingServiceNames(undefined);
+            setActiveTabId('wallet');
+          }}
           onClose={() => {
             setBookingListing(null);
             setBookingSpecialistName(undefined);
@@ -307,5 +364,11 @@ export const MobileSuperAppPage: React.FC = () => {
     </>
   );
 };
+
+export const MobileSuperAppPage: React.FC = () => (
+  <MobileAppSessionProvider>
+    <MobileSuperAppContent />
+  </MobileAppSessionProvider>
+);
 
 export default MobileSuperAppPage;

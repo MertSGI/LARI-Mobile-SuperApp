@@ -9,9 +9,13 @@ export async function loadMobileCustomer360(input: { tenantId: string; customerI
 export async function scanMobileReactivationCohorts(tenantId: string, days: 60 | 90, deps: Customer360Deps = {}) { return (deps.loyalty ?? loyaltyReactivationService).scanReactivationCohorts(tenantId, days); }
 export async function grantMobileCustomerPackage(input: Parameters<typeof loyaltyReactivationService.grantCustomerPackage>[0], deps: Customer360Deps = {}) { return (deps.loyalty ?? loyaltyReactivationService).grantCustomerPackage(input); }
 
+import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
+
 export const MobilePartnerCustomer360Page: React.FC = () => {
+  const { showToast } = useMobileAppSession();
   const [unlocked, setUnlocked] = useState(false);
   const [reactivationQueued, setReactivationQueued] = useState(false);
+  const [packageGranted, setPackageGranted] = useState(false);
 
   const handleUnlock = async () => {
     const auth = await requireBiometricReauth({
@@ -24,14 +28,14 @@ export const MobilePartnerCustomer360Page: React.FC = () => {
   };
 
   return (
-    <main className="space-y-4" data-testid="mobile-customer-360">
-      <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-3">
+    <main className="space-y-4 text-[#111827]" data-testid="mobile-customer-360">
+      <div className="rounded-3xl bg-white border border-slate-200 p-4 space-y-3 shadow-sm">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-white flex items-center gap-1.5">
-            <Users className="w-4 h-4 text-indigo-400" />
+          <span className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
+            <Users className="w-4 h-4 text-[#5B5FEF]" />
             Müşteri 360 CRM & Geri Kazanım
           </span>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300">
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#EEF0FF] text-[#4338CA] border border-indigo-200">
             FaceID Korumalı
           </span>
         </div>
@@ -41,39 +45,50 @@ export const MobilePartnerCustomer360Page: React.FC = () => {
             type="button"
             onClick={handleUnlock}
             style={{ minHeight: '46px' }}
-            className="w-full rounded-xl bg-indigo-600 text-white text-xs font-bold flex items-center justify-center gap-2"
+            className="w-full rounded-xl bg-[#5B5FEF] hover:bg-[#4A4EE0] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm"
           >
             <Fingerprint className="w-4 h-4" />
             Biyometrik Doğrulama ile PII / Harcama Özeti Aç
           </button>
         ) : (
-          <div className="space-y-2 text-xs">
-            <div className="rounded-xl bg-slate-950 border border-amber-500/30 p-3 flex items-center justify-between">
+          <div className="space-y-2.5 text-xs">
+            <div className="rounded-2xl bg-[#F8F9FB] border border-amber-200 p-3 flex items-center justify-between">
               <div>
-                <p className="font-bold text-white flex items-center gap-1">
-                  <Crown className="w-3.5 h-3.5 text-amber-400" />
+                <p className="font-bold text-[#111827] flex items-center gap-1">
+                  <Crown className="w-3.5 h-3.5 text-amber-500" />
                   Selin Demir (VIP Segment)
                 </p>
-                <p className="text-slate-400 text-[11px]">Toplam Harcama: 18,450 TRY • 14 Ziyaret</p>
+                <p className="text-slate-500 text-[11px]">Toplam Harcama: 18,450 TRY • 14 Ziyaret</p>
               </div>
-              <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">Sadık</span>
+              <span className="px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold">Sadık</span>
             </div>
             <button
               type="button"
-              onClick={() => setReactivationQueued(true)}
+              onClick={() => {
+                setReactivationQueued(true);
+                showToast('60 günlük geri kazanım kampanyası Outbox’a eklendi!');
+              }}
               style={{ minHeight: '42px' }}
-              className="w-full rounded-xl bg-slate-800 text-slate-200 font-semibold flex items-center justify-center gap-1.5"
+              className="w-full rounded-xl bg-[#F8F9FB] hover:bg-slate-100 border border-slate-200 text-[#111827] font-semibold flex items-center justify-center gap-1.5"
             >
-              <RefreshCw className="w-3.5 h-3.5 text-blue-400" />
+              <RefreshCw className="w-3.5 h-3.5 text-[#5B5FEF]" />
               {reactivationQueued ? '60 Günlük Kayıp Müşteri Kampanyası Kuyruğa Alındı (Outbox)' : '60 Günlük Kayıp Müşterileri Tara & Kampanya Gönder'}
             </button>
             <button
               type="button"
+              onClick={() => {
+                setPackageGranted(true);
+                showToast('Selin Demir hesabına 5 Seanslık Bakım Paketi tanımlandı!');
+              }}
               style={{ minHeight: '42px' }}
-              className="w-full rounded-xl bg-pink-600/20 border border-pink-500/30 text-pink-200 font-semibold flex items-center justify-center gap-1.5"
+              className={`w-full rounded-xl font-bold flex items-center justify-center gap-1.5 transition ${
+                packageGranted
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-[#EEF0FF] hover:bg-indigo-100 text-[#4338CA]'
+              }`}
             >
               <Gift className="w-3.5 h-3.5" />
-              Tek Tıkla 5 Seans Paketi Tanımla
+              {packageGranted ? '5 Seans Paketi Tanımlandı ✓' : 'Tek Tıkla 5 Seans Paketi Tanımla'}
             </button>
           </div>
         )}

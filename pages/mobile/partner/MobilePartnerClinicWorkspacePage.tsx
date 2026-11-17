@@ -283,18 +283,18 @@ export const MobilePartnerClinicWorkspacePage: React.FC = () => {
   };
 
   return (
-    <main className="space-y-4" data-testid="mobile-clinic-workspace">
-      <div className="rounded-3xl bg-slate-900 border border-slate-800 p-4 space-y-2.5 shadow-lg">
+    <main className="space-y-4 text-[#111827]" data-testid="mobile-clinic-workspace">
+      <div className="rounded-3xl bg-white border border-slate-200 p-4 space-y-2.5 shadow-sm">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-bold text-white flex items-center gap-1.5">
-            <Stethoscope className="w-4 h-4 text-emerald-400" />
+          <span className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
+            <Stethoscope className="w-4 h-4 text-[#5B5FEF]" />
             Klinik Hekim Muayene & PHI (Şube İzole)
           </span>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
             {hold.kvkkSpecialCategoryHealthDataApproval}
           </span>
         </div>
-        <p className="text-[11px] text-slate-400">
+        <p className="text-[11px] text-slate-500">
           Yalnız yetkili şubedeki (`staff_branches`) hasta PHI kayıtları görüntülenir.
         </p>
 
@@ -303,7 +303,7 @@ export const MobilePartnerClinicWorkspacePage: React.FC = () => {
             type="button"
             onClick={handleBiometricUnlock}
             style={{ minHeight: '46px' }}
-            className="w-full rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center justify-center gap-2"
+            className="w-full rounded-xl bg-[#5B5FEF] hover:bg-[#4A4EE0] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm"
             data-testid="clinic-phi-unlock-btn"
           >
             <Fingerprint className="w-4 h-4" />
@@ -311,17 +311,17 @@ export const MobilePartnerClinicWorkspacePage: React.FC = () => {
           </button>
         ) : (
           <div
-            className="rounded-xl bg-slate-950 border border-emerald-500/30 p-3 space-y-1.5 text-xs"
+            className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 space-y-1.5 text-xs"
             data-testid="clinic-phi-card"
           >
-            <div className="flex items-center justify-between text-emerald-300 font-bold">
+            <div className="flex items-center justify-between text-emerald-800 font-bold">
               <span>Hasta: Ayşe K. (Şube: Nişantaşı Merkez)</span>
               <Lock className="w-3.5 h-3.5" />
             </div>
-            <p className="text-slate-300">
+            <p className="text-slate-700">
               Kan Grubu: A Rh+ • Alerji: Penisilin
             </p>
-            <p className="text-slate-400 text-[11px]">
+            <p className="text-slate-600 text-[11px]">
               Kronik Durum: Yok • Son Muayene: 12.10.2026
             </p>
           </div>
@@ -330,15 +330,15 @@ export const MobilePartnerClinicWorkspacePage: React.FC = () => {
 
       {/* App-Exclusive Chairside Touch Consultation & Marking Canvas */}
       <div
-        className="rounded-3xl bg-slate-900 border border-slate-800 p-4 space-y-3 shadow-lg"
+        className="rounded-3xl bg-white border border-slate-200 p-4 space-y-3 shadow-sm"
         data-testid="clinic-touch-drawing-studio"
       >
         <div className="flex items-center justify-between">
-          <span className="text-xs font-black text-white flex items-center gap-1.5">
-            <PenTool className="w-4 h-4 text-cyan-400" />
+          <span className="text-xs font-black text-[#111827] flex items-center gap-1.5">
+            <PenTool className="w-4 h-4 text-[#5B5FEF]" />
             Dokunmatik Konsültasyon & İşaretleme Kanvası
           </span>
-          <span className="text-[10px] text-cyan-300 font-bold">
+          <span className="text-[10px] text-[#5B5FEF] font-bold">
             Parmakla Çiz ({strokeCount} çizim)
           </span>
         </div>
@@ -360,8 +360,8 @@ export const MobilePartnerClinicWorkspacePage: React.FC = () => {
               }}
               className={`py-1.5 rounded-lg text-[10px] font-bold border ${
                 templateZone === z.id
-                  ? 'bg-cyan-600 text-white border-cyan-400'
-                  : 'bg-slate-950 text-slate-400 border-slate-800'
+                  ? 'bg-[#5B5FEF] text-white border-[#5B5FEF]'
+                  : 'bg-[#F8F9FB] text-slate-600 border-slate-200'
               }`}
             >
               {z.label}
@@ -369,7 +369,7 @@ export const MobilePartnerClinicWorkspacePage: React.FC = () => {
           ))}
         </div>
 
-        <div className="rounded-2xl bg-slate-950 border border-slate-800 p-2 flex flex-col items-center">
+        <div className="rounded-2xl bg-[#F8F9FB] border border-slate-200 p-2 flex flex-col items-center">
           <canvas
             ref={canvasRef}
             width={320}
@@ -378,15 +378,15 @@ export const MobilePartnerClinicWorkspacePage: React.FC = () => {
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerUp}
-            className="w-full max-w-[320px] h-[160px] rounded-xl bg-slate-900/90 touch-none cursor-crosshair border border-slate-800"
+            className="w-full max-w-[320px] h-[160px] rounded-xl bg-white touch-none cursor-crosshair border border-slate-200"
             data-testid="clinic-consultation-canvas"
           />
           <div className="w-full flex items-center justify-between pt-2 px-1">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
               {[
                 { color: '#f43f5e', label: 'İşlem/Enjeksiyon' },
-                { color: '#22d3ee', label: 'Simetri Hattı' },
-                { color: '#fbbf24', label: 'Hassas Bölge' },
+                { color: '#5B5FEF', label: 'Simetri Hattı' },
+                { color: '#d97706', label: 'Hassas Bölge' },
               ].map((m) => (
                 <button
                   key={m.color}
@@ -394,8 +394,8 @@ export const MobilePartnerClinicWorkspacePage: React.FC = () => {
                   onClick={() => setMarkerColor(m.color)}
                   className={`px-2 py-1 rounded-lg text-[10px] font-bold border flex items-center gap-1 ${
                     markerColor === m.color
-                      ? 'bg-slate-800 text-white border-white/40'
-                      : 'bg-slate-950 text-slate-400 border-slate-800'
+                      ? 'bg-[#EEF0FF] text-[#4338CA] border-[#5B5FEF]'
+                      : 'bg-white text-slate-600 border-slate-200'
                   }`}
                 >
                   <span
@@ -412,7 +412,7 @@ export const MobilePartnerClinicWorkspacePage: React.FC = () => {
                 drawTemplateGuide();
                 setStrokeCount(0);
               }}
-              className="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 text-[10px] font-bold flex items-center gap-1"
+              className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 text-[10px] font-bold flex items-center gap-1"
             >
               <Eraser className="w-3 h-3" />
               Temizle
@@ -422,23 +422,23 @@ export const MobilePartnerClinicWorkspacePage: React.FC = () => {
       </div>
 
       {/* Encounter & AI Draft Note */}
-      <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-3">
-        <span className="text-xs font-bold text-white flex items-center gap-1.5">
-          <FileSignature className="w-4 h-4 text-blue-400" />
+      <div className="rounded-3xl bg-white border border-slate-200 p-4 space-y-3 shadow-sm">
+        <span className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
+          <FileSignature className="w-4 h-4 text-[#5B5FEF]" />
           Mobil Encounter & Klinik Not Taslağı
         </span>
         <textarea
           value={clinicalBrief}
           onChange={(e) => setClinicalBrief(e.target.value)}
           rows={2}
-          className="w-full rounded-xl bg-slate-950 border border-slate-700 p-2.5 text-xs text-white"
+          className="w-full rounded-xl bg-[#F8F9FB] border border-slate-200 p-2.5 text-xs text-[#111827]"
         />
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={handleGenerateDraft}
             style={{ minHeight: '42px' }}
-            className="rounded-xl bg-blue-600 text-white text-xs font-bold"
+            className="rounded-xl bg-[#5B5FEF] hover:bg-[#4A4EE0] text-white text-xs font-bold"
           >
             SOAP Taslağı Üret
           </button>
@@ -454,7 +454,7 @@ export const MobilePartnerClinicWorkspacePage: React.FC = () => {
           </button>
         </div>
         {draftNote && (
-          <div className="rounded-xl bg-slate-950 border border-slate-800 p-2.5 text-[11px] text-slate-300 space-y-1">
+          <div className="rounded-xl bg-[#F8F9FB] border border-slate-200 p-2.5 text-[11px] text-slate-700 space-y-1">
             <p>
               <strong>S:</strong> {draftNote.subjective}
             </p>
@@ -468,8 +468,8 @@ export const MobilePartnerClinicWorkspacePage: React.FC = () => {
         )}
       </div>
 
-      <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 flex items-start gap-2 text-[11px] text-amber-200">
-        <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+      <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 flex items-start gap-2 text-[11px] text-amber-800">
+        <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
         <span>
           KVKK Özel Nitelikli Sağlık Verisi Onayı:{' '}
           {hold.kvkkSpecialCategoryHealthDataApproval}

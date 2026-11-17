@@ -7,11 +7,13 @@ import {
   Globe,
   ShieldCheck,
   Trash2,
+  User,
 } from 'lucide-react';
 import {
   AccountDeletionResult,
   executeMobileAccountDeletion,
 } from '../../services/accountDeletionService';
+import { useMobileAppSession } from '../../contexts/MobileAppSessionContext';
 
 export interface MobileProfileSettingsPageProps {
   tenantId: string;
@@ -32,12 +34,19 @@ export const MobileProfileSettingsPage: React.FC<
   language = 'tr',
   onAccountDeleted,
 }) => {
+  const { showToast, loyaltyPoints } = useMobileAppSession();
+  const [displayName, setDisplayName] = useState('Mert Özçelikbaş');
+  const [phone, setPhone] = useState('+90 532 555 01 40');
   const [pushBooking, setPushBooking] = useState(true);
   const [pushHt, setPushHt] = useState(true);
   const [biometricConfirmed, setBiometricConfirmed] = useState(false);
   const [confirmPhrase, setConfirmPhrase] = useState('');
   const [deletionResult, setDeletionResult] =
     useState<AccountDeletionResult | null>(null);
+
+  const handleSaveProfile = () => {
+    showToast('Profil ve iletişim bilgileriniz kaydedildi.');
+  };
 
   const handleDelete = () => {
     const res = executeMobileAccountDeletion({
@@ -55,21 +64,80 @@ export const MobileProfileSettingsPage: React.FC<
   };
 
   return (
-    <div className="space-y-4" data-testid="mobile-profile-settings-page">
-      <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-3">
+    <div className="space-y-4 text-[#111827]" data-testid="mobile-profile-settings-page">
+      {/* Glowup-Inspired Clean Profile Header */}
+      <div className="rounded-3xl bg-white border border-slate-200 p-5 text-center space-y-2 shadow-sm">
+        <div className="w-16 h-16 mx-auto rounded-full bg-[#EEF0FF] text-[#5B5FEF] border border-indigo-200 flex items-center justify-center font-black text-lg">
+          {displayName
+            .split(' ')
+            .map((p) => p[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase()}
+        </div>
+        <div>
+          <h2 className="text-base font-black text-[#111827]">{displayName}</h2>
+          <p className="text-[11px] text-slate-500">
+            LARİ Üyesi • Nişantaşı • <strong className="text-[#5B5FEF]">{loyaltyPoints} Puan</strong>
+          </p>
+        </div>
+      </div>
+
+      {/* General Information Card */}
+      <div className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3 shadow-xs">
+        <span className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
+          <User className="w-4 h-4 text-[#5B5FEF]" />
+          Genel Bilgiler
+        </span>
+        <div className="space-y-2">
+          <div>
+            <label className="text-[10px] font-semibold text-slate-500 block mb-1">
+              Ad Soyad
+            </label>
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              className="w-full rounded-xl bg-[#F8F9FB] border border-slate-200 px-3 py-2 text-xs text-[#111827]"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-semibold text-slate-500 block mb-1">
+              Telefon Numarası
+            </label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="w-full rounded-xl bg-[#F8F9FB] border border-slate-200 px-3 py-2 text-xs text-[#111827]"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleSaveProfile}
+            style={{ minHeight: '40px' }}
+            className="w-full rounded-xl bg-[#5B5FEF] hover:bg-[#4A4EE0] text-white text-xs font-bold"
+          >
+            Bilgileri Güncelle
+          </button>
+        </div>
+      </div>
+
+      {/* Notification & Privacy Preferences */}
+      <div className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3 shadow-xs">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-white flex items-center gap-1.5">
-            <Bell className="w-4 h-4 text-blue-400" />
+          <span className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
+            <Bell className="w-4 h-4 text-[#5B5FEF]" />
             {language === 'tr'
               ? 'Bildirim & Gizlilik Tercihleri'
               : 'Notification & Privacy Preferences'}
           </span>
-          <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+          <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold">
             KVKK / GDPR
           </span>
         </div>
 
-        <label className="flex items-center justify-between text-xs text-slate-300 py-1">
+        <label className="flex items-center justify-between text-xs text-slate-700 py-1 cursor-pointer">
           <span>
             {language === 'tr'
               ? 'Randevu & Waitlist Push Bildirimleri'
@@ -78,12 +146,19 @@ export const MobileProfileSettingsPage: React.FC<
           <input
             type="checkbox"
             checked={pushBooking}
-            onChange={(e) => setPushBooking(e.target.checked)}
-            className="w-4 h-4 accent-blue-500"
+            onChange={(e) => {
+              setPushBooking(e.target.checked);
+              showToast(
+                e.target.checked
+                  ? 'Randevu push bildirimleri açıldı.'
+                  : 'Randevu push bildirimleri kapatıldı.'
+              );
+            }}
+            className="w-4 h-4 accent-[#5B5FEF]"
           />
         </label>
 
-        <label className="flex items-center justify-between text-xs text-slate-300 py-1">
+        <label className="flex items-center justify-between text-xs text-slate-700 py-1 cursor-pointer">
           <span>
             {language === 'tr'
               ? 'Sağlık Turizmi & VIP Transfer Hatırlatıcıları'
@@ -92,18 +167,25 @@ export const MobileProfileSettingsPage: React.FC<
           <input
             type="checkbox"
             checked={pushHt}
-            onChange={(e) => setPushHt(e.target.checked)}
-            className="w-4 h-4 accent-cyan-500"
+            onChange={(e) => {
+              setPushHt(e.target.checked);
+              showToast(
+                e.target.checked
+                  ? 'VIP transfer hatırlatıcıları açıldı.'
+                  : 'VIP transfer hatırlatıcıları kapatıldı.'
+              );
+            }}
+            className="w-4 h-4 accent-[#5B5FEF]"
           />
         </label>
 
-        <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
           <span className="flex items-center gap-1.5">
-            <Globe className="w-3.5 h-3.5 text-emerald-400" />
+            <Globe className="w-3.5 h-3.5 text-emerald-600" />
             Bundle ID: com.randevulari.app
           </span>
-          <span className="flex items-center gap-1">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+          <span className="flex items-center gap-1 text-emerald-700 font-semibold">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
             RLS Isolated
           </span>
         </div>
@@ -111,77 +193,73 @@ export const MobileProfileSettingsPage: React.FC<
 
       {/* Apple Guideline 5.1.1(v) In-App Account Deletion */}
       <div
-        className="rounded-2xl bg-rose-950/20 border border-rose-500/30 p-4 space-y-3"
+        className="rounded-2xl bg-white border border-rose-200 p-4 space-y-3 shadow-xs"
         data-testid="mobile-account-deletion-card"
       >
-        <div className="flex items-center gap-2 text-rose-300">
+        <div className="flex items-center gap-2 text-rose-700">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           <h3 className="text-xs font-bold">
             {language === 'tr'
-              ? 'Hesabımı ve Kişisel Verilerimi Kalıcı Olarak Sil'
-              : 'Delete My Account & Personal Data'}
+              ? 'Hesap Silme & Veri Hakları (Apple 5.1.1(v))'
+              : 'In-App Account Deletion (Apple 5.1.1(v))'}
           </h3>
         </div>
-        <p className="text-[11px] text-slate-300 leading-relaxed">
-          {language === 'tr'
-            ? 'Yasal tıbbi kayıt saklama zorunluluğu varsa klinik kayıtlarınız anonimleştirilir; aksi halde tüm hesabınız ve kişisel verileriniz kalıcı olarak silinir. Onay için biyometrik doğrulama yapıp kutuya HESABIMI SIL yazın.'
-            : 'If statutory medical retention applies, clinical records are anonymized; otherwise your account and personal data are permanently deleted.'}
+        <p className="text-[11px] text-slate-600">
+          {hasActiveMedicalRetentionLock
+            ? 'Aktif tıbbi/klinik kayıt saklama zorunluluğu nedeniyle kişisel verileriniz KVKK kapsamında kalıcı olarak anonimleştirilir.'
+            : 'Hesabınız ve oturum anahtarlarınız biyometrik doğrulama sonrasında kalıcı olarak silinir.'}
         </p>
 
         <button
           type="button"
           onClick={() => setBiometricConfirmed(true)}
-          style={{ minHeight: '44px' }}
-          className={`w-full rounded-xl px-3 py-2 text-xs font-semibold border flex items-center justify-center gap-2 ${
+          style={{ minHeight: '42px' }}
+          className={`w-full rounded-xl px-3 py-2 text-xs font-bold border flex items-center justify-center gap-1.5 ${
             biometricConfirmed
-              ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-              : 'bg-slate-900 border-slate-700 text-slate-200'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+              : 'bg-[#F8F9FB] border-slate-200 text-slate-700'
           }`}
-          data-testid="account-delete-biometric-btn"
+          data-testid="profile-biometric-verify-btn"
         >
           <Fingerprint className="w-4 h-4" />
           {biometricConfirmed
-            ? language === 'tr'
-              ? 'Biyometrik Doğrulama Onaylandı'
-              : 'Biometric Verified'
-            : language === 'tr'
-              ? 'FaceID / TouchID ile Kimliği Doğrula'
-              : 'Verify Identity with Biometrics'}
+            ? 'Biyometrik Doğrulama Tamamlandı ✓'
+            : '1. Biyometrik / PIN ile Doğrula'}
         </button>
 
         <input
           type="text"
           value={confirmPhrase}
           onChange={(e) => setConfirmPhrase(e.target.value)}
-          placeholder="HESABIMI SIL"
-          className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2.5 text-xs text-white placeholder-slate-500"
-          data-testid="account-delete-phrase-input"
+          placeholder='Onaylamak için "HESABIMI SIL" yazın'
+          className="w-full rounded-xl bg-[#F8F9FB] border border-slate-200 px-3 py-2 text-xs text-[#111827] placeholder-slate-400"
+          data-testid="profile-delete-phrase-input"
         />
 
         <button
           type="button"
           onClick={handleDelete}
-          style={{ minHeight: '46px' }}
-          className="w-full rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold px-3 py-2.5 flex items-center justify-center gap-2"
-          data-testid="account-delete-submit-btn"
+          style={{ minHeight: '44px' }}
+          className="w-full rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold flex items-center justify-center gap-1.5"
+          data-testid="profile-delete-submit-btn"
         >
           <Trash2 className="w-4 h-4" />
-          {language === 'tr' ? 'Hesabı Kalıcı Olarak Sil' : 'Permanently Delete Account'}
+          {language === 'tr' ? 'Hesabımı Kalıcı Olarak Sil' : 'Delete My Account'}
         </button>
 
         {deletionResult && (
           <div
-            className={`rounded-xl p-2.5 text-[11px] flex items-center gap-2 ${
+            className={`rounded-xl p-2.5 text-xs flex items-center gap-2 border ${
               deletionResult.success
-                ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : 'bg-rose-50 border-rose-200 text-rose-800'
             }`}
-            data-testid="account-delete-result-banner"
+            data-testid="profile-deletion-result"
           >
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             <span>
               {deletionResult.success
-                ? `${deletionResult.outcome} • Makbuz: ${deletionResult.auditReceiptId}`
+                ? `İşlem Tamamlandı: ${deletionResult.outcome}`
                 : `Reddedildi: ${deletionResult.reasonCode}`}
             </span>
           </div>

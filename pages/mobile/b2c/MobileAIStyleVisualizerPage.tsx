@@ -1,4 +1,6 @@
 import React, { useRef, useState } from 'react';
+import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
+import { AI_STUDIO_PORTRAIT_FALLBACK } from '../../../services/mobile/mobileVisualAssets';
 import {
   Camera,
   CheckCircle2,
@@ -271,6 +273,7 @@ export interface MobileAIStyleVisualizerPageProps {
 export const MobileAIStyleVisualizerPage: React.FC<
   MobileAIStyleVisualizerPageProps
 > = ({ tenantId, language = 'tr', onAttachStyleToBooking }) => {
+  const { showToast } = useMobileAppSession();
   const [vertical, setVertical] =
     useState<AIStyleSuggestion['vertical']>('hair_beauty');
   const [goalText, setGoalText] = useState('');
@@ -285,12 +288,27 @@ export const MobileAIStyleVisualizerPage: React.FC<
 
   const activeSwatches = SWATCH_PALETTES[vertical] || SWATCH_PALETTES.hair_beauty;
   const activeSwatch = activeSwatches[selectedSwatchIdx] || activeSwatches[0];
+  const portraitUrl = uploadedPhotoUrl || AI_STUDIO_PORTRAIT_FALLBACK;
+  const afterFilter = (() => {
+    const filters: Record<string, string> = {
+      '8.34': 'sepia(.42) saturate(1.45) brightness(1.04) contrast(1.05)',
+      '9.12': 'sepia(.12) saturate(.82) brightness(1.08) contrast(1.04) hue-rotate(188deg)',
+      '6.77': 'sepia(.48) saturate(1.28) brightness(.88) contrast(1.12)',
+      OM1: 'saturate(.78) brightness(1.14) contrast(1.08)',
+      B1: 'sepia(.08) saturate(.9) brightness(1.08) contrast(1.04)',
+      'GLOW-4X': 'saturate(1.2) brightness(1.08) contrast(.96) hue-rotate(338deg)',
+      'PORE-0': 'saturate(.88) brightness(1.02) contrast(1.1) hue-rotate(14deg)',
+      'FADE-MID': 'saturate(.72) brightness(.95) contrast(1.18)',
+      'CROP-TEX': 'sepia(.25) saturate(1.12) brightness(.96) contrast(1.12)',
+    };
+    return filters[activeSwatch.code] || 'saturate(1.1) contrast(1.05)';
+  })();
 
   const handleCaptureAndAnalyze = (customDataUrl?: string) => {
     const simulatedPhoto =
       customDataUrl ||
       uploadedPhotoUrl ||
-      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+      AI_STUDIO_PORTRAIT_FALLBACK;
     const res = evaluateMobileAIStyleRecommendation({
       tenantId,
       vertical,
@@ -317,15 +335,15 @@ export const MobileAIStyleVisualizerPage: React.FC<
 
   return (
     <div className="space-y-4" data-testid="mobile-ai-style-visualizer-page">
-      <div className="rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950/80 to-slate-950 border border-indigo-500/30 p-4 space-y-3.5 shadow-xl">
+      <div className="rounded-3xl bg-white border border-slate-200 p-4 space-y-3.5 shadow-sm">
         <div className="flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#EEF0FF] text-[#5B5FEF] border border-indigo-100">
             <Sparkles className="w-3.5 h-3.5" />
             {language === 'tr'
               ? 'Canlı Kamera AI Stil & Gülüş Stüdyosu'
               : 'Live AI Style & Smile Studio'}
           </span>
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
             SANDBOX • 0 TL
           </span>
         </div>
@@ -350,8 +368,8 @@ export const MobileAIStyleVisualizerPage: React.FC<
               style={{ minHeight: '42px' }}
               className={`rounded-xl px-3 py-2 text-xs font-bold border text-left transition ${
                 vertical === item.id
-                  ? 'bg-indigo-600 text-white border-indigo-400 shadow'
-                  : 'bg-slate-900/80 text-slate-300 border-slate-800'
+                  ? 'bg-[#5B5FEF] text-white border-[#5B5FEF] shadow-sm'
+                  : 'bg-white text-[#6B7280] border-slate-200 hover:bg-[#EEF0FF]'
               }`}
               data-testid={`ai-vertical-${item.id}`}
             >
@@ -362,11 +380,12 @@ export const MobileAIStyleVisualizerPage: React.FC<
 
         {/* INTERACTIVE CAMERA VIEWFINDER + BEFORE/AFTER COMPARISON SLIDER */}
         <div
-          className="relative h-56 rounded-2xl overflow-hidden border border-slate-700 bg-slate-950 select-none"
+          className="relative h-56 rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 select-none shadow-inner"
           data-testid="ai-before-after-viewfinder"
         >
           {/* BEFORE LAYER (Full Width Background) */}
-          <div className="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-100 flex flex-col items-center justify-center p-4">
+            <img src={portraitUrl} alt="Before" className="absolute inset-0 h-full w-full object-cover" />
             <div className="w-28 h-36 rounded-full border-2 border-dashed border-slate-600 flex flex-col items-center justify-center text-center px-2">
               <span className="text-[10px] font-bold text-slate-400">
                 ÖNCE (MEVCUT)
@@ -379,9 +398,11 @@ export const MobileAIStyleVisualizerPage: React.FC<
 
           {/* AFTER LAYER (Clipped by sliderPosition %) */}
           <div
-            className={`absolute inset-y-0 left-0 overflow-hidden bg-gradient-to-br ${activeSwatch.afterGradient}`}
+            className="absolute inset-y-0 left-0 overflow-hidden"
             style={{ width: `${sliderPosition}%` }}
           >
+            <img src={portraitUrl} alt="After" className="absolute inset-y-0 left-0 h-full max-w-none object-cover" style={{ width: 'calc(100vw - 2rem)', minWidth: '100%', filter: afterFilter }} />
+            <div className="absolute inset-0 bg-indigo-500/10 mix-blend-color" />
             <div className="w-full h-full flex flex-col items-center justify-center p-4">
               <div className="w-28 h-36 rounded-full border-2 border-white/80 shadow-[0_0_25px_rgba(255,255,255,0.3)] flex flex-col items-center justify-center text-center px-2 bg-white/5 backdrop-blur-xs">
                 <span className="text-[10px] font-black text-white">
@@ -409,14 +430,14 @@ export const MobileAIStyleVisualizerPage: React.FC<
             <span className="px-2 py-0.5 rounded bg-indigo-600/90 text-white">
               AI SONRA: %{sliderPosition}
             </span>
-            <span className="px-2 py-0.5 rounded bg-slate-900/90 text-slate-300">
+            <span className="px-2 py-0.5 rounded bg-white/95 text-[#111827] border border-slate-200 shadow-xs">
               ÖNCE
             </span>
           </div>
 
           {/* Bottom Range Slider Input */}
-          <div className="absolute bottom-2.5 left-3 right-3 bg-slate-950/80 backdrop-blur-md rounded-xl px-3 py-1.5 border border-slate-800 flex items-center gap-2">
-            <span className="text-[10px] text-slate-300 font-semibold shrink-0">
+          <div className="absolute bottom-2.5 left-3 right-3 bg-white/90 backdrop-blur-md rounded-xl px-3 py-1.5 border border-slate-200 flex items-center gap-2 shadow-sm">
+            <span className="text-[10px] text-[#6B7280] font-semibold shrink-0">
               Kaydır:
             </span>
             <input
@@ -433,7 +454,7 @@ export const MobileAIStyleVisualizerPage: React.FC<
 
         {/* Shade / Tone Swatch Selector */}
         <div className="space-y-1.5">
-          <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+          <span className="text-[11px] font-bold text-[#111827] flex items-center gap-1.5">
             <Palette className="w-3.5 h-3.5 text-pink-400" />
             Canlı Renk / Ton Kartelası Seç:
           </span>
@@ -445,8 +466,8 @@ export const MobileAIStyleVisualizerPage: React.FC<
                 onClick={() => setSelectedSwatchIdx(idx)}
                 className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border flex items-center gap-2 whitespace-nowrap transition ${
                   selectedSwatchIdx === idx
-                    ? 'bg-white text-slate-950 border-white shadow'
-                    : 'bg-slate-900 text-slate-300 border-slate-800'
+                    ? 'bg-[#EEF0FF] text-[#5B5FEF] border-[#5B5FEF] shadow-sm'
+                    : 'bg-white text-[#6B7280] border-slate-200'
                 }`}
                 data-testid={`ai-swatch-${sw.code}`}
               >
@@ -468,7 +489,7 @@ export const MobileAIStyleVisualizerPage: React.FC<
               ? 'Uzmana özel stil notun (Örn: Yüzüme uygun yumuşak geçiş)...'
               : 'E.g. Low-maintenance style for my face shape...'
           }
-          className="w-full rounded-xl bg-slate-900/90 border border-slate-700 px-3 py-2.5 text-xs text-white placeholder-slate-500"
+          className="w-full rounded-xl bg-white border border-slate-200 px-3 py-2.5 text-xs text-[#111827] placeholder-slate-400"
         />
 
         {/* Hidden real camera/gallery file input for mobile phones */}
@@ -486,7 +507,7 @@ export const MobileAIStyleVisualizerPage: React.FC<
             type="button"
             onClick={() => handleCaptureAndAnalyze()}
             style={{ minHeight: '46px' }}
-            className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs px-3 py-2.5 shadow-md"
+            className="flex items-center justify-center gap-2 rounded-xl bg-[#5B5FEF] hover:bg-indigo-500 text-white font-black text-xs px-3 py-2.5 shadow-sm"
             data-testid="ai-capture-camera-btn"
           >
             <Camera className="w-4 h-4" />
@@ -499,7 +520,7 @@ export const MobileAIStyleVisualizerPage: React.FC<
               fileInputRef.current?.click();
             }}
             style={{ minHeight: '46px' }}
-            className="flex items-center justify-center gap-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs px-3 py-2.5 border border-slate-700"
+            className="flex items-center justify-center gap-2 rounded-xl bg-white hover:bg-[#EEF0FF] text-[#5B5FEF] font-semibold text-xs px-3 py-2.5 border border-slate-200"
             data-testid="ai-pick-gallery-btn"
           >
             <ImagePlus className="w-4 h-4" />
@@ -509,7 +530,7 @@ export const MobileAIStyleVisualizerPage: React.FC<
       </div>
 
       {/* Medical / Preview Disclaimer (Apple Guideline 1.4.1 Compliance) */}
-      <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 flex items-start gap-2.5 text-[11px] text-amber-200">
+      <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 flex items-start gap-2.5 text-[11px] text-amber-800 shadow-sm">
         <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
         <span>
           {language === 'tr'
@@ -526,14 +547,14 @@ export const MobileAIStyleVisualizerPage: React.FC<
             return (
               <div
                 key={sug.id}
-                className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-2.5"
+                className="rounded-2xl bg-white border border-slate-200 p-4 space-y-2.5 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <h3 className="text-sm font-bold text-white">
+                    <h3 className="text-sm font-bold text-[#111827]">
                       {language === 'tr' ? sug.titleTr : sug.titleEn}
                     </h3>
-                    <p className="text-xs text-slate-400 mt-0.5">
+                    <p className="text-xs text-[#6B7280] mt-0.5">
                       {language === 'tr'
                         ? sug.descriptionTr
                         : sug.descriptionEn}
@@ -547,7 +568,7 @@ export const MobileAIStyleVisualizerPage: React.FC<
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                <div className="flex items-center justify-between pt-2 border-t border-slate-200">
                   <span className="text-[11px] text-slate-400">
                     Önerilen Süre:{' '}
                     <strong className="text-slate-200">
@@ -562,6 +583,7 @@ export const MobileAIStyleVisualizerPage: React.FC<
                         result.attachedAppointmentNote,
                         sug
                       );
+                      showToast('Stil notu randevunuza eklendi!');
                     }}
                     style={{ minHeight: '40px' }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${

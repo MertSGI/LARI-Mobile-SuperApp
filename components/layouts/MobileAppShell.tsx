@@ -55,17 +55,17 @@ const TIER_BADGE_STYLES: Record<
   LIVE_ACTIVE: {
     labelTr: 'CANLI YETKİLİ',
     labelEn: 'LIVE ACTIVE',
-    className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+    className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   },
   LOCAL_OR_SANDBOX_ONLY: {
     labelTr: 'YEREL / SANDBOX',
     labelEn: 'SANDBOX MODE',
-    className: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+    className: 'bg-amber-50 text-amber-700 border-amber-200',
   },
   DISABLED_EXTERNAL_HOLD: {
     labelTr: 'DIŞ ONAY BEKLİYOR (HOLD)',
     labelEn: 'EXTERNAL HOLD',
-    className: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
+    className: 'bg-rose-50 text-rose-700 border-rose-200',
   },
 };
 
@@ -122,7 +122,7 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
 
   return (
     <div
-      className="min-h-screen w-full max-w-full overflow-x-hidden flex flex-col bg-slate-950 text-slate-100 select-none"
+      className="min-h-screen w-full max-w-full overflow-x-hidden flex flex-col bg-[#F8F9FB] text-slate-900"
       style={{
         paddingTop: shellState.layoutMetrics.safeAreaTopCss,
         paddingBottom: `calc(76px + ${shellState.layoutMetrics.safeAreaBottomCss})`,
@@ -132,26 +132,26 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
       data-effective-persona={shellState.effectivePersona}
     >
       {/* Top Native-Feel Status & Persona Bar */}
-      <header className="sticky top-0 z-40 backdrop-blur-xl bg-slate-900/90 border-b border-slate-800 px-3.5 py-2.5">
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 px-3.5 py-2.5">
         <div className="max-w-lg mx-auto flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
             <div
               className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm shrink-0 shadow-inner ${
                 isPartner
-                  ? 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white'
-                  : 'bg-gradient-to-br from-blue-500 to-cyan-500 text-white'
+                  ? 'bg-[#5B5FEF] text-white'
+                  : 'bg-[#5B5FEF] text-white'
               }`}
             >
               L
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <span className="font-bold text-sm text-white truncate">
+                <span className="font-bold text-sm text-slate-900 truncate">
                   {businessDisplayName}
                 </span>
                 {shellState.whiteLabelStorefrontLock.active && (
                   <span
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0"
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0"
                     data-testid="white-label-lock-badge"
                   >
                     <ShieldCheck className="w-3 h-3" />
@@ -159,7 +159,7 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-slate-400 truncate">
+              <p className="text-[11px] text-gray-500 truncate">
                 {PERSONA_LABELS[shellState.effectivePersona][language]}
                 {branchDisplayName ? ` • ${branchDisplayName}` : ''}
               </p>
@@ -170,7 +170,7 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
           <div className="flex items-center gap-1.5 shrink-0">
             {isOffline && (
               <span
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
                 data-testid="offline-vault-indicator"
               >
                 <WifiOff className="w-3 h-3" />
@@ -194,8 +194,8 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
                 style={{ minHeight: '36px' }}
                 className={`px-2.5 py-1 rounded-xl text-xs font-semibold border transition ${
                   isPartner
-                    ? 'bg-indigo-600/30 border-indigo-400/40 text-indigo-200 hover:bg-indigo-600/40'
-                    : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+                    ? 'bg-[#EEF0FF] border-[#5B5FEF]/20 text-[#4338CA] hover:bg-indigo-100'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                 }`}
                 data-testid="mobile-mode-toggle-btn"
               >
@@ -223,8 +223,8 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
                   onClick={() => onSwitchPersona(persona)}
                   className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition border ${
                     active
-                      ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                      : 'bg-slate-900/90 text-slate-400 border-slate-800 hover:text-slate-200'
+                      ? 'bg-[#EEF0FF] text-[#4338CA] border-[#5B5FEF]/20'
+                      : 'bg-white text-gray-500 border-slate-200 hover:text-slate-900 hover:bg-slate-50'
                   }`}
                   data-testid={`persona-pill-${persona}`}
                 >
@@ -244,7 +244,7 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
       {/* Bottom 5-Tab Native Navigation Bar */}
       <nav
         aria-label={language === 'tr' ? 'Mobil Alt Navigasyon' : 'Mobile Bottom Navigation'}
-        className="fixed bottom-0 left-0 right-0 z-50 backdrop-blur-xl bg-slate-900/95 border-t border-slate-800"
+        className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-slate-200"
         style={{
           paddingBottom: shellState.layoutMetrics.safeAreaBottomCss,
         }}
@@ -265,11 +265,11 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
                 className={`relative flex flex-col items-center justify-center rounded-xl px-1 py-1 transition ${
                   isPrimaryCenter
                     ? isActive
-                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
-                      : 'bg-blue-600/20 text-blue-300 border border-blue-500/30'
+                      ? 'bg-[#EEF0FF] text-[#5B5FEF]'
+                      : 'bg-indigo-50/70 text-[#4338CA]'
                     : isActive
-                      ? 'text-blue-400 bg-slate-800/80'
-                      : 'text-slate-400 hover:text-slate-200'
+                      ? 'text-[#5B5FEF] bg-[#EEF0FF]'
+                      : 'text-gray-500 hover:text-slate-900 hover:bg-slate-50'
                 }`}
                 data-testid={`mobile-tab-${tab.id}`}
               >
@@ -277,7 +277,7 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
                   {renderTabIcon(tab.iconName, isActive)}
                   {tab.requiresBiometricGate && (
                     <Lock
-                      className="w-2.5 h-2.5 text-amber-400 absolute -top-1 -right-2"
+                      className="w-2.5 h-2.5 text-amber-600 absolute -top-1 -right-2"
                       aria-label="Biometric Protected"
                     />
                   )}
@@ -286,7 +286,7 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
                   {language === 'tr' ? tab.labelTr : tab.labelEn}
                 </span>
                 {tab.badgeText && (
-                  <span className="absolute -top-1 right-1 px-1 py-0.2 rounded text-[8px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  <span className="absolute -top-1 right-1 px-1 py-0.2 rounded text-[8px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                     {tab.badgeText}
                   </span>
                 )}

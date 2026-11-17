@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Stethoscope,
 } from 'lucide-react';
+import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
 
 export type SupportedHtCurrency = 'EUR' | 'USD' | 'GBP' | 'TRY';
 export type SupportedHtLanguage = 'en' | 'de' | 'ar' | 'ru' | 'tr';
@@ -298,6 +299,7 @@ export const MobileHealthTourismConciergePage: React.FC<
   healthTourismEnabled = true,
   language = 'tr',
 }) => {
+  const { showToast } = useMobileAppSession();
   const [currency, setCurrency] = useState<SupportedHtCurrency>('EUR');
   const [treatment, setTreatment] =
     useState<MobileHtIntakePayload['treatmentCategory']>('dental_implant_veneers');
@@ -329,7 +331,7 @@ export const MobileHealthTourismConciergePage: React.FC<
   if (!state.success) {
     return (
       <div
-        className="rounded-2xl bg-rose-950/40 border border-rose-500/40 p-4 text-xs text-rose-200"
+        className="rounded-2xl bg-rose-50 border border-rose-200 p-4 text-xs text-rose-700"
         data-testid="ht-concierge-blocked"
       >
         {language === 'tr'
@@ -340,11 +342,11 @@ export const MobileHealthTourismConciergePage: React.FC<
   }
 
   return (
-    <div className="space-y-4" data-testid="mobile-ht-concierge-page">
+    <div className="space-y-4 text-[#111827]" data-testid="mobile-ht-concierge-page">
       {/* Header & Multi-Currency Selector */}
-      <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-cyan-950/60 to-slate-900 border border-cyan-500/30 p-4">
+      <div className="rounded-3xl bg-white border border-slate-200 p-4 shadow-sm">
         <div className="flex items-center justify-between gap-2 mb-2">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#EEF0FF] text-[#4338CA] border border-indigo-200">
             <Globe2 className="w-3.5 h-3.5" />
             {language === 'tr'
               ? 'Uluslararası Sağlık Turizmi Konsiyerj'
@@ -358,8 +360,8 @@ export const MobileHealthTourismConciergePage: React.FC<
                 onClick={() => setCurrency(cur)}
                 className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
                   currency === cur
-                    ? 'bg-cyan-500 text-slate-950 border-cyan-400'
-                    : 'bg-slate-900 text-slate-400 border-slate-700'
+                    ? 'bg-[#5B5FEF] text-white border-[#5B5FEF]'
+                    : 'bg-[#F8F9FB] text-slate-600 border-slate-200'
                 }`}
                 data-testid={`ht-currency-${cur}`}
               >
@@ -369,12 +371,12 @@ export const MobileHealthTourismConciergePage: React.FC<
           </div>
         </div>
 
-        <h2 className="text-base font-bold text-white">
+        <h2 className="text-base font-black text-[#111827]">
           {language === 'tr'
             ? 'Tedavi + 5* Otel + VIP Transfer Paketiniz ve Seyahat Takviminiz'
             : 'Your All-Inclusive Treatment, Hotel & VIP Transfer Itinerary'}
         </h2>
-        <p className="text-xs text-slate-300 mt-1">
+        <p className="text-xs text-slate-500 mt-1">
           {language === 'tr'
             ? 'Pasaport numaranız gizlilik kalkanı (PII Redaction) ile korunmaktadır.'
             : 'Your passport number is protected with strict PII redaction.'}
@@ -397,8 +399,8 @@ export const MobileHealthTourismConciergePage: React.FC<
               style={{ minHeight: '42px' }}
               className={`rounded-xl px-2.5 py-1.5 text-xs font-semibold border text-left ${
                 treatment === cat.id
-                  ? 'bg-cyan-600 text-white border-cyan-400'
-                  : 'bg-slate-900/80 text-slate-300 border-slate-800'
+                  ? 'bg-[#5B5FEF] text-white border-[#5B5FEF]'
+                  : 'bg-[#F8F9FB] text-slate-700 border-slate-200'
               }`}
             >
               {language === 'tr' ? cat.tr : cat.en}
@@ -410,51 +412,51 @@ export const MobileHealthTourismConciergePage: React.FC<
       {/* Multi-Currency Package Quote Card */}
       {state.quote && (
         <div
-          className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-3"
+          className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3 shadow-sm"
           data-testid="ht-quote-card"
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-white flex items-center gap-1.5">
-              <FileCheck2 className="w-4 h-4 text-cyan-400" />
+            <span className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
+              <FileCheck2 className="w-4 h-4 text-[#5B5FEF]" />
               {language === 'tr' ? 'Her Şey Dahil Paket Teklifi' : 'All-Inclusive Package Quote'}
             </span>
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300">
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
               v{state.quote.version} • {state.quote.currency}
             </span>
           </div>
 
           <div className="space-y-1.5 text-xs">
-            <div className="flex justify-between text-slate-300">
+            <div className="flex justify-between text-slate-600">
               <span>{language === 'tr' ? 'Medikal Tedavi Paketi' : 'Medical Treatment'}</span>
-              <span className="font-semibold text-white">
+              <span className="font-semibold text-[#111827]">
                 {formatMinorMoney(state.quote.treatmentMinorUnits, state.quote.currency)}
               </span>
             </div>
-            <div className="flex justify-between text-slate-300">
+            <div className="flex justify-between text-slate-600">
               <span>
                 {state.quote.hotelNights}{' '}
                 {language === 'tr' ? 'Gece 5* Partner Otel' : 'Nights 5* Partner Hotel'}
               </span>
-              <span className="font-semibold text-white">
+              <span className="font-semibold text-[#111827]">
                 {formatMinorMoney(state.quote.hotelMinorUnits, state.quote.currency)}
               </span>
             </div>
-            <div className="flex justify-between text-slate-300">
+            <div className="flex justify-between text-slate-600">
               <span>
                 {language === 'tr'
                   ? 'Havalimanı - Otel - Klinik VIP Transfer'
                   : 'Airport - Hotel - Clinic VIP Transfer'}
               </span>
-              <span className="font-bold text-emerald-400">
+              <span className="font-bold text-emerald-700">
                 {language === 'tr' ? 'ÜCRETSİZ (Dahil)' : 'INCLUDED'}
               </span>
             </div>
-            <div className="pt-2 border-t border-slate-800 flex justify-between items-center">
-              <span className="font-bold text-slate-200">
+            <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
+              <span className="font-bold text-[#111827]">
                 {language === 'tr' ? 'Toplam Paket Tutarı' : 'Total Package Price'}
               </span>
               <span
-                className="text-sm font-black text-cyan-300"
+                className="text-sm font-black text-[#5B5FEF]"
                 data-testid="ht-quote-total"
               >
                 {formatMinorMoney(state.quote.totalMinorUnits, state.quote.currency)}
@@ -465,12 +467,15 @@ export const MobileHealthTourismConciergePage: React.FC<
           <div className="grid grid-cols-2 gap-2 pt-1">
             <button
               type="button"
-              onClick={() => setQuoteAccepted(true)}
+              onClick={() => {
+                setQuoteAccepted(true);
+                showToast(language === 'tr' ? 'Paket teklifiniz onaylandı.' : 'Package quote approved.');
+              }}
               style={{ minHeight: '44px' }}
               className={`rounded-xl px-3 py-2 text-xs font-bold flex items-center justify-center gap-1.5 transition ${
                 quoteAccepted
                   ? 'bg-emerald-600 text-white'
-                  : 'bg-cyan-600 hover:bg-cyan-500 text-white'
+                  : 'bg-[#5B5FEF] hover:bg-[#4A4EE0] text-white'
               }`}
               data-testid="ht-accept-quote-btn"
             >
@@ -485,12 +490,15 @@ export const MobileHealthTourismConciergePage: React.FC<
             </button>
             <button
               type="button"
-              onClick={() => setHandoffRequested(true)}
+              onClick={() => {
+                setHandoffRequested(true);
+                showToast(language === 'tr' ? 'VIP koordinatörünüz bilgilendirildi.' : 'Your VIP coordinator was notified.');
+              }}
               style={{ minHeight: '44px' }}
-              className="rounded-xl px-3 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center gap-1.5"
+              className="rounded-xl px-3 py-2 text-xs font-semibold bg-[#EEF0FF] hover:bg-indigo-100 text-[#4338CA] flex items-center justify-center gap-1.5"
               data-testid="ht-whatsapp-handoff-btn"
             >
-              <MessageCircle className="w-4 h-4 text-emerald-400" />
+              <MessageCircle className="w-4 h-4 text-emerald-600" />
               {handoffRequested
                 ? language === 'tr'
                   ? 'Koordinatöre İletildi'
@@ -505,17 +513,17 @@ export const MobileHealthTourismConciergePage: React.FC<
 
       {/* Step-by-Step Live Medical Travel Itinerary */}
       <div
-        className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-3"
+        className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3 shadow-sm"
         data-testid="ht-itinerary-timeline"
       >
         <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-white flex items-center gap-1.5">
-            <CalendarCheck2 className="w-4 h-4 text-cyan-400" />
+          <span className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
+            <CalendarCheck2 className="w-4 h-4 text-[#5B5FEF]" />
             {language === 'tr'
               ? 'Adım Adım Canlı Seyahat & Tedavi Takviminiz'
               : 'Live Step-by-Step Travel & Treatment Timeline'}
           </span>
-          <span className="text-[10px] text-slate-400">7 Adım</span>
+          <span className="text-[10px] text-slate-500">7 Adım</span>
         </div>
 
         <div className="space-y-2.5">
@@ -527,20 +535,20 @@ export const MobileHealthTourismConciergePage: React.FC<
                 key={item.id}
                 className={`rounded-xl p-3 border flex items-start gap-3 ${
                   isNext
-                    ? 'bg-cyan-950/40 border-cyan-500/50'
+                    ? 'bg-[#EEF0FF] border-[#5B5FEF]/40'
                     : isCompleted
-                      ? 'bg-slate-900/50 border-emerald-500/20 opacity-80'
-                      : 'bg-slate-950/60 border-slate-800'
+                      ? 'bg-emerald-50/70 border-emerald-200'
+                      : 'bg-[#F8F9FB] border-slate-200'
                 }`}
                 data-testid={`ht-itinerary-step-${idx + 1}`}
               >
                 <div
                   className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
                     isNext
-                      ? 'bg-cyan-500 text-slate-950'
+                      ? 'bg-[#5B5FEF] text-white'
                       : isCompleted
-                        ? 'bg-emerald-500/20 text-emerald-300'
-                        : 'bg-slate-800 text-slate-400'
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-slate-200 text-slate-600'
                   }`}
                 >
                   {item.stepType === 'flight_arrival' && <PlaneLanding className="w-4 h-4" />}
@@ -553,16 +561,16 @@ export const MobileHealthTourismConciergePage: React.FC<
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-white">
+                    <span className="text-xs font-bold text-[#111827]">
                       {language === 'tr' ? item.titleTr : item.titleEn}
                     </span>
                     {isNext && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-500 text-slate-950 shrink-0">
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#5B5FEF] text-white shrink-0">
                         {language === 'tr' ? 'SIRADAKİ ADIM' : 'UP NEXT'}
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5">{item.locationLabel}</p>
+                  <p className="text-[11px] text-slate-600 mt-0.5">{item.locationLabel}</p>
                 </div>
               </div>
             );
@@ -572,15 +580,15 @@ export const MobileHealthTourismConciergePage: React.FC<
 
       {/* Pre-Op Preparation & Post-Op Recovery Photo Check-In (App-Exclusive) */}
       <div
-        className="rounded-3xl bg-slate-900 border border-slate-800 p-4 space-y-3"
+        className="rounded-3xl bg-white border border-slate-200 p-4 space-y-3 shadow-sm"
         data-testid="ht-postop-recovery-card"
       >
         <div className="flex items-center justify-between">
-          <span className="text-xs font-black text-white flex items-center gap-1.5">
-            <Camera className="w-4 h-4 text-emerald-400" />
+          <span className="text-xs font-black text-[#111827] flex items-center gap-1.5">
+            <Camera className="w-4 h-4 text-[#5B5FEF]" />
             Pre-Op Hazırlık & Gün Gün Post-Op Doktor Takibi
           </span>
-          <span className="text-[10px] font-bold text-emerald-300">
+          <span className="text-[10px] font-bold text-emerald-700">
             Canlı Asistan
           </span>
         </div>
@@ -608,22 +616,22 @@ export const MobileHealthTourismConciergePage: React.FC<
               }
               className={`w-full rounded-xl p-2 border text-left text-[11px] font-semibold flex items-center justify-between ${
                 preOpChecks[chk.key]
-                  ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
-                  : 'bg-slate-950 border-slate-800 text-slate-300'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-[#F8F9FB] border-slate-200 text-slate-700'
               }`}
             >
               <span>{chk.label}</span>
               <CheckCircle2
                 className={`w-4 h-4 ${
-                  preOpChecks[chk.key] ? 'text-emerald-400' : 'text-slate-600'
+                  preOpChecks[chk.key] ? 'text-emerald-600' : 'text-slate-400'
                 }`}
               />
             </button>
           ))}
         </div>
 
-        <div className="pt-2 border-t border-slate-800 space-y-2">
-          <span className="text-[11px] font-bold text-cyan-300 block">
+        <div className="pt-2 border-t border-slate-100 space-y-2">
+          <span className="text-[11px] font-bold text-[#4338CA] block">
             Operasyon Sonrası Uzaktan Hekim Fotoğraf Kontrolü:
           </span>
           <div className="grid grid-cols-4 gap-1.5">
@@ -644,8 +652,8 @@ export const MobileHealthTourismConciergePage: React.FC<
                 }}
                 className={`py-1.5 rounded-lg text-[10px] font-bold border ${
                   recoveryDaySelected === d.id
-                    ? 'bg-cyan-600 text-white border-cyan-400'
-                    : 'bg-slate-950 text-slate-400 border-slate-800'
+                    ? 'bg-[#5B5FEF] text-white border-[#5B5FEF]'
+                    : 'bg-[#F8F9FB] text-slate-600 border-slate-200'
                 }`}
               >
                 {d.label}
@@ -654,7 +662,10 @@ export const MobileHealthTourismConciergePage: React.FC<
           </div>
           <button
             type="button"
-            onClick={() => setRecoveryPhotoSubmitted(true)}
+            onClick={() => {
+              setRecoveryPhotoSubmitted(true);
+              showToast(`${recoveryDaySelected.toUpperCase()} iyileşme fotoğrafı hekime iletildi!`);
+            }}
             style={{ minHeight: '42px' }}
             className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center justify-center gap-1.5"
             data-testid="ht-submit-recovery-photo-btn"
@@ -668,12 +679,12 @@ export const MobileHealthTourismConciergePage: React.FC<
       </div>
 
       {/* Regulatory & Privacy Shield Footer */}
-      <div className="rounded-xl bg-slate-900/90 border border-slate-800 p-3 flex items-center justify-between text-[11px] text-slate-400">
+      <div className="rounded-xl bg-white border border-slate-200 p-3 flex items-center justify-between text-[11px] text-slate-500 shadow-xs">
         <span className="flex items-center gap-1.5">
-          <ShieldCheck className="w-4 h-4 text-emerald-400" />
+          <ShieldCheck className="w-4 h-4 text-emerald-600" />
           KVKK / GDPR Passport Redaction: ACTIVE
         </span>
-        <span className="text-amber-300 font-semibold">
+        <span className="text-amber-700 font-semibold">
           Mevzuat Kapısı: {state.regulatoryHoldClassification}
         </span>
       </div>

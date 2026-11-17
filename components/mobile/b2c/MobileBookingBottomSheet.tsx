@@ -15,6 +15,7 @@ import {
   MobileDiscoveryListingItem,
   MobileResourceWaitlistRegistry,
 } from '../../../services/mobile/mobileDiscoveryService';
+import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
 
 export interface MobileBookingBottomSheetProps {
   listing: MobileDiscoveryListingItem;
@@ -46,6 +47,7 @@ export const MobileBookingBottomSheet: React.FC<
   onClose,
   onBookingConfirmed,
 }) => {
+  const { confirmBooking } = useMobileAppSession();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedSlot, setSelectedSlot] = useState(
     listing.nextAvailableSlot || '15:30'
@@ -62,6 +64,22 @@ export const MobileBookingBottomSheet: React.FC<
   const primaryService = listing.popularServices[0];
 
   const handleConfirm = async () => {
+    confirmBooking({
+      appointmentId: `mobile-${listing.tenantId}-${Date.now()}`,
+      tenantId: listing.tenantId,
+      tenantSlug: listing.slug,
+      businessName: listing.name,
+      branchLabel: `${listing.district}, ${listing.city}`,
+      serviceName: preselectedServiceNames?.join(' + ') || primaryService?.name || 'LARI Mobile Service',
+      specialistName: selectedSpecialist,
+      scheduledDate: '2026-11-17',
+      scheduledTime: selectedSlot,
+      priceMajor: primaryService?.priceMajor || 0,
+      currency: primaryService?.currency || 'TRY',
+      hospitalityDrink,
+      quietSession,
+      attachedStyleNote,
+    });
     setConfirmed(true);
     onBookingConfirmed?.({
       tenantId: listing.tenantId,
@@ -97,16 +115,16 @@ export const MobileBookingBottomSheet: React.FC<
 
   return (
     <div
-      className="fixed inset-0 z-[85] bg-black/75 backdrop-blur-md flex items-end justify-center"
+      className="fixed inset-0 z-[85] bg-slate-900/40 backdrop-blur-sm flex items-end justify-center"
       data-testid="mobile-booking-bottom-sheet"
     >
-      <div className="w-full max-w-lg rounded-t-3xl bg-slate-900 border-t border-slate-700 p-5 space-y-4 max-h-[88vh] overflow-y-auto">
+      <div className="w-full max-w-lg rounded-t-3xl bg-white border-t border-slate-200 p-5 space-y-4 max-h-[88vh] overflow-y-auto shadow-2xl text-[#111827]">
         <div className="flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">
+            <span className="text-[10px] font-bold text-[#5B5FEF] uppercase tracking-wider">
               Adım {step} / 3 • {listing.name}
             </span>
-            <h3 className="text-sm font-black text-white">
+            <h3 className="text-sm font-black text-[#111827]">
               {step === 1
                 ? language === 'tr'
                   ? '1. Hizmet & Uzman Seçimi'
@@ -123,7 +141,7 @@ export const MobileBookingBottomSheet: React.FC<
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl bg-slate-800 text-slate-300"
+            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600"
           >
             <X className="w-4 h-4" />
           </button>
@@ -131,32 +149,32 @@ export const MobileBookingBottomSheet: React.FC<
 
         {step === 1 && primaryService && (
           <div className="space-y-3">
-            <div className="rounded-2xl bg-slate-950 border border-blue-500/40 p-3.5 flex justify-between items-center text-xs">
+            <div className="rounded-2xl bg-[#F8F9FB] border border-indigo-200 p-3.5 flex justify-between items-center text-xs">
               <div>
-                <p className="font-bold text-white">
+                <p className="font-bold text-[#111827]">
                   {preselectedServiceNames?.length
                     ? preselectedServiceNames.join(' + ')
                     : primaryService.name}
                 </p>
-                <p className="text-slate-400 mt-0.5">
+                <p className="text-slate-500 mt-0.5">
                   {primaryService.durationMinutes} dk • Doğrulanmış Mağaza Garantisi
                 </p>
               </div>
-              <span className="font-black text-blue-300 text-sm">
+              <span className="font-black text-[#5B5FEF] text-sm">
                 {primaryService.priceMajor} {primaryService.currency}
               </span>
             </div>
 
             {attachedStyleNote && (
-              <div className="rounded-xl bg-indigo-950/60 border border-indigo-500/40 p-2.5 text-[11px] text-indigo-200 flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
+              <div className="rounded-xl bg-[#EEF0FF] border border-indigo-200 p-2.5 text-[11px] text-[#4338CA] flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-[#5B5FEF] shrink-0" />
                 <span>Ekli AI Stil Referansı: {attachedStyleNote}</span>
               </div>
             )}
 
             <div className="space-y-1.5">
-              <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1">
-                <UserCheck className="w-3.5 h-3.5 text-blue-400" />
+              <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                <UserCheck className="w-3.5 h-3.5 text-[#5B5FEF]" />
                 Uzman / Hekim Tercihi
               </span>
               <div className="grid grid-cols-2 gap-2">
@@ -170,8 +188,8 @@ export const MobileBookingBottomSheet: React.FC<
                     onClick={() => setSelectedSpecialist(sp)}
                     className={`p-2.5 rounded-xl text-left text-[11px] font-semibold border transition ${
                       selectedSpecialist === sp
-                        ? 'bg-blue-600/25 border-blue-500 text-white'
-                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                        ? 'bg-[#EEF0FF] border-[#5B5FEF] text-[#4338CA]'
+                        : 'bg-white border-slate-200 text-slate-600'
                     }`}
                   >
                     {sp}
@@ -184,7 +202,7 @@ export const MobileBookingBottomSheet: React.FC<
               type="button"
               onClick={() => setStep(2)}
               style={{ minHeight: '46px' }}
-              className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-lg"
+              className="w-full rounded-xl bg-[#5B5FEF] hover:bg-[#4A4EE0] text-white text-xs font-black shadow-sm"
             >
               {language === 'tr'
                 ? 'Devam Et (Saat & VIP İkram Seç)'
@@ -196,7 +214,7 @@ export const MobileBookingBottomSheet: React.FC<
         {step === 2 && (
           <div className="space-y-3.5">
             <div>
-              <span className="text-[11px] font-bold text-slate-300 block mb-1.5">
+              <span className="text-[11px] font-bold text-slate-700 block mb-1.5">
                 Müsait Saat Dilimleri (Bugün)
               </span>
               <div className="grid grid-cols-4 gap-2">
@@ -208,8 +226,8 @@ export const MobileBookingBottomSheet: React.FC<
                     style={{ minHeight: '42px' }}
                     className={`rounded-xl text-xs font-bold border ${
                       selectedSlot === slot
-                        ? 'bg-blue-600 text-white border-blue-400'
-                        : 'bg-slate-950 text-slate-300 border-slate-800'
+                        ? 'bg-[#5B5FEF] text-white border-[#5B5FEF]'
+                        : 'bg-white text-slate-700 border-slate-200'
                     }`}
                   >
                     {slot}
@@ -219,8 +237,8 @@ export const MobileBookingBottomSheet: React.FC<
             </div>
 
             {/* App-Exclusive VIP Hospitality Selector */}
-            <div className="rounded-2xl bg-slate-950 border border-slate-800 p-3.5 space-y-2.5">
-              <span className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+            <div className="rounded-2xl bg-[#F8F9FB] border border-slate-200 p-3.5 space-y-2.5">
+              <span className="text-[11px] font-bold text-amber-700 flex items-center gap-1.5">
                 <Coffee className="w-3.5 h-3.5" />
                 Uygulamaya Özel: Salona Girmeden İkramını Seç
               </span>
@@ -237,11 +255,11 @@ export const MobileBookingBottomSheet: React.FC<
                     onClick={() => setHospitalityDrink(drink)}
                     className={`px-2.5 py-2 rounded-xl text-[11px] font-semibold border text-left ${
                       hospitalityDrink === drink
-                        ? 'bg-amber-500/20 border-amber-400 text-amber-200'
-                        : 'bg-slate-900 border-slate-800 text-slate-400'
+                        ? 'bg-amber-50 border-amber-300 text-amber-900'
+                        : 'bg-white border-slate-200 text-slate-600'
                     }`}
                   >
-                    ☕ {drink}
+                    {drink}
                   </button>
                 ))}
               </div>
@@ -251,20 +269,20 @@ export const MobileBookingBottomSheet: React.FC<
                 onClick={() => setQuietSession((q) => !q)}
                 className={`w-full rounded-xl p-2.5 border text-xs font-semibold flex items-center justify-between ${
                   quietSession
-                    ? 'bg-indigo-600/25 border-indigo-400 text-indigo-200'
-                    : 'bg-slate-900 border-slate-800 text-slate-300'
+                    ? 'bg-[#EEF0FF] border-[#5B5FEF] text-[#4338CA]'
+                    : 'bg-white border-slate-200 text-slate-700'
                 }`}
               >
                 <span className="flex items-center gap-2">
                   {quietSession ? (
-                    <VolumeX className="w-4 h-4 text-indigo-300" />
+                    <VolumeX className="w-4 h-4 text-[#5B5FEF]" />
                   ) : (
                     <Volume2 className="w-4 h-4 text-slate-400" />
                   )}
                   Sessiz / Dinlenme Seansı İstiyorum
                 </span>
                 <span className="text-[10px] font-bold">
-                  {quietSession ? 'AKTİF 🤫' : 'Normal Mod'}
+                  {quietSession ? 'AKTİF' : 'Normal Mod'}
                 </span>
               </button>
             </div>
@@ -273,7 +291,7 @@ export const MobileBookingBottomSheet: React.FC<
               type="button"
               onClick={handleWaitlistClaim}
               style={{ minHeight: '42px' }}
-              className="w-full rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs font-semibold flex items-center justify-center gap-1.5"
+              className="w-full rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold flex items-center justify-center gap-1.5"
             >
               <BellRing className="w-3.5 h-3.5" />
               {waitlistStatus
@@ -286,7 +304,7 @@ export const MobileBookingBottomSheet: React.FC<
               type="button"
               onClick={() => setStep(3)}
               style={{ minHeight: '46px' }}
-              className="w-full rounded-xl bg-blue-600 text-white text-xs font-black"
+              className="w-full rounded-xl bg-[#5B5FEF] hover:bg-[#4A4EE0] text-white text-xs font-black"
             >
               {language === 'tr' ? 'Onay Adımına Geç' : 'Review & Confirm'}
             </button>
@@ -295,20 +313,20 @@ export const MobileBookingBottomSheet: React.FC<
 
         {step === 3 && (
           <div className="space-y-3">
-            <div className="rounded-2xl bg-slate-950 border border-slate-800 p-3.5 space-y-2 text-xs">
+            <div className="rounded-2xl bg-[#F8F9FB] border border-slate-200 p-3.5 space-y-2 text-xs">
               <div className="flex justify-between">
-                <span className="text-slate-400">Saat & Uzman:</span>
-                <span className="font-bold text-white">
+                <span className="text-slate-500">Saat & Uzman:</span>
+                <span className="font-bold text-[#111827]">
                   Bugün {selectedSlot} • {selectedSpecialist}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">VIP Ağırlama:</span>
-                <span className="font-bold text-amber-300">
-                  {hospitalityDrink} {quietSession ? '• Sessiz Seans 🤫' : ''}
+                <span className="text-slate-500">VIP Ağırlama:</span>
+                <span className="font-bold text-amber-700">
+                  {hospitalityDrink} {quietSession ? '• Sessiz Seans' : ''}
                 </span>
               </div>
-              <label className="flex items-center gap-2 pt-2 border-t border-slate-800 text-[11px] text-emerald-300 cursor-pointer">
+              <label className="flex items-center gap-2 pt-2 border-t border-slate-200 text-[11px] text-emerald-700 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={sharePassportFormula}
@@ -320,8 +338,8 @@ export const MobileBookingBottomSheet: React.FC<
               </label>
             </div>
 
-            <div className="rounded-xl bg-slate-950 border border-slate-800 p-3 text-xs text-slate-300 flex items-start gap-2">
-              <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 flex items-start gap-2">
+              <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <span>
                 {language === 'tr'
                   ? 'No-Show Politikası: Randevudan 4 saat öncesine kadar ücretsiz erteleme/iptal yapabilirsiniz.'
@@ -330,13 +348,13 @@ export const MobileBookingBottomSheet: React.FC<
             </div>
 
             {confirmed && (
-              <div className="rounded-2xl bg-emerald-950/50 border border-emerald-500/40 p-3.5 flex items-center gap-3">
-                <QrCode className="w-10 h-10 text-emerald-300 shrink-0" />
+              <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-3.5 flex items-center gap-3">
+                <QrCode className="w-10 h-10 text-emerald-700 shrink-0" />
                 <div className="text-xs">
-                  <p className="font-bold text-emerald-200">
+                  <p className="font-bold text-emerald-900">
                     Offline QR Pass Cüzdanına Eklendi!
                   </p>
-                  <p className="text-[11px] text-slate-300">
+                  <p className="text-[11px] text-emerald-700">
                     Uzmanına &ldquo;{hospitalityDrink}&rdquo; ve pasaport formülün iletildi.
                   </p>
                 </div>
@@ -347,7 +365,7 @@ export const MobileBookingBottomSheet: React.FC<
               type="button"
               onClick={handleConfirm}
               style={{ minHeight: '46px' }}
-              className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center justify-center gap-2 shadow-lg"
+              className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center justify-center gap-2 shadow-sm"
             >
               <CheckCircle2 className="w-4 h-4" />
               {confirmed

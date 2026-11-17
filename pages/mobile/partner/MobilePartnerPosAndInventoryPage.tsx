@@ -266,7 +266,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
   if (!access.allowed) {
     return (
       <div
-        className="rounded-2xl bg-rose-950/40 border border-rose-500/40 p-4 text-xs text-rose-200"
+        className="rounded-2xl bg-rose-50 border border-rose-200 p-4 text-xs text-rose-700"
         data-testid="partner-pos-forbidden"
       >
         Erişim Engellendi: {access.reasonCode}
@@ -322,30 +322,30 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
   };
 
   return (
-    <div className="space-y-4" data-testid="mobile-partner-pos-page">
-      <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-3">
+    <div className="space-y-4 text-[#111827]" data-testid="mobile-partner-pos-page">
+      <div className="rounded-3xl bg-white border border-slate-200 p-4 space-y-3 shadow-sm">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-white flex items-center gap-1.5">
-            <QrCode className="w-4 h-4 text-blue-400" />
+          <span className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
+            <QrCode className="w-4 h-4 text-[#5B5FEF]" />
             {language === 'tr'
               ? 'Kamera QR Check-in & Karma Sepet Cep POS'
               : 'QR Check-in & Mixed-Cart Mobile POS'}
           </span>
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
             LOCAL_SIMULATION
           </span>
         </div>
 
-        <div className="rounded-xl bg-slate-950 border border-slate-800 p-3 text-xs space-y-1">
-          <div className="flex justify-between text-slate-300">
+        <div className="rounded-2xl bg-[#F8F9FB] border border-slate-200 p-3 text-xs space-y-1">
+          <div className="flex justify-between text-slate-600">
             <span>Soft Balayage (Hizmet)</span>
-            <span className="font-bold text-white">3,500.00 TRY</span>
+            <span className="font-bold text-[#111827]">3,500.00 TRY</span>
           </div>
-          <div className="flex justify-between text-slate-300">
+          <div className="flex justify-between text-slate-600">
             <span>Keratin Serum 100ml (Barkod Ürün)</span>
-            <span className="font-bold text-white">850.00 TRY</span>
+            <span className="font-bold text-[#111827]">850.00 TRY</span>
           </div>
-          <div className="flex justify-between text-emerald-300 pt-1 border-t border-slate-800">
+          <div className="flex justify-between text-emerald-700 pt-1 border-t border-slate-200">
             <span>Uzman Bahşişi</span>
             <span className="font-bold">+200.00 TRY</span>
           </div>
@@ -355,7 +355,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
           type="button"
           onClick={handleCashCheckout}
           style={{ minHeight: '46px' }}
-          className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center justify-center gap-2"
+          className="w-full rounded-xl bg-[#5B5FEF] hover:bg-[#4A4EE0] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm"
           data-testid="partner-pos-cash-checkout-btn"
         >
           <ShoppingBag className="w-4 h-4" />
@@ -363,14 +363,14 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
         </button>
 
         {checkoutStatus && (
-          <p className="text-[11px] text-emerald-300 flex items-center gap-1">
+          <p className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
             <CheckCircle2 className="w-3.5 h-3.5" />
             {checkoutStatus}
           </p>
         )}
 
-        <div className="rounded-xl bg-rose-950/30 border border-rose-500/30 p-2.5 text-[11px] text-rose-200 flex items-start gap-2">
-          <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+        <div className="rounded-xl bg-amber-50 border border-amber-200 p-2.5 text-[11px] text-amber-800 flex items-start gap-2">
+          <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
           <span>
             Fiziksel Kart Terminali (card_terminal_adapter) ve Müşteri Cüzdanı
             otomatik çekimi canlı PSP kimliği gelene kadar EXTERNAL_HOLD
@@ -380,23 +380,23 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
       </div>
 
       {/* Mobile Barcode PO Receiving */}
-      <div className="rounded-2xl bg-slate-900 border border-slate-800 p-4 space-y-2.5">
-        <span className="text-xs font-bold text-white flex items-center gap-1.5">
-          <PackageCheck className="w-4 h-4 text-emerald-400" />
+      <div className="rounded-3xl bg-white border border-slate-200 p-4 space-y-2.5 shadow-sm">
+        <span className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
+          <PackageCheck className="w-4 h-4 text-[#5B5FEF]" />
           Tedarikçi PO Barkodlu Mal Kabulü
         </span>
         <button
           type="button"
           onClick={handleBarcodePoReceive}
           style={{ minHeight: '44px' }}
-          className="w-full rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 flex items-center justify-center gap-2"
+          className="w-full rounded-xl bg-[#EEF0FF] hover:bg-indigo-100 text-[#4338CA] text-xs font-bold flex items-center justify-center gap-2"
           data-testid="partner-po-receive-btn"
         >
-          <Barcode className="w-4 h-4 text-emerald-400" />
+          <Barcode className="w-4 h-4" />
           PO-2026-01 (12x Serum) Barkod Okut & Stoğa Al
         </button>
         {poStatus && (
-          <p className="text-[11px] text-emerald-300">Sonuç: {poStatus}</p>
+          <p className="text-[11px] text-emerald-700 font-semibold">Sonuç: {poStatus}</p>
         )}
       </div>
     </div>
