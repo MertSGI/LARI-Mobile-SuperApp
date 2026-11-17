@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
 import {
+  Bookmark,
   CalendarCheck,
   Clock,
   Compass,
   ExternalLink,
+  Heart,
   Map,
   MapPin,
   Mic,
   RotateCcw,
   Search,
+  Share2,
   ShieldCheck,
   SlidersHorizontal,
   Star,
@@ -268,7 +271,14 @@ export const MobileExploreMarketplacePage: React.FC<
   onOpenBookingSheet,
   onOneTapRebook,
 }) => {
-  const { showToast, themeMode } = useMobileAppSession();
+  const {
+    showToast,
+    themeMode,
+    likedSocialPosts,
+    savedSocialPosts,
+    toggleLikeSocialPost,
+    toggleSaveSocialPost,
+  } = useMobileAppSession();
   const isDark = themeMode === 'dark';
 
   const [vertical, setVertical] = useState<LariBusinessVertical | 'all'>('all');
@@ -723,6 +733,153 @@ export const MobileExploreMarketplacePage: React.FC<
           );
         })}
       </div>
+
+      {/* Instagram-Style Community "Yapılan İşler & Randevu Akışı" across Every Sector */}
+      {!searchResult.storefrontLockActive && (
+        <section className="space-y-3" data-testid="lari-social-showcase-feed">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-black tracking-wide uppercase">
+              YAPILAN İŞLER • TOPLULUK AKIŞI
+            </h2>
+            <span className="text-xs font-bold text-[#4F46E5]">Tüm Kesimler</span>
+          </div>
+
+          {[
+            {
+              postId: 'post-balayage-merve',
+              tenantSlug: 'atelier-nisantasi',
+              businessName: 'Atelier Nişantaşı Hair & Spa',
+              specialist: 'Merve Yılmaz • Kuaför & Güzellik',
+              caption:
+                '9.12 Soğuk Bej Balayage + Olaplex No.2 onarımı tamamlandı. Bakım formülü müşterinin dijital pasaportuna işlendi.',
+              baseLikes: 142,
+              serviceTag: 'Soft Balayage & Bakım',
+            },
+            {
+              postId: 'post-maslak-auto',
+              tenantSlug: 'maslak-auto-studio',
+              businessName: 'Maslak Auto Studio • Bakım & Servis',
+              specialist: 'Kemal Usta • Oto Servis & Detailing',
+              caption:
+                'Seramik boya koruma + 60.000 km periyodik bakım & bilgisayarlı arıza tespiti şeffaf fiyat dökümü ile teslim edildi.',
+              baseLikes: 98,
+              serviceTag: 'Periyodik Bakım & Bilgisayarlı Kontrol',
+            },
+            {
+              postId: 'post-dent-smile',
+              tenantSlug: 'lari-dent-kadikoy',
+              businessName: 'LARİ Dent & Estetik Kliniği',
+              specialist: 'Dr. Ece Aksoy • Diş & Gülüş Kliniği',
+              caption:
+                'Üst çene OM1 doğal ton E-Max lamina önizleme ve QR kabul ile 45 dakikada dijital prova.',
+              baseLikes: 116,
+              serviceTag: 'Dijital Gülüş Tasarımı Muayenesi',
+            },
+          ].map((post) => {
+            const listing = DEFAULT_MOBILE_MARKETPLACE_LISTINGS.find(
+              (l) => l.slug === post.tenantSlug
+            );
+            const visual = VENUE_VISUAL_CATALOG[post.tenantSlug];
+            const isLiked = likedSocialPosts.includes(post.postId);
+            const isSaved = savedSocialPosts.includes(post.postId);
+
+            return (
+              <article
+                key={post.postId}
+                className={`rounded-3xl overflow-hidden shadow-sm ${cardSurface}`}
+              >
+                <div className="px-4 py-3 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="w-9 h-9 rounded-full bg-[#EEF2FF] text-[#4338CA] border-2 border-[#4F46E5] flex items-center justify-center font-black text-xs shrink-0">
+                      {post.businessName.slice(0, 2).toUpperCase()}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-black truncate">{post.businessName}</p>
+                      <p className="text-xs text-slate-500 truncate">{post.specialist}</p>
+                    </div>
+                  </div>
+                  <ShieldCheck className="w-4 h-4 text-[#4F46E5] shrink-0" />
+                </div>
+
+                {visual && (
+                  <img
+                    src={visual.coverPhotoUrl}
+                    alt={post.caption}
+                    onError={(e) => {
+                      const img = e.currentTarget;
+                      if (img.src !== visual.fallbackSvgUrl) {
+                        img.src = visual.fallbackSvgUrl;
+                      }
+                    }}
+                    className="w-full h-48 object-cover bg-slate-100 border-y-2 border-slate-200 dark:border-slate-700"
+                  />
+                )}
+
+                <div className="p-4 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleLikeSocialPost(post.postId)}
+                        className="flex items-center gap-1 text-xs font-black"
+                      >
+                        <Heart
+                          className={`w-5 h-5 ${
+                            isLiked ? 'text-rose-500 fill-rose-500' : 'text-slate-600'
+                          }`}
+                        />
+                        <span>{post.baseLikes + (isLiked ? 1 : 0)}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => showToast('Gönderi bağlantısı paylaşıma kopyalandı!')}
+                        aria-label="Paylaş"
+                        className="text-slate-600 hover:text-[#4F46E5]"
+                      >
+                        <Share2 className="w-5 h-5" />
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => toggleSaveSocialPost(post.postId)}
+                      aria-label="Kaydet"
+                    >
+                      <Bookmark
+                        className={`w-5 h-5 ${
+                          isSaved ? 'text-[#4F46E5] fill-[#4F46E5]' : 'text-slate-600'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  <p className="text-xs leading-relaxed">
+                    <strong className="mr-1">{post.businessName}</strong>
+                    {post.caption}
+                  </p>
+
+                  {listing && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onOpenBookingSheet?.(
+                          { ...listing, distanceKm: 1.2, estimatedTravelMinutes: 8 },
+                          undefined,
+                          [post.serviceTag]
+                        )
+                      }
+                      style={{ minHeight: '42px' }}
+                      className="w-full rounded-xl bg-[#EEF2FF] hover:bg-indigo-100 border-2 border-[#4F46E5]/30 text-[#4338CA] text-xs font-black flex items-center justify-center gap-1.5"
+                    >
+                      <CalendarCheck className="w-4 h-4" />
+                      Bu İşlem İçin Hemen Randevu Al ({post.serviceTag})
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </section>
+      )}
 
       {/* Business Filter Modal Drawer */}
       {filterDrawerOpen && (

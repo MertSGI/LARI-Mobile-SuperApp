@@ -1,11 +1,22 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Barcode,
+  BookPlus,
   CheckCircle2,
+  Mic,
+  MicOff,
   PackageCheck,
+  Plus,
   QrCode,
+  Receipt,
+  ScanLine,
+  Share2,
   ShieldAlert,
+  ShieldCheck,
   ShoppingBag,
+  Sparkles,
+  Store,
+  Trash2,
 } from 'lucide-react';
 import { Role } from '../../../types';
 import {
@@ -18,6 +29,19 @@ import {
   QrVerificationResult,
 } from '../../../services/mobile/qrCheckinService';
 import { verifyPartnerMobileAccess } from './MobilePartnerAgendaAndInboxPage';
+import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
+import {
+  createMobileQrArtifact,
+  MobileQrArtifact,
+  QR_USAGE_SCENARIOS_BY_KIND,
+} from '../../../services/mobile/lariQrEcosystemService';
+import {
+  buildItemizedCheckoutBreakdown,
+  matchSpokenUtteranceToCatalog,
+  PartnerCatalogItem,
+  VoiceMatchedLine,
+} from '../../../services/mobile/voiceCatalogMatcherService';
+import LariQrCodeSvg from '../../../components/mobile/LariQrCodeSvg';
 
 export interface MobilePosCheckoutRequest {
   userRole: Role | 'guest';
@@ -258,21 +282,262 @@ const uiPosEngine = new PartnerMobilePosEngine();
 
 export const MobilePartnerPosAndInventoryPage: React.FC<
   MobilePartnerPosAndInventoryPageProps
-> = ({ tenantId, userRole, language = 'tr' }) => {
+> = ({ tenantId, userRole }) => {
+  const {
+    themeMode,
+    partnerCatalog,
+    admittedPatientSession,
+    admitCustomerByQr,
+    publishCheckoutBreakdown,
+    addCatalogItem,
+    packageCreditsRemaining,
+    showToast,
+  } = useMobileAppSession();
+  const isDark = themeMode === 'dark';
+
   const access = verifyPartnerMobileAccess(userRole, tenantId, tenantId);
+  const [qrInputRaw, setQrInputRaw] = useState('');
+  const [voiceTranscript, setVoiceTranscript] = useState(
+    'Soft balayage, bir adet keratin bakım ve iki adet serum'
+  );
+  const [isListeningVoice, setIsListeningVoice] = useState(false);
+  const [folioLines, setFolioLines] = useState<VoiceMatchedLine[]>([
+    {
+      catalogItem: partnerCatalog[0],
+      quantity: 1,
+      matchedClause: 'Başlangıç İşlemi',
+      confidence: 1,
+      coveredByPackage: false,
+    },
+  ]);
+  const [tipPercent, setTipPercent] = useState<0 | 5 | 10 | 15>(0);
+  const [generatedPaymentQr, setGeneratedPaymentQr] = useState<MobileQrArtifact | null>(null);
+  const [storefrontPosterQr, setStorefrontPosterQr] = useState<MobileQrArtifact | null>(null);
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemPrice, setNewItemPrice] = useState('1500');
+  const [newItemKeywords, setNewItemKeywords] = useState('');
   const [checkoutStatus, setCheckoutStatus] = useState<string | null>(null);
   const [poStatus, setPoStatus] = useState<string | null>(null);
 
   if (!access.allowed) {
     return (
       <div
-        className="rounded-2xl bg-rose-50 border border-rose-200 p-4 text-xs text-rose-700"
+        className="rounded-2xl bg-rose-50 border-2 border-rose-300 p-4 text-xs text-rose-800 font-bold"
         data-testid="partner-pos-forbidden"
       >
         Erişim Engellendi: {access.reasonCode}
       </div>
     );
   }
+
+  const cardSurface = isDark
+    ? 'bg-slate-900 border-2 border-slate-700 text-white'
+    : 'bg-white border-2 border-slate-300 text-slate-900';
+
+  const innerSurface = isDark
+    ? 'bg-slate-800 border-2 border-slate-700 text-slate-100'
+    : 'bg-[#F8FAFC] border-2 border-slate-200 text-slate-900';
+
+  const packageActive =
+    admittedPatientSession?.admissionType === 'package_qr' ||
+    admittedPatientSession?.admissionType === 'health_tourism_qr';
+
+  const liveBreakdown = useMemo(() => {
+    const baseTipZero = buildItemizedCheckoutBreakdown({
+      appointmentId: admittedPatientSession?.qrId || 'apt-partner-live',
+      customerName: admittedPatientSession?.customerName || 'Selin Demir (Koltuk #2)',
+      admissionType: admittedPatientSession?.admissionType || 'standard_qr',
+      currency: 'TRY',
+      matchedLines: folioLines,
+      optionalTipMajor: 0,
+    });
+    const calculatedTip =
+      tipPercent > 0 ? Math.round((baseTipZero.netPayableBeforeTipMajor * tipPercent) / 100) : 0;
+    return buildItemizedCheckoutBreakdown({
+      appointmentId: baseTipZero.appointmentId,
+      customerName: baseTipZero.customerName,
+      admissionType: baseTipZero.admissionType,
+      currency: 'TRY',
+      matchedLines: folioLines,
+      optionalTipMajor: calculatedTip,
+    });
+  }, [folioLines, admittedPatientSession, tipPercent]);
+
+  const handleSimulatePatientQrScan = (kind: 'ht' | 'package' | 'standard') => {
+    const sampleQr = createMobileQrArtifact(
+      kind === 'ht'
+        ? {
+            kind: 'ht_package_checkin',
+            titleTr: 'Sağlık Turizmi VIP Klinik Kabul QR',
+            subtitleTr: 'Elena Rostova (DE) • 20x Zirkonyum & Transfer Paketi',
+            tenantId,
+            customerId: 'cust-ht-elena',
+            customerName: 'Elena Rostova (Sağlık Turizmi VIP)',
+            htJourneyCode: 'HT-IST-2026-42',
+            packageName: 'VIP Diş Estetiği + 5* Otel Paketi',
+            remainingCredits: packageCreditsRemaining,
+          }
+        : kind === 'package'
+          ? {
+              kind: 'ht_package_checkin',
+              titleTr: 'Çoklu Seans Paket Kabul QR',
+              subtitleTr: 'Selin Demir • 8 Seans Bakım Paketi',
+              tenantId,
+              customerId: 'cust-pkg-selin',
+              customerName: 'Selin Demir (Paketli Müşteri)',
+              packageName: '8 Seans Medikal & Keratin Paketi',
+              remainingCredits: packageCreditsRemaining,
+            }
+          : {
+              kind: 'appointment_checkin',
+              titleTr: 'Standart Randevu Check-in QR',
+              subtitleTr: 'Burak Kaya • 14:30 Randevusu',
+              tenantId,
+              customerId: 'cust-std-burak',
+              customerName: 'Burak Kaya',
+              appointmentId: 'apt-burak-1430',
+            }
+    );
+    setQrInputRaw(sampleQr.rawPayload);
+    admitCustomerByQr(sampleQr.rawPayload, tenantId);
+  };
+
+  const handleVerifyPastedQr = () => {
+    admitCustomerByQr(qrInputRaw, tenantId);
+  };
+
+  const handleVoiceCatalogMatch = (textOverride?: string) => {
+    const inputStr = textOverride ?? voiceTranscript;
+    const matchRes = matchSpokenUtteranceToCatalog(inputStr, partnerCatalog, {
+      packageActive,
+    });
+    if (matchRes.matchedLines.length === 0) {
+      showToast('Katalogda eşleşen işlem bulunamadı; lütfen işlem adını net söyleyin.');
+      return;
+    }
+    setFolioLines((prev) => {
+      const next = [...prev];
+      for (const ml of matchRes.matchedLines) {
+        const idx = next.findIndex((p) => p.catalogItem.id === ml.catalogItem.id);
+        if (idx >= 0) {
+          next[idx] = {
+            ...next[idx],
+            quantity: next[idx].quantity + ml.quantity,
+            coveredByPackage: ml.coveredByPackage,
+          };
+        } else {
+          next.push(ml);
+        }
+      }
+      return next;
+    });
+    showToast(
+      `Sesli söylemden ${matchRes.matchedLines.length} katalog kalemi adisyona eklendi!`
+    );
+  };
+
+  const handleStartMicrophone = () => {
+    const SpeechRec =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) {
+      setIsListeningVoice(false);
+      handleVoiceCatalogMatch();
+      return;
+    }
+    try {
+      const rec = new SpeechRec();
+      rec.lang = 'tr-TR';
+      rec.interimResults = false;
+      setIsListeningVoice(true);
+      rec.onresult = (event: any) => {
+        const spoken = event?.results?.[0]?.[0]?.transcript || '';
+        if (spoken) {
+          setVoiceTranscript(spoken);
+          handleVoiceCatalogMatch(spoken);
+        }
+        setIsListeningVoice(false);
+      };
+      rec.onerror = () => {
+        setIsListeningVoice(false);
+        handleVoiceCatalogMatch();
+      };
+      rec.onend = () => setIsListeningVoice(false);
+      rec.start();
+    } catch {
+      setIsListeningVoice(false);
+      handleVoiceCatalogMatch();
+    }
+  };
+
+  const handleAddManualCatalogItem = (item: PartnerCatalogItem) => {
+    setFolioLines((prev) => {
+      const idx = prev.findIndex((p) => p.catalogItem.id === item.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], quantity: copy[idx].quantity + 1 };
+        return copy;
+      }
+      return [
+        ...prev,
+        {
+          catalogItem: item,
+          quantity: 1,
+          matchedClause: 'Katalogdan Seçildi',
+          confidence: 1,
+          coveredByPackage: Boolean(packageActive && item.packageEligible),
+        },
+      ];
+    });
+  };
+
+  const handlePublishBreakdownAndPaymentQr = () => {
+    const paymentQr = createMobileQrArtifact({
+      kind: 'payment_checkout',
+      titleTr: 'Randevu Sonu Fiyat Dökümü & Ödeme QR',
+      subtitleTr: `${liveBreakdown.customerName} • ${liveBreakdown.grandTotalMajor} ${liveBreakdown.currency}`,
+      tenantId,
+      customerName: liveBreakdown.customerName,
+      appointmentId: liveBreakdown.appointmentId,
+      payableAmountMajor: liveBreakdown.grandTotalMajor,
+      currency: liveBreakdown.currency,
+    });
+    setGeneratedPaymentQr(paymentQr);
+    publishCheckoutBreakdown(liveBreakdown, paymentQr);
+  };
+
+  const handleCreateCustomCatalogItem = () => {
+    if (!newItemName.trim()) return;
+    const parsedPrice = Math.max(10, parseInt(newItemPrice, 10) || 1000);
+    const kws = newItemKeywords
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    addCatalogItem({
+      tenantId,
+      name: newItemName.trim(),
+      category: 'beauty',
+      unitPriceMajor: parsedPrice,
+      currency: 'TRY',
+      taxRateBps: 2000,
+      commissionRateBps: 2500,
+      packageEligible: true,
+      keywords: kws.length > 0 ? kws : newItemName.trim().toLowerCase().split(' '),
+    });
+    setNewItemName('');
+    setNewItemKeywords('');
+  };
+
+  const handleGenerateStorefrontQr = () => {
+    const qr = createMobileQrArtifact({
+      kind: 'storefront_poster',
+      titleTr: 'İşletme Vitrin & Koltuk Randevu QR',
+      subtitleTr: 'Atelier Nişantaşı • %0 Komisyon Doğrudan Mağaza',
+      tenantId,
+      tenantSlug: 'atelier-nisantasi',
+    });
+    setStorefrontPosterQr(qr);
+    showToast('İşletme Vitrin QR kodu oluşturuldu!');
+  };
 
   const handleCashCheckout = () => {
     const res = uiPosEngine.checkoutMixedCart({
@@ -282,30 +547,19 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
       orderCurrency: 'TRY',
       paymentMethod: 'cash',
       idempotencyKey: `ui-pos-${Date.now()}`,
-      items: [
-        {
-          itemType: 'service',
-          name: 'Soft Balayage',
-          productCurrency: 'TRY',
-          unitPriceMinor: 350000,
-          quantity: 1,
-          taxRateBps: 2000,
-          commissionRateBps: 3000,
-        },
-        {
-          itemType: 'product',
-          name: 'Keratin Serum 100ml',
-          productCurrency: 'TRY',
-          unitPriceMinor: 85000,
-          quantity: 1,
-          taxRateBps: 2000,
-          commissionRateBps: 1000,
-        },
-      ],
-      tipMinorUnits: 20000,
+      items: folioLines.map((fl) => ({
+        itemType: fl.catalogItem.category === 'product' ? 'product' : 'service',
+        name: fl.catalogItem.name,
+        productCurrency: 'TRY',
+        unitPriceMinor: fl.coveredByPackage ? 0 : fl.catalogItem.unitPriceMajor * 100,
+        quantity: fl.quantity,
+        taxRateBps: fl.catalogItem.taxRateBps,
+        commissionRateBps: fl.catalogItem.commissionRateBps,
+      })),
+      tipMinorUnits: liveBreakdown.optionalTipMajor * 100,
     });
     setCheckoutStatus(
-      `${res.reasonCode} • Toplam: ${(res.totalMinorUnits / 100).toFixed(2)} TRY • Prim: ${(res.staffCommissionMinor / 100).toFixed(2)} TRY`
+      `${res.reasonCode} • Tahsilat: ${(res.totalMinorUnits / 100).toFixed(2)} TRY • Bahşiş: ${(res.tipMinorUnits / 100).toFixed(2)} TRY • Prim: ${(res.staffCommissionMinor / 100).toFixed(2)} TRY`
     );
   };
 
@@ -322,81 +576,463 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
   };
 
   return (
-    <div className="space-y-4 text-[#111827]" data-testid="mobile-partner-pos-page">
-      <div className="rounded-3xl bg-white border border-slate-200 p-4 space-y-3 shadow-sm">
+    <div className="space-y-4" data-testid="mobile-partner-pos-page">
+      {/* 1. QR İLE MÜŞTERİ KABULÜ (SAĞLIK TURİZMİ / PAKETLİ / STANDART) */}
+      <div className={`rounded-3xl p-4 space-y-3 shadow-sm ${cardSurface}`}>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-black flex items-center gap-1.5">
+            <ScanLine className="w-5 h-5 text-[#4F46E5]" />
+            QR ile Müşteri & Hasta Kabulü
+          </span>
+          <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-[#EEF2FF] text-[#4338CA] border border-[#4F46E5]/30">
+            SAĞLIK TURİZMİ + PAKET
+          </span>
+        </div>
+
+        <p className="text-xs text-slate-500">
+          Sağlık turizmi hastası veya çok seanslı paket müşterisinin QR kodunu okutarak kabul edin; paket hakkı otomatik düşülür.
+        </p>
+
+        <div className="grid grid-cols-3 gap-2">
+          <button
+            type="button"
+            onClick={() => handleSimulatePatientQrScan('ht')}
+            style={{ minHeight: '44px' }}
+            className="rounded-xl bg-[#4F46E5] hover:bg-[#4338CA] text-white text-xs font-bold px-2 py-2"
+            data-testid="partner-admit-ht-qr-btn"
+          >
+            Sağlık Turizmi QR Kabul
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSimulatePatientQrScan('package')}
+            style={{ minHeight: '44px' }}
+            className="rounded-xl bg-[#EEF2FF] border-2 border-[#4F46E5]/40 text-[#4338CA] text-xs font-bold px-2 py-2"
+            data-testid="partner-admit-package-qr-btn"
+          >
+            Paketli Müşteri QR
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSimulatePatientQrScan('standard')}
+            style={{ minHeight: '44px' }}
+            className={`rounded-xl border-2 text-xs font-bold px-2 py-2 ${innerSurface}`}
+          >
+            Standart Check-in
+          </button>
+        </div>
+
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={qrInputRaw}
+            onChange={(e) => setQrInputRaw(e.target.value)}
+            placeholder="Müşteriden kopyalanan QR Payload JSON yapıştırın..."
+            className={`flex-1 rounded-xl px-3 py-2 text-xs font-mono ${innerSurface}`}
+          />
+          <button
+            type="button"
+            onClick={handleVerifyPastedQr}
+            className="px-3.5 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold shrink-0"
+          >
+            Doğrula
+          </button>
+        </div>
+
+        {admittedPatientSession && (
+          <div
+            className="rounded-2xl bg-emerald-50 border-2 border-emerald-400 p-3 space-y-1 text-xs text-emerald-950"
+            data-testid="partner-admitted-patient-banner"
+          >
+            <div className="flex items-center justify-between font-black">
+              <span className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                Kabul Edildi: {admittedPatientSession.customerName}
+              </span>
+              <span className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px]">
+                {admittedPatientSession.admissionType === 'health_tourism_qr'
+                  ? 'VIP SAĞLIK TURİZMİ'
+                  : admittedPatientSession.admissionType === 'package_qr'
+                    ? 'PAKET HAKKI AKTİF'
+                    : 'STANDART CHECK-IN'}
+              </span>
+            </div>
+            {admittedPatientSession.packageName && (
+              <p className="font-semibold">
+                Paket: {admittedPatientSession.packageName} • Kalan Hak:{' '}
+                <strong>{admittedPatientSession.remainingCreditsAfter ?? packageCreditsRemaining}</strong>
+              </p>
+            )}
+            {admittedPatientSession.htJourneyCode && (
+              <p className="text-[11px] font-mono">
+                HT Dosya Kodu: {admittedPatientSession.htJourneyCode} • Pasaport PII Gizli (KVKK)
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 2. SESLİ SÖYLEMDE KATALOG EŞLEŞTİRME & CANLI İŞLEM ADİSYONU */}
+      <div className={`rounded-3xl p-4 space-y-3 shadow-sm ${cardSurface}`}>
         <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
-            <QrCode className="w-4 h-4 text-[#5B5FEF]" />
-            {language === 'tr'
-              ? 'Kamera QR Check-in & Karma Sepet Cep POS'
-              : 'QR Check-in & Mixed-Cart Mobile POS'}
+          <span className="text-sm font-black flex items-center gap-1.5">
+            <Mic className="w-5 h-5 text-[#4F46E5]" />
+            Sesli Söylemde Katalog Eşleştirme
           </span>
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
-            LOCAL_SIMULATION
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-300">
+            TR Ses Motoru
           </span>
         </div>
 
-        <div className="rounded-2xl bg-[#F8F9FB] border border-slate-200 p-3 text-xs space-y-1">
-          <div className="flex justify-between text-slate-600">
-            <span>Soft Balayage (Hizmet)</span>
-            <span className="font-bold text-[#111827]">3,500.00 TRY</span>
-          </div>
-          <div className="flex justify-between text-slate-600">
-            <span>Keratin Serum 100ml (Barkod Ürün)</span>
-            <span className="font-bold text-[#111827]">850.00 TRY</span>
-          </div>
-          <div className="flex justify-between text-emerald-700 pt-1 border-t border-slate-200">
-            <span>Uzman Bahşişi</span>
-            <span className="font-bold">+200.00 TRY</span>
-          </div>
+        <p className="text-xs text-slate-500">
+          Kabul edilen müşteriye uygulanan işlemleri sesle söyleyin; sistem işletme kataloğunuzla otomatik eşleştirip fiyat dökümüne ekler.
+        </p>
+
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={voiceTranscript}
+            onChange={(e) => setVoiceTranscript(e.target.value)}
+            placeholder="Örn: Zirkonyum kron 2 diş ve panoramik röntgen yapıldı..."
+            className={`flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold ${innerSurface}`}
+            data-testid="partner-voice-transcript-input"
+          />
+          <button
+            type="button"
+            onClick={handleStartMicrophone}
+            style={{ minHeight: '44px' }}
+            className={`px-3.5 rounded-xl text-xs font-black flex items-center gap-1.5 shrink-0 ${
+              isListeningVoice
+                ? 'bg-rose-600 text-white animate-pulse'
+                : 'bg-[#4F46E5] hover:bg-[#4338CA] text-white'
+            }`}
+            data-testid="partner-voice-match-btn"
+          >
+            {isListeningVoice ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            {isListeningVoice ? 'Dinleniyor...' : 'Sesle Eşle'}
+          </button>
         </div>
 
-        <button
-          type="button"
-          onClick={handleCashCheckout}
-          style={{ minHeight: '46px' }}
-          className="w-full rounded-xl bg-[#5B5FEF] hover:bg-[#4A4EE0] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm"
-          data-testid="partner-pos-cash-checkout-btn"
+        {/* Instant Spoken Command Examples across Industries */}
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+          {[
+            {
+              label: 'Kuaför: Balayage + 2 Serum',
+              text: 'Soft balayage, iki adet serum ve keratin bakım uygulandı',
+            },
+            {
+              label: 'Klinik/HT: 2 Zirkonyum + Röntgen',
+              text: '2 adet zirkonyum kron ve panoramik röntgen çekildi',
+            },
+            {
+              label: 'Oto Servis: Periyodik + Balata',
+              text: 'Periyodik yağ bakımı ve ön fren balata değişimi yapıldı',
+            },
+          ].map((preset) => (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() => {
+                setVoiceTranscript(preset.text);
+                handleVoiceCatalogMatch(preset.text);
+              }}
+              className={`px-2.5 py-1.5 rounded-xl border-2 text-[11px] font-bold whitespace-nowrap ${innerSurface}`}
+            >
+              <Sparkles className="w-3 h-3 inline mr-1 text-[#4F46E5]" />
+              {preset.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Matched Live Folio Items + Price Breakdown */}
+        <div
+          className={`rounded-2xl p-3 space-y-2 ${innerSurface}`}
+          data-testid="partner-live-breakdown-card"
         >
-          <ShoppingBag className="w-4 h-4" />
-          Nakit Sepet Tahsilatı & Prim İşle
-        </button>
+          <div className="flex items-center justify-between text-xs font-black">
+            <span className="flex items-center gap-1.5">
+              <Receipt className="w-4 h-4 text-[#4F46E5]" />
+              Randevu Sonu İşlem & Fiyat Dökümü
+            </span>
+            <span>{liveBreakdown.lines.length} Kalem</span>
+          </div>
+
+          {folioLines.map((fl) => (
+            <div
+              key={fl.catalogItem.id}
+              className="flex items-center justify-between gap-2 text-xs py-1 border-b border-slate-200 dark:border-slate-700 last:border-b-0"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="font-bold truncate">
+                  {fl.quantity}x {fl.catalogItem.name}
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  {fl.coveredByPackage
+                    ? 'Paket Kapsamında Düşüldü (₺0)'
+                    : `${fl.catalogItem.unitPriceMajor} TRY/br + KDV`}
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="font-black">
+                  {fl.coveredByPackage
+                    ? '0 TRY'
+                    : `${(fl.catalogItem.unitPriceMajor * fl.quantity).toLocaleString('tr-TR')} TRY`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFolioLines((prev) =>
+                      prev.filter((item) => item.catalogItem.id !== fl.catalogItem.id)
+                    )
+                  }
+                  aria-label="Kalemi kaldır"
+                  className="p-1 text-rose-500 hover:text-rose-700"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {/* Optional Tip Controls (Strictly Default 0 TRY!) */}
+          <div className="pt-2 space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-slate-600 dark:text-slate-300">
+                Bahşiş Seçeneği (Tamamen İsteğe Bağlı):
+              </span>
+              <span className="font-black text-[#4F46E5]">
+                {liveBreakdown.optionalTipMajor === 0
+                  ? 'Bahşiş Yok (0 TRY)'
+                  : `+${liveBreakdown.optionalTipMajor} TRY`}
+              </span>
+            </div>
+            <div className="grid grid-cols-4 gap-1.5">
+              {([0, 5, 10, 15] as const).map((pct) => (
+                <button
+                  key={pct}
+                  type="button"
+                  onClick={() => setTipPercent(pct)}
+                  className={`py-1.5 rounded-lg text-xs font-bold border-2 ${
+                    tipPercent === pct
+                      ? 'bg-[#4F46E5] text-white border-[#4338CA]'
+                      : isDark
+                        ? 'bg-slate-900 border-slate-700 text-slate-200'
+                        : 'bg-white border-slate-300 text-slate-700'
+                  }`}
+                >
+                  {pct === 0 ? 'İstemiyorum' : `%${pct}`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="pt-2 border-t-2 border-slate-300 dark:border-slate-700 space-y-1 text-xs">
+            <div className="flex justify-between text-slate-500">
+              <span>Ara Toplam (Paket Öncesi)</span>
+              <span>{liveBreakdown.grossSubtotalMajor.toLocaleString('tr-TR')} TRY</span>
+            </div>
+            {liveBreakdown.packageDiscountMajor > 0 && (
+              <div className="flex justify-between text-emerald-700 font-bold">
+                <span>Paket / HT Hakkı Düşümü</span>
+                <span>-{liveBreakdown.packageDiscountMajor.toLocaleString('tr-TR')} TRY</span>
+              </div>
+            )}
+            <div className="flex justify-between text-slate-500">
+              <span>KDV Toplamı</span>
+              <span>{liveBreakdown.taxTotalMajor.toLocaleString('tr-TR')} TRY</span>
+            </div>
+            <div className="flex justify-between text-base font-black pt-1">
+              <span>Ödenecek Genel Toplam</span>
+              <span className="text-[#4F46E5]">
+                {liveBreakdown.grandTotalMajor.toLocaleString('tr-TR')} TRY
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-2">
+          <button
+            type="button"
+            onClick={handlePublishBreakdownAndPaymentQr}
+            style={{ minHeight: '46px' }}
+            className="w-full rounded-xl bg-[#4F46E5] hover:bg-[#4338CA] text-white text-xs font-black flex items-center justify-center gap-2 shadow-sm"
+            data-testid="partner-publish-breakdown-qr-btn"
+          >
+            <QrCode className="w-4 h-4" />
+            Randevuyu Bitir, Fiyat Dökümü Gönder & Ödeme QR Üret
+          </button>
+
+          <button
+            type="button"
+            onClick={handleCashCheckout}
+            style={{ minHeight: '44px' }}
+            className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-2"
+            data-testid="partner-pos-cash-checkout-btn"
+          >
+            <ShoppingBag className="w-4 h-4" />
+            Nakit Kasa Tahsilatı & Uzman Primi İşle
+          </button>
+        </div>
 
         {checkoutStatus && (
-          <p className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5" />
+          <p className="text-xs text-emerald-700 font-bold flex items-center gap-1">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
             {checkoutStatus}
           </p>
         )}
 
-        <div className="rounded-xl bg-amber-50 border border-amber-200 p-2.5 text-[11px] text-amber-800 flex items-start gap-2">
-          <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <span>
-            Fiziksel Kart Terminali (card_terminal_adapter) ve Müşteri Cüzdanı
-            otomatik çekimi canlı PSP kimliği gelene kadar EXTERNAL_HOLD
-            kapsamındadır.
+        {generatedPaymentQr && (
+          <div
+            className={`rounded-2xl p-4 space-y-2.5 text-center ${innerSurface}`}
+            data-testid="partner-generated-payment-qr"
+          >
+            <span className="text-xs font-black text-[#4F46E5] block">
+              MÜŞTERİ ÖDEME & FİYAT DÖKÜMÜ QR HAZIR
+            </span>
+            <div className="flex justify-center">
+              <LariQrCodeSvg payload={generatedPaymentQr.rawPayload} sizePx={136} />
+            </div>
+            <div className="text-left rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-2.5 space-y-1">
+              <span className="text-[11px] font-black uppercase text-slate-500">
+                Bu QR Nerelerde Kullanılır?
+              </span>
+              {generatedPaymentQr.usageScenariosTr.map((u) => (
+                <p key={u} className="text-xs font-medium flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>{u}</span>
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 3. İŞLETME KATALOĞU YÖNETİMİ & VİTRİN QR OLUŞTURUCU */}
+      <div className={`rounded-3xl p-4 space-y-3 shadow-sm ${cardSurface}`}>
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-black flex items-center gap-1.5">
+            <BookPlus className="w-5 h-5 text-[#4F46E5]" />
+            İşletme Kataloğu & Vitrin QR Oluşturucu
           </span>
+          <span className="text-xs font-bold text-slate-500">
+            {partnerCatalog.length} Kayıt
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+          {partnerCatalog.slice(0, 6).map((catItem) => (
+            <button
+              key={catItem.id}
+              type="button"
+              onClick={() => handleAddManualCatalogItem(catItem)}
+              className={`px-3 py-1.5 rounded-xl border-2 text-xs font-bold whitespace-nowrap flex items-center gap-1 ${innerSurface}`}
+            >
+              <Plus className="w-3.5 h-3.5 text-[#4F46E5]" />
+              {catItem.name} ({catItem.unitPriceMajor}₺)
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          <input
+            type="text"
+            value={newItemName}
+            onChange={(e) => setNewItemName(e.target.value)}
+            placeholder="Yeni işlem adı"
+            className={`col-span-2 rounded-xl px-3 py-2 text-xs font-medium ${innerSurface}`}
+          />
+          <input
+            type="number"
+            value={newItemPrice}
+            onChange={(e) => setNewItemPrice(e.target.value)}
+            placeholder="TRY"
+            className={`rounded-xl px-3 py-2 text-xs font-bold ${innerSurface}`}
+          />
+        </div>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newItemKeywords}
+            onChange={(e) => setNewItemKeywords(e.target.value)}
+            placeholder="Sesli anahtar kelimeler (virgülle)"
+            className={`flex-1 rounded-xl px-3 py-2 text-xs ${innerSurface}`}
+          />
+          <button
+            type="button"
+            onClick={handleCreateCustomCatalogItem}
+            className="px-4 py-2 rounded-xl bg-[#4F46E5] text-white text-xs font-black"
+          >
+            Kataloğa Ekle
+          </button>
+        </div>
+
+        <div className="pt-2 border-t-2 border-slate-200 dark:border-slate-700 space-y-2.5">
+          <button
+            type="button"
+            onClick={handleGenerateStorefrontQr}
+            style={{ minHeight: '44px' }}
+            className="w-full rounded-xl bg-[#EEF2FF] border-2 border-[#4F46E5]/40 text-[#4338CA] text-xs font-black flex items-center justify-center gap-2"
+            data-testid="partner-generate-storefront-qr-btn"
+          >
+            <Store className="w-4 h-4" />
+            İşletme Vitrin / Koltuk Randevu QR Oluştur (%0 Komisyon)
+          </button>
+
+          {storefrontPosterQr && (
+            <div className={`rounded-2xl p-3.5 space-y-2 ${innerSurface}`}>
+              <div className="flex items-center gap-3">
+                <LariQrCodeSvg payload={storefrontPosterQr.rawPayload} sizePx={96} />
+                <div className="space-y-1 text-xs min-w-0">
+                  <p className="font-black">Vitrin & Masa QR Hazır</p>
+                  {QR_USAGE_SCENARIOS_BY_KIND.storefront_poster.map((s) => (
+                    <p key={s} className="text-[11px] text-slate-500">
+                      • {s}
+                    </p>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => showToast('Vitrin QR linki panoya kopyalandı!')}
+                    className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-[#4F46E5]"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    Linki Paylaş
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Mobile Barcode PO Receiving */}
-      <div className="rounded-3xl bg-white border border-slate-200 p-4 space-y-2.5 shadow-sm">
-        <span className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
-          <PackageCheck className="w-4 h-4 text-[#5B5FEF]" />
+      {/* 4. REGÜLATİF SINIR & PO BARKOD KABUL */}
+      <div className={`rounded-3xl p-4 space-y-2.5 shadow-sm ${cardSurface}`}>
+        <div className="rounded-xl bg-amber-50 border-2 border-amber-300 p-3 text-xs text-amber-900 flex items-start gap-2">
+          <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <span>
+            Fiziksel POS donanımı (`card_terminal_adapter`) canlı PSP kimliği gelene kadar{' '}
+            <strong>EXTERNAL_HOLD</strong> kapsamındadır; QR/Nakit tahsilat ve kalem dökümü tam çalışır.
+          </span>
+        </div>
+
+        <span className="text-xs font-black flex items-center gap-1.5 pt-1">
+          <PackageCheck className="w-4 h-4 text-[#4F46E5]" />
           Tedarikçi PO Barkodlu Mal Kabulü
         </span>
         <button
           type="button"
           onClick={handleBarcodePoReceive}
           style={{ minHeight: '44px' }}
-          className="w-full rounded-xl bg-[#EEF0FF] hover:bg-indigo-100 text-[#4338CA] text-xs font-bold flex items-center justify-center gap-2"
+          className="w-full rounded-xl bg-[#EEF2FF] border-2 border-[#4F46E5]/30 text-[#4338CA] text-xs font-bold flex items-center justify-center gap-2"
           data-testid="partner-po-receive-btn"
         >
           <Barcode className="w-4 h-4" />
           PO-2026-01 (12x Serum) Barkod Okut & Stoğa Al
         </button>
         {poStatus && (
-          <p className="text-[11px] text-emerald-700 font-semibold">Sonuç: {poStatus}</p>
+          <p className="text-xs text-emerald-700 font-bold flex items-center gap-1">
+            <ShieldCheck className="w-4 h-4" />
+            Sonuç: {poStatus}
+          </p>
         )}
       </div>
     </div>

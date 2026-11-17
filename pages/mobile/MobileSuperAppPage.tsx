@@ -38,12 +38,15 @@ export const MobileSuperAppContent: React.FC = () => {
   const { activeBooking, toastMessage, confirmBooking } =
     useMobileAppSession();
 
-  const initialModeParam = searchParams.get('mode');
-  const initialSlugParam = searchParams.get('slug');
-  const initialPersonaParam = searchParams.get(
-    'persona'
-  ) as MobilePersonaType | null;
-  const explicitRoleParam = searchParams.get('role');
+  const windowSearchParams =
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const getParam = (key: string) =>
+    searchParams.get(key) ?? windowSearchParams?.get(key) ?? null;
+
+  const initialModeParam = getParam('mode');
+  const initialSlugParam = getParam('slug');
+  const initialPersonaParam = getParam('persona') as MobilePersonaType | null;
+  const explicitRoleParam = getParam('role');
 
   const isLocalOrNativePreviewHost =
     typeof window !== 'undefined' &&

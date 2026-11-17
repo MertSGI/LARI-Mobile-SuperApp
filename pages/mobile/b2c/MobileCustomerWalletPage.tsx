@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   BookOpen,
   Calendar,
   CalendarPlus,
   CheckCircle2,
   Coffee,
+  Copy,
   Gift,
   Package,
   QrCode,
+  Receipt,
   RefreshCw,
   Share2,
   Sparkles,
@@ -23,6 +25,11 @@ import {
 } from '../../../services/mobile/qrCheckinService';
 import { buildAppointmentIcsContent } from '../../../services/mobile/nativeBridgeService';
 import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
+import {
+  createMobileQrArtifact,
+  QR_USAGE_SCENARIOS_BY_KIND,
+} from '../../../services/mobile/lariQrEcosystemService';
+import LariQrCodeSvg from '../../../components/mobile/LariQrCodeSvg';
 
 export interface MobileCustomerWalletPageProps {
   tenantId: string;
@@ -37,23 +44,31 @@ export const MobileCustomerWalletPage: React.FC<
   MobileCustomerWalletPageProps
 > = ({ tenantId, customerId = 'cust-demo-1', language = 'tr', onGoToExplore }) => {
   const {
+    themeMode,
     activeBooking,
     passportEntries,
     loyaltyPoints,
     stampCount,
     walletBalanceMinor,
+    packageCreditsRemaining,
+    completedBreakdown,
+    activePaymentQr,
     rescheduleActiveBooking,
     cancelActiveBooking,
     setHospitalityPreferences,
     addLoyaltyPoints,
     incrementStamp,
     redeemGiftCode,
+    completeQrPayment,
     showToast,
   } = useMobileAppSession();
+  const isDark = themeMode === 'dark';
 
   const [activeSubTab, setActiveSubTab] = useState<
     'qr' | 'passport' | 'loyalty' | 'reviews'
   >('qr');
+  const [qrMode, setQrMode] = useState<'appointment' | 'package'>('appointment');
+  const [customerTipRate, setCustomerTipRate] = useState<0 | 5 | 10 | 15>(0);
   const [liveStage, setLiveStage] = useState<1 | 2 | 3 | 4>(2);
   const [cancelledEmpty, setCancelledEmpty] = useState(false);
   const [showRescheduleSlots, setShowRescheduleSlots] = useState(false);
@@ -68,6 +83,13 @@ export const MobileCustomerWalletPage: React.FC<
   const [rating, setRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
   const [reviewStatus, setReviewStatus] = useState<string | null>(null);
+
+  const cardSurface = isDark
+    ? 'bg-slate-900 border-2 border-slate-700 text-white'
+    : 'bg-white border-2 border-slate-300 text-slate-900';
+  const innerSurface = isDark
+    ? 'bg-slate-800 border-2 border-slate-700 text-slate-100'
+    : 'bg-[#F8FAFC] border-2 border-slate-200 text-slate-900';
 
   const displayedBooking = activeBooking
     ? activeBooking
@@ -103,6 +125,38 @@ export const MobileCustomerWalletPage: React.FC<
     businessName: displayedBooking?.businessName || 'Atelier Nişantaşı Hair & Spa',
     serviceName: displayedBooking?.serviceName || 'Soft Balayage & Bakım',
   });
+
+  const packageAdmissionQr = useMemo(
+    () =>
+      createMobileQrArtifact({
+        kind: 'ht_package_checkin',
+        titleTr: '8 Seans Paketli Müşteri Kabul QR',
+        subtitleTr: `Kalan Seans Hakkı: ${packageCreditsRemaining} / 8`,
+        tenantId,
+        customerId,
+        customerName: 'Mert Özçelikbaş (Paketli Müşteri)',
+        packageName: '8 Seans Lazer / Medikal Bakım Paketi',
+        remainingCredits: packageCreditsRemaining,
+      }),
+    [tenantId, customerId, packageCreditsRemaining]
+  );
+
+  const activeQrPayload =
+    qrMode === 'package' ? packageAdmissionQr.rawPayload : qrPass.rawQrPayload;
+
+  const activeQrScenarios =
+    qrMode === 'package'
+      ? QR_USAGE_SCENARIOS_BY_KIND.ht_package_checkin
+      : QR_USAGE_SCENARIOS_BY_KIND.appointment_checkin;
+
+  const handleCopyQrPayload = async () => {
+    try {
+      await navigator.clipboard?.writeText(activeQrPayload);
+    } catch {
+      // Headless fallback
+    }
+    showToast('QR kodu doğrulama tokeni kopyalandı; Partner ekranında kabul edilebilir.');
+  };
 
   const handleExportCalendarIcs = () => {
     if (!displayedBooking) return;
@@ -348,15 +402,176 @@ export const MobileCustomerWalletPage: React.FC<
                 </div>
 
                 <div className="p-4 space-y-3">
-                  <div className="rounded-2xl bg-[#F8F9FB] border border-slate-200 p-4 flex flex-col items-center justify-center text-[#111827]">
-                    <QrCode className="w-28 h-28 text-[#111827]" />
-                    <span className="text-[10px] font-mono mt-2 text-slate-500">
-                      SIG: {qrPass.payload.signature} • ID: {qrPass.payload.appointmentId}
+                  {/* QR Kind Switcher: Randevu QR vs Paketli Müşteri Kabul QR */}
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setQrMode('appointment')}
+                      className={`py-2 rounded-xl text-xs font-black border-2 transition ${
+                        qrMode === 'appointment'
+                          ? 'bg-[#4F46E5] text-white border-[#4338CA]'
+                          : innerSurface
+                      }`}
+                      data-testid="wallet-qr-mode-appointment"
+                    >
+                      Randevu Check-in QR
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQrMode('package')}
+                      className={`py-2 rounded-xl text-xs font-black border-2 transition ${
+                        qrMode === 'package'
+                          ? 'bg-[#4F46E5] text-white border-[#4338CA]'
+                          : innerSurface
+                      }`}
+                      data-testid="wallet-qr-mode-package"
+                    >
+                      Paketli Kabul QR ({packageCreditsRemaining}/8)
+                    </button>
+                  </div>
+
+                  <div className={`rounded-2xl p-4 flex flex-col items-center justify-center ${innerSurface}`}>
+                    <LariQrCodeSvg payload={activeQrPayload} sizePx={152} />
+                    <span className="text-[11px] font-mono mt-2.5 text-slate-500">
+                      {qrMode === 'package'
+                        ? `PAKET QR • Kalan Hak: ${packageCreditsRemaining}/8`
+                        : `SIG: ${qrPass.payload.signature} • ID: ${qrPass.payload.appointmentId}`}
                     </span>
-                    <span className="text-[11px] font-bold text-[#5B5FEF] mt-1">
+                    <span className="text-xs font-bold text-[#4F46E5] mt-1">
                       İkram: {selectedDrink} • {quietMode ? 'Sessiz Seans' : 'Standart'}
                     </span>
+
+                    <button
+                      type="button"
+                      onClick={handleCopyQrPayload}
+                      className="mt-2.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600 text-xs font-bold flex items-center gap-1.5"
+                    >
+                      <Copy className="w-3.5 h-3.5 text-[#4F46E5]" />
+                      QR Tokeni Kopyala / Test Et
+                    </button>
                   </div>
+
+                  {/* QR Usage Scenarios Guide */}
+                  <div className={`rounded-2xl p-3 space-y-1.5 ${innerSurface}`}>
+                    <span className="text-xs font-black uppercase tracking-wide text-slate-500 block">
+                      Bu QR Nerelerde Kullanılır?
+                    </span>
+                    {activeQrScenarios.map((sc) => (
+                      <p key={sc} className="text-xs font-medium flex items-start gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <span>{sc}</span>
+                      </p>
+                    ))}
+                  </div>
+
+                  {/* Post-Appointment Itemized Breakdown & Optional-Tip QR Payment */}
+                  {completedBreakdown && (
+                    <div
+                      className={`rounded-2xl p-3.5 space-y-2.5 border-2 ${
+                        completedBreakdown.paidViaQr
+                          ? 'bg-emerald-50 border-emerald-400 text-emerald-950'
+                          : 'bg-[#EEF2FF] border-[#4F46E5] text-slate-900'
+                      }`}
+                      data-testid="wallet-checkout-breakdown-card"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black flex items-center gap-1.5 text-[#4338CA]">
+                          <Receipt className="w-4 h-4" />
+                          Randevu Sonu İşlem & Fiyat Dökümü
+                        </span>
+                        <span className="text-[11px] font-black px-2 py-0.5 rounded bg-white border border-indigo-300">
+                          {completedBreakdown.paidViaQr ? 'ÖDENDİ ✓' : 'ÖDEME BEKLİYOR'}
+                        </span>
+                      </div>
+
+                      <div className="space-y-1 text-xs bg-white rounded-xl p-2.5 border border-slate-200 text-slate-900">
+                        {completedBreakdown.lines.map((ln) => (
+                          <div key={ln.catalogItemId} className="flex justify-between">
+                            <span>
+                              {ln.quantity}x {ln.name}
+                              {ln.coveredByPackage ? ' (Paket)' : ''}
+                            </span>
+                            <span className="font-bold">
+                              {ln.coveredByPackage
+                                ? '0 TRY'
+                                : `${ln.subtotalMajor.toLocaleString('tr-TR')} TRY`}
+                            </span>
+                          </div>
+                        ))}
+                        <div className="border-t border-slate-200 pt-1 flex justify-between font-semibold text-slate-600">
+                          <span>KDV + Net İşlem Tutarı</span>
+                          <span>
+                            {completedBreakdown.netPayableBeforeTipMajor.toLocaleString('tr-TR')}{' '}
+                            {completedBreakdown.currency}
+                          </span>
+                        </div>
+                      </div>
+
+                      {!completedBreakdown.paidViaQr && (
+                        <>
+                          <div className="space-y-1">
+                            <span className="text-xs font-bold block text-slate-800">
+                              İsteğe Bağlı Uzman Bahşişi (Zorunlu Değildir):
+                            </span>
+                            <div className="grid grid-cols-4 gap-1.5">
+                              {([0, 5, 10, 15] as const).map((pct) => (
+                                <button
+                                  key={pct}
+                                  type="button"
+                                  onClick={() => setCustomerTipRate(pct)}
+                                  className={`py-1.5 rounded-lg text-xs font-bold border-2 ${
+                                    customerTipRate === pct
+                                      ? 'bg-[#4F46E5] text-white border-[#4338CA]'
+                                      : 'bg-white text-slate-800 border-slate-300'
+                                  }`}
+                                >
+                                  {pct === 0 ? 'Bahşiş Yok' : `%${pct}`}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {activePaymentQr && (
+                            <div className="flex justify-center py-1">
+                              <LariQrCodeSvg payload={activePaymentQr.rawPayload} sizePx={110} />
+                            </div>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const tipVal =
+                                customerTipRate > 0
+                                  ? Math.round(
+                                      (completedBreakdown.netPayableBeforeTipMajor *
+                                        customerTipRate) /
+                                        100
+                                    )
+                                  : 0;
+                              completeQrPayment(tipVal);
+                            }}
+                            style={{ minHeight: '44px' }}
+                            className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center justify-center gap-1.5"
+                            data-testid="customer-confirm-qr-payment-btn"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            QR ile Ödemeyi Onayla (
+                            {(
+                              completedBreakdown.netPayableBeforeTipMajor +
+                              (customerTipRate > 0
+                                ? Math.round(
+                                    (completedBreakdown.netPayableBeforeTipMajor *
+                                      customerTipRate) /
+                                      100
+                                  )
+                                : 0)
+                            ).toLocaleString('tr-TR')}{' '}
+                            {completedBreakdown.currency})
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   {showRescheduleSlots && (
                     <div className="rounded-2xl bg-[#F8F9FB] border border-indigo-200 p-3 space-y-2">

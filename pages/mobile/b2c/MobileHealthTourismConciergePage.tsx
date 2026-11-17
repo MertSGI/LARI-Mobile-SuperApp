@@ -1,19 +1,23 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Building2,
   CalendarCheck2,
   Camera,
   Car,
   CheckCircle2,
+  Copy,
   FileCheck2,
   Globe2,
   MessageCircle,
   PlaneLanding,
   PlaneTakeoff,
+  QrCode,
   ShieldCheck,
   Stethoscope,
 } from 'lucide-react';
 import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
+import { createMobileQrArtifact } from '../../../services/mobile/lariQrEcosystemService';
+import LariQrCodeSvg from '../../../components/mobile/LariQrCodeSvg';
 
 export type SupportedHtCurrency = 'EUR' | 'USD' | 'GBP' | 'TRY';
 export type SupportedHtLanguage = 'en' | 'de' | 'ar' | 'ru' | 'tr';
@@ -299,7 +303,8 @@ export const MobileHealthTourismConciergePage: React.FC<
   healthTourismEnabled = true,
   language = 'tr',
 }) => {
-  const { showToast } = useMobileAppSession();
+  const { showToast, themeMode } = useMobileAppSession();
+  const isDark = themeMode === 'dark';
   const [currency, setCurrency] = useState<SupportedHtCurrency>('EUR');
   const [treatment, setTreatment] =
     useState<MobileHtIntakePayload['treatmentCategory']>('dental_implant_veneers');
@@ -327,6 +332,22 @@ export const MobileHealthTourismConciergePage: React.FC<
     treatmentCategory: treatment,
     attachedPhotoCount: 3,
   });
+
+  const htAdmissionQr = useMemo(
+    () =>
+      createMobileQrArtifact({
+        kind: 'ht_package_checkin',
+        titleTr: 'VIP Sağlık Turizmi Kabul QR',
+        subtitleTr: 'Elena Rostova (DE) • HT-IST-2026-42',
+        tenantId,
+        customerId: 'cust-ht-elena',
+        customerName: 'Elena Rostova (Sağlık Turizmi VIP)',
+        htJourneyCode: 'HT-IST-2026-42',
+        packageName: 'Her Şey Dahil Medikal + 5* Otel + VIP Transfer Paketi',
+        remainingCredits: 4,
+      }),
+    [tenantId]
+  );
 
   if (!state.success) {
     return (
@@ -513,7 +534,46 @@ export const MobileHealthTourismConciergePage: React.FC<
 
       {/* Step-by-Step Live Medical Travel Itinerary */}
       <div
-        className="rounded-2xl bg-white border border-slate-200 p-4 space-y-3 shadow-sm"
+        className={`rounded-3xl border-2 p-4 space-y-3 shadow-sm ${
+          isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+        }`}
+        data-testid="ht-vip-admission-qr-card"
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-black flex items-center gap-1.5 text-[#4F46E5]">
+            <QrCode className="w-4 h-4" />
+            Havalimanı VIP Transfer & Klinik Hasta Kabul QR
+          </span>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-300">
+            HT-IST-2026-42
+          </span>
+        </div>
+        <div className="flex flex-col items-center gap-2 py-1">
+          <LariQrCodeSvg payload={htAdmissionQr.rawPayload} sizePx={136} />
+          <p className="text-xs text-slate-500 text-center">
+            Pasaport numaranız maskelenerek (KVKK) yalnızca transfer, otel ve klinik kabul için kullanılır.
+          </p>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await navigator.clipboard?.writeText(htAdmissionQr.rawPayload);
+              } catch {
+                // fallback
+              }
+              showToast('VIP Sağlık Turizmi QR tokeni kopyalandı!');
+            }}
+            className="px-3 py-1.5 rounded-xl bg-[#EEF2FF] border-2 border-[#4F46E5]/30 text-[#4338CA] text-xs font-bold flex items-center gap-1.5"
+          >
+            <Copy className="w-3.5 h-3.5" />
+            Sağlık Turizmi QR Tokeni Kopyala
+          </button>
+        </div>
+      </div>
+
+      {/* Step-by-Step Live Medical Travel Itinerary */}
+      <div
+        className="rounded-2xl bg-white border-2 border-slate-300 p-4 space-y-3 shadow-sm"
         data-testid="ht-itinerary-timeline"
       >
         <div className="flex items-center justify-between">

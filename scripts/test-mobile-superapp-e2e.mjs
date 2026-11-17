@@ -99,6 +99,13 @@ async function run() {
       await page.waitForSelector('[data-testid="mobile-explore-marketplace-page"]');
       await page.waitForSelector('[data-testid="interactive-radar-map-card"]');
       await page.waitForSelector('[data-testid="marketplace-card-maslak-auto-studio"]');
+      await page.waitForSelector('[data-testid="lari-social-showcase-feed"]');
+
+      // Header Sun/Moon Quick Theme Toggle
+      await page.click('[data-testid="header-theme-toggle-btn"]');
+      assert.equal(await page.getAttribute('[data-testid="lari-mobile-app-shell"]', 'data-theme'), 'dark');
+      await page.click('[data-testid="header-theme-toggle-btn"]');
+      assert.equal(await page.getAttribute('[data-testid="lari-mobile-app-shell"]', 'data-theme'), 'light');
 
       // A.2) Open Filter Drawer & verify auto_service + Google Business options
       await page.click('[data-testid="explore-filter-drawer-btn"]');
@@ -118,10 +125,12 @@ async function run() {
       );
       assert.equal(overflowB2c, false, `Horizontal overflow detected on ${vp.name} B2C`);
 
-      // B) Switch to Wallet, Live Companion, Care Passport & Stamp Card
+      // B) Switch to Wallet, Live Companion, Real QR SVG, Package QR Mode, Care Passport & Stamp Card
       await page.click('[data-testid="mobile-tab-wallet"]');
       await page.waitForSelector('[data-testid="live-appointment-companion-card"]');
       await page.waitForSelector('[data-testid="wallet-qr-pass-card"]');
+      await page.waitForSelector('[data-testid="lari-qr-svg-container"]');
+      await page.click('[data-testid="wallet-qr-mode-package"]');
       await page.click('[data-testid="wallet-subtab-passport"]');
       await page.waitForSelector('[data-testid="wallet-care-passport-panel"]');
       await page.click('[data-testid="wallet-subtab-loyalty"]');
@@ -132,35 +141,58 @@ async function run() {
       await page.waitForSelector('[data-testid="ai-before-after-viewfinder"]');
       await page.waitForSelector('[data-testid="ai-comparison-slider"]');
 
-      // C) Tap 5th Floating Avatar Tab (Profile) -> Test Dark/Light toggle & Switch to HT Patient Concierge
+      // C) Tap 5th Floating Avatar Tab (Profile) -> Test Panel Boundaries, Dark/Light toggle & Switch to HT Patient Concierge + VIP QR
       await page.click('[data-testid="mobile-tab-profile"]');
       await page.waitForSelector('[data-testid="mobile-profile-settings-page"]');
+      await page.waitForSelector('[data-testid="panel-visibility-boundaries-card"]');
       await page.click('[data-testid="theme-dark-btn"]');
       const darkTheme = await page.getAttribute('[data-testid="lari-mobile-app-shell"]', 'data-theme');
       assert.equal(darkTheme, 'dark');
       await page.click('[data-testid="theme-light-btn"]');
       await page.click('[data-testid="persona-pill-ht_patient"]');
       await page.waitForSelector('[data-testid="mobile-ht-concierge-page"]');
+      await page.waitForSelector('[data-testid="ht-vip-admission-qr-card"]');
       await page.waitForSelector('[data-testid="ht-itinerary-timeline"]');
       await page.waitForSelector('[data-testid="ht-postop-recovery-card"]');
 
-      // D) Tap 5th Floating Avatar Tab (Profile) -> Switch to Partner Mode, Commission Card & POS
+      // D) Switch to Partner Mode -> HT QR Admission + Voice Catalog Match + Publish Breakdown & Optional-Tip Payment QR
       await page.click('[data-testid="mobile-tab-profile"]');
       await page.click('[data-testid="mobile-mode-toggle-btn"]');
       await page.waitForSelector('[data-testid="mobile-partner-agenda-page"]');
       await page.waitForSelector('[data-testid="partner-daily-commission-card"]');
       await page.click('[data-testid="mobile-tab-partner_pos"]');
       await page.waitForSelector('[data-testid="mobile-partner-pos-page"]');
+      await page.click('[data-testid="partner-admit-ht-qr-btn"]');
+      await page.waitForSelector('[data-testid="partner-admitted-patient-banner"]');
+      await page.click('[data-testid="partner-voice-match-btn"]');
+      await page.waitForSelector('[data-testid="partner-live-breakdown-card"]');
+      await page.click('[data-testid="partner-publish-breakdown-qr-btn"]');
+      await page.waitForSelector('[data-testid="partner-generated-payment-qr"]');
       await page.click('[data-testid="partner-pos-cash-checkout-btn"]');
 
-      // E) Tap 5th Floating Avatar Tab (Partner Switch/Profile) -> Switch to Clinic Practitioner PHI Persona & Touch Canvas
+      // D.2) Switch back to Customer Mode & confirm Payment QR with Optional Tip in Wallet
+      await page.click('[data-testid="mobile-tab-partner_switch"]');
+      await page.click('[data-testid="mobile-mode-toggle-btn"]');
+      await page.click('[data-testid="mobile-tab-wallet"]');
+      await page.waitForSelector('[data-testid="wallet-checkout-breakdown-card"]');
+      await page.click('[data-testid="customer-confirm-qr-payment-btn"]');
+
+      // D.3) Switch back to Partner -> Clinic Practitioner PHI Persona & Touch Canvas
+      await page.click('[data-testid="mobile-tab-profile"]');
+      await page.click('[data-testid="mobile-mode-toggle-btn"]');
       await page.click('[data-testid="mobile-tab-partner_switch"]');
       await page.click('[data-testid="persona-pill-clinic_practitioner"]');
       await page.waitForSelector('[data-testid="mobile-clinic-workspace"]');
       await page.waitForSelector('[data-testid="clinic-touch-drawing-studio"]');
       await page.waitForSelector('[data-testid="clinic-consultation-canvas"]');
 
-      // F) White-Label Storefront Lock (/m?slug=atelier-nisantasi)
+      // F) Role-Based Panel Isolation (?app=1&role=guest must lock out Partner toggle)
+      await page.goto(`${url}/?app=1&role=guest#/`, { waitUntil: 'networkidle' });
+      await page.click('[data-testid="mobile-tab-profile"]');
+      await page.waitForSelector('[data-testid="panel-visibility-boundaries-card"]');
+      assert.equal(await page.locator('[data-testid="mobile-mode-toggle-btn"]').count(), 0);
+
+      // G) White-Label Storefront Lock (/m?slug=atelier-nisantasi)
       await page.goto(`${url}/#/m?slug=atelier-nisantasi`, { waitUntil: 'networkidle' });
       await page.waitForSelector('[data-testid="white-label-lock-badge"]');
       await page.waitForSelector('[data-testid="white-label-storefront-banner"]');

@@ -76,7 +76,8 @@ import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
 export const MobilePartnerAgendaAndInboxPage: React.FC<
   MobilePartnerAgendaAndInboxPageProps
 > = ({ tenantId, userRole, language = 'tr' }) => {
-  const { appendPassportFormula, showToast } = useMobileAppSession();
+  const { appendPassportFormula, showToast, themeMode } = useMobileAppSession();
+  const isDark = themeMode === 'dark';
   const access = verifyPartnerMobileAccess(userRole, tenantId, tenantId);
   const [agenda, setAgenda] = useState<PartnerAgendaItem[]>([
     {
@@ -186,10 +187,15 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   };
 
   return (
-    <div className="space-y-4 text-[#111827]" data-testid="mobile-partner-agenda-page">
+    <div
+      className={`space-y-4 ${isDark ? 'text-white' : 'text-[#111827]'}`}
+      data-testid="mobile-partner-agenda-page"
+    >
       {/* Staff Live Commission & Daily Performance Header */}
       <div
-        className="rounded-3xl bg-white border border-slate-200 p-4 flex items-center justify-between gap-3 shadow-sm"
+        className={`rounded-3xl border-2 p-4 flex items-center justify-between gap-3 shadow-sm ${
+          isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+        }`}
         data-testid="partner-daily-commission-card"
       >
         <div>
@@ -197,18 +203,18 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
             <Award className="w-3.5 h-3.5 text-amber-500" />
             UZMAN CEP STÜDYOSU • CANLI PRİM SAYACI
           </span>
-          <p className="text-lg font-black text-[#111827] mt-0.5">
+          <p className="text-lg font-black mt-0.5">
             1.860,00 TRY{' '}
-            <span className="text-xs font-semibold text-emerald-700">
+            <span className="text-xs font-semibold text-emerald-600">
               (Bugünkü Net Primin)
             </span>
           </p>
-          <p className="text-[11px] text-slate-500">
+          <p className="text-xs text-slate-500">
             6 Randevu • 2 VIP Sessiz Seans • %84 Günlük Hedef
           </p>
         </div>
-        <div className="w-14 h-14 rounded-2xl bg-[#EEF0FF] border border-indigo-200 flex flex-col items-center justify-center shrink-0">
-          <span className="text-xs font-black text-[#5B5FEF]">%84</span>
+        <div className="w-14 h-14 rounded-2xl bg-[#EEF2FF] border-2 border-indigo-300 flex flex-col items-center justify-center shrink-0">
+          <span className="text-xs font-black text-[#4F46E5]">%84</span>
           <span className="text-[9px] text-[#4338CA] font-semibold">Hedef</span>
         </div>
       </div>

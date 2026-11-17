@@ -5,21 +5,19 @@ import {
   CalendarPlus,
   Compass,
   Globe2,
-  Home,
   Inbox,
   Lock,
+  Moon,
   Plane,
   Plus,
   QrCode,
   ScanLine,
-  Search,
-  Send,
   ShieldCheck,
   Sliders,
   Sparkles,
   Stethoscope,
   Store,
-  UserCheck,
+  Sun,
   Users,
   WifiOff,
   ChevronDown,
@@ -52,29 +50,30 @@ function renderDockIcon(tab: MobileTabDescriptor, isActive: boolean, isDark: boo
   const cls = `w-7 h-7 transition-transform duration-150 ${
     isActive
       ? isDark
-        ? 'text-white scale-110 stroke-[2.5]'
-        : 'text-slate-950 scale-110 stroke-[2.5]'
+        ? 'text-white scale-110 stroke-[2.4]'
+        : 'text-[#4F46E5] scale-110 stroke-[2.4]'
       : isDark
-        ? 'text-slate-400 stroke-[1.8]'
-        : 'text-slate-600 stroke-[1.8]'
+        ? 'text-slate-300 stroke-[1.9]'
+        : 'text-slate-600 stroke-[1.9]'
   }`;
 
-  if (tab.id === 'explore' || tab.id === 'storefront') {
-    return (
-      <Home
-        className={cls}
-        fill={isActive ? (isDark ? '#FFFFFF' : '#0F172A') : 'none'}
-      />
-    );
+  if (tab.id === 'explore') {
+    return <Compass className={cls} />;
   }
-  if (tab.id === 'ai_style') {
-    return <Search className={cls} />;
-  }
-  if (tab.id === 'quick_book') {
-    return <Send className={cls} />;
+  if (tab.id === 'storefront') {
+    return <Store className={cls} />;
   }
   if (tab.id === 'wallet') {
     return <QrCode className={cls} />;
+  }
+  if (tab.id === 'quick_book') {
+    return <CalendarPlus className={cls} />;
+  }
+  if (tab.id === 'ai_style') {
+    return <Sparkles className={cls} />;
+  }
+  if (tab.id === 'ht_concierge') {
+    return <Plane className={cls} />;
   }
 
   switch (tab.iconName) {
@@ -117,7 +116,8 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
   language = 'tr',
   children,
 }) => {
-  const { themeMode, activeBooking } = useMobileAppSession();
+  const { themeMode, toggleThemeMode, showToast, activeBooking, completedBreakdown } =
+    useMobileAppSession();
   const isDark = themeMode === 'dark';
   const isPartner = shellState.effectiveMode === 'b2b_partner';
   const activeTab =
@@ -187,9 +187,9 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
             : 'bg-white border-slate-200'
         }`}
       >
-        <div className="max-w-lg mx-auto grid grid-cols-[44px_1fr_44px] items-center gap-2">
-          {/* Left: Quick Action + (Just like Instagram top-left +) */}
-          <div className="flex items-center justify-start">
+        <div className="max-w-lg mx-auto grid grid-cols-[84px_1fr_84px] items-center gap-1">
+          {/* Left: Quick Action + */}
+          <div className="flex items-center justify-start gap-1">
             {shellState.whiteLabelStorefrontLock.active ? (
               <span
                 className="w-10 h-10 rounded-full bg-emerald-50 border-2 border-emerald-400 text-emerald-700 flex items-center justify-center"
@@ -209,7 +209,7 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
                 aria-label="Hızlı Randevu Oluştur"
                 data-testid="header-quick-plus-btn"
               >
-                <Plus className="w-7 h-7 stroke-[2.2]" />
+                <Plus className="w-6 h-6 stroke-[2.3]" />
               </button>
             )}
           </div>
@@ -240,8 +240,36 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
             </button>
           </div>
 
-          {/* Right: Notification Bell / Offline Vault Status */}
-          <div className="flex items-center justify-end">
+          {/* Right: Sun/Moon Quick Theme Toggle + Notification Bell */}
+          <div className="flex items-center justify-end gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                const next = isDark ? 'light' : 'dark';
+                toggleThemeMode();
+                showToast(
+                  next === 'light'
+                    ? 'Açık Mod (Güneş) aktif edildi.'
+                    : 'Koyu Mod (Ay) aktif edildi.'
+                );
+              }}
+              style={{ minHeight: '40px', minWidth: '40px' }}
+              className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition active:scale-95 ${
+                isDark
+                  ? 'bg-slate-900 border-slate-700 text-indigo-300 hover:bg-slate-800'
+                  : 'bg-[#FFFBEB] border-amber-300 text-amber-500 hover:bg-amber-100'
+              }`}
+              aria-label={isDark ? 'Koyu Mod (Ay) - Açık Moda Geç' : 'Açık Mod (Güneş) - Koyu Moda Geç'}
+              title={isDark ? 'Ay (Koyu Mod)' : 'Güneş (Açık Mod)'}
+              data-testid="header-theme-toggle-btn"
+            >
+              {isDark ? (
+                <Moon className="w-5 h-5 fill-indigo-300/30" />
+              ) : (
+                <Sun className="w-5 h-5 fill-amber-400/40" />
+              )}
+            </button>
+
             {isOffline ? (
               <span
                 className="w-10 h-10 rounded-full bg-amber-50 border-2 border-amber-400 text-amber-700 flex items-center justify-center"
@@ -254,14 +282,14 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
               <button
                 type="button"
                 onClick={onNotificationBellClick}
-                style={{ minHeight: '42px', minWidth: '42px' }}
+                style={{ minHeight: '40px', minWidth: '40px' }}
                 className={`relative w-10 h-10 rounded-full flex items-center justify-center transition active:scale-95 ${
                   isDark ? 'text-white hover:bg-slate-800' : 'text-slate-900 hover:bg-slate-100'
                 }`}
                 aria-label="Bildirimler"
                 data-testid="header-notifications-btn"
               >
-                <Bell className="w-6 h-6 stroke-[2]" />
+                <Bell className="w-5 h-5 stroke-[2.2]" />
                 <span className="w-2.5 h-2.5 rounded-full bg-rose-500 border-2 border-white dark:border-slate-950 absolute top-2 right-2" />
               </button>
             )}
@@ -333,6 +361,9 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
                     {renderDockIcon(tab, isActive, isDark)}
                     {tab.id === 'quick_book' && activeBooking && (
                       <span className="w-2 h-2 rounded-full bg-rose-500 absolute -top-0.5 -right-1" />
+                    )}
+                    {tab.id === 'wallet' && completedBreakdown && !completedBreakdown.paidViaQr && (
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900 absolute -top-0.5 -right-1 animate-pulse" />
                     )}
                     {tab.requiresBiometricGate && (
                       <Lock

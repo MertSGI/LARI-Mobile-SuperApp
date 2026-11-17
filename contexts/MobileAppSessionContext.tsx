@@ -7,6 +7,16 @@
   useRef,
   useState,
 } from 'react';
+import {
+  DecodedQrAdmissionResult,
+  MobileQrArtifact,
+  verifyMobileQrTokenOrPayload,
+} from '../services/mobile/lariQrEcosystemService';
+import {
+  CompletedAppointmentBreakdown,
+  INITIAL_PARTNER_CATALOG,
+  PartnerCatalogItem,
+} from '../services/mobile/voiceCatalogMatcherService';
 
 export interface MobileActiveBooking {
   appointmentId: string;
@@ -38,6 +48,16 @@ export interface MobilePassportEntry {
 
 export type ConfirmBookingInput = Omit<MobileActiveBooking, 'status'>;
 
+export interface AdmittedPatientSession {
+  qrId: string;
+  customerName: string;
+  admissionType: 'standard_qr' | 'package_qr' | 'health_tourism_qr';
+  packageName?: string;
+  remainingCreditsAfter?: number;
+  htJourneyCode?: string;
+  admittedAtIso: string;
+}
+
 export interface MobileAppSessionValue {
   themeMode: 'light' | 'dark';
   activeBooking: MobileActiveBooking | null;
@@ -46,6 +66,13 @@ export interface MobileAppSessionValue {
   stampCount: number;
   walletBalanceMinor: number;
   toastMessage: string | null;
+  partnerCatalog: PartnerCatalogItem[];
+  packageCreditsRemaining: number;
+  admittedPatientSession: AdmittedPatientSession | null;
+  completedBreakdown: CompletedAppointmentBreakdown | null;
+  activePaymentQr: MobileQrArtifact | null;
+  likedSocialPosts: string[];
+  savedSocialPosts: string[];
   setThemeMode: (mode: 'light' | 'dark') => void;
   toggleThemeMode: () => void;
   showToast: (message: string) => void;
@@ -57,6 +84,12 @@ export interface MobileAppSessionValue {
   addLoyaltyPoints: (delta: number) => void;
   incrementStamp: () => void;
   redeemGiftCode: (code: string) => void;
+  addCatalogItem: (item: Omit<PartnerCatalogItem, 'id'>) => void;
+  admitCustomerByQr: (rawPayload: string, expectedTenantId?: string) => DecodedQrAdmissionResult;
+  publishCheckoutBreakdown: (breakdown: CompletedAppointmentBreakdown, paymentQr: MobileQrArtifact) => void;
+  completeQrPayment: (optionalTipMajor: number) => void;
+  toggleLikeSocialPost: (postId: string) => void;
+  toggleSaveSocialPost: (postId: string) => void;
 }
 
 const INITIAL_PASSPORT_ENTRIES: MobilePassportEntry[] = [
@@ -93,6 +126,13 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   stampCount: 4,
   walletBalanceMinor: 125000,
   toastMessage: null,
+  partnerCatalog: INITIAL_PARTNER_CATALOG,
+  packageCreditsRemaining: 5,
+  admittedPatientSession: null,
+  completedBreakdown: null,
+  activePaymentQr: null,
+  likedSocialPosts: [],
+  savedSocialPosts: [],
   setThemeMode: noop,
   toggleThemeMode: noop,
   showToast: noop,
@@ -104,6 +144,12 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   addLoyaltyPoints: noop,
   incrementStamp: noop,
   redeemGiftCode: noop,
+  addCatalogItem: noop,
+  admitCustomerByQr: () => ({ valid: false, reasonCode: 'MALFORMED_QR' }),
+  publishCheckoutBreakdown: noop,
+  completeQrPayment: noop,
+  toggleLikeSocialPost: noop,
+  toggleSaveSocialPost: noop,
 };
 
 const MobileAppSessionContext = createContext<MobileAppSessionValue | null>(null);
@@ -122,6 +168,18 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
   const [stampCount, setStampCount] = useState(4);
   const [walletBalanceMinor, setWalletBalanceMinor] = useState(125000);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [partnerCatalog, setPartnerCatalog] = useState<PartnerCatalogItem[]>(
+    () => INITIAL_PARTNER_CATALOG.map((item) => ({ ...item }))
+  );
+  const [packageCreditsRemaining, setPackageCreditsRemaining] = useState(5);
+  const [admittedPatientSession, setAdmittedPatientSession] =
+    useState<AdmittedPatientSession | null>(null);
+  const [completedBreakdown, setCompletedBreakdown] =
+    useState<CompletedAppointmentBreakdown | null>(null);
+  const [activePaymentQr, setActivePaymentQr] =
+    useState<MobileQrArtifact | null>(null);
+  const [likedSocialPosts, setLikedSocialPosts] = useState<string[]>([]);
+  const [savedSocialPosts, setSavedSocialPosts] = useState<string[]>([]);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
@@ -212,6 +270,114 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     setThemeMode((prev) => (prev === 'light' ? 'dark' : 'light'));
   }, []);
 
+  const addCatalogItem = useCallback(
+    (item: Omit<PartnerCatalogItem, 'id'>) => {
+      const created: PartnerCatalogItem = {
+        ...item,
+        id: `cat-custom-${Date.now().toString(36)}`,
+      };
+      setPartnerCatalog((prev) => [created, ...prev]);
+      showToast(`"${item.name}" işletme kataloğuna eklendi.`);
+    },
+    [showToast]
+  );
+
+  const admitCustomerByQr = useCallback(
+    (rawPayload: string, expectedTenantId?: string): DecodedQrAdmissionResult => {
+      const res = verifyMobileQrTokenOrPayload(rawPayload, expectedTenantId);
+      if (!res.valid || !res.artifact) {
+        showToast(`QR Kabul Başarısız: ${res.reasonCode}`);
+        return res;
+      }
+
+      const art = res.artifact;
+      let nextCredits = packageCreditsRemaining;
+      const admissionType: AdmittedPatientSession['admissionType'] = art.htJourneyCode
+        ? 'health_tourism_qr'
+        : art.packageName
+          ? 'package_qr'
+          : 'standard_qr';
+
+      if (art.kind === 'ht_package_checkin' && packageCreditsRemaining > 0) {
+        nextCredits = Math.max(0, packageCreditsRemaining - 1);
+        setPackageCreditsRemaining(nextCredits);
+      }
+
+      setAdmittedPatientSession({
+        qrId: art.qrId,
+        customerName: art.customerName || 'Doğrulanmış Müşteri',
+        admissionType,
+        packageName: art.packageName,
+        remainingCreditsAfter:
+          art.kind === 'ht_package_checkin' ? nextCredits : undefined,
+        htJourneyCode: art.htJourneyCode,
+        admittedAtIso: new Date().toISOString(),
+      });
+
+      showToast(
+        `${art.customerName || 'Müşteri'} QR ile kabul edildi (${
+          admissionType === 'health_tourism_qr'
+            ? 'Sağlık Turizmi'
+            : admissionType === 'package_qr'
+              ? `Paket Kalan: ${nextCredits}`
+              : 'Standart Check-in'
+        })`
+      );
+      return res;
+    },
+    [packageCreditsRemaining, showToast]
+  );
+
+  const publishCheckoutBreakdown = useCallback(
+    (breakdown: CompletedAppointmentBreakdown, paymentQr: MobileQrArtifact) => {
+      setCompletedBreakdown(breakdown);
+      setActivePaymentQr(paymentQr);
+      showToast('Randevu fiyat dökümü ve Ödeme QR müşteriye iletildi!');
+    },
+    [showToast]
+  );
+
+  const completeQrPayment = useCallback(
+    (optionalTipMajor: number) => {
+      const safeTip = Math.max(0, Math.round(optionalTipMajor));
+      setCompletedBreakdown((prev) =>
+        prev
+          ? {
+              ...prev,
+              optionalTipMajor: safeTip,
+              grandTotalMajor: prev.netPayableBeforeTipMajor + safeTip,
+              paidViaQr: true,
+            }
+          : null
+      );
+      setStampCount((s) => Math.min(5, s + 1));
+      setLoyaltyPoints((p) => p + 50);
+      showToast(
+        safeTip > 0
+          ? `QR Ödeme (+${safeTip} TRY isteğe bağlı bahşiş) tamamlandı • +50 Puan!`
+          : 'QR Ödeme (Bahşişsiz) tamamlandı • +50 Puan!'
+      );
+    },
+    [showToast]
+  );
+
+  const toggleLikeSocialPost = useCallback((postId: string) => {
+    setLikedSocialPosts((prev) =>
+      prev.includes(postId) ? prev.filter((id) => id !== postId) : [...prev, postId]
+    );
+  }, []);
+
+  const toggleSaveSocialPost = useCallback(
+    (postId: string) => {
+      setSavedSocialPosts((prev) => {
+        const exists = prev.includes(postId);
+        showToast(exists ? 'Kaydedilenlerden çıkarıldı.' : 'Favori işlerime kaydedildi.');
+        return exists ? prev.filter((id) => id !== postId) : [...prev, postId];
+      });
+    },
+    [showToast]
+  );
+
   const value = useMemo<MobileAppSessionValue>(
     () => ({
       themeMode,
@@ -221,6 +387,13 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       stampCount,
       walletBalanceMinor,
       toastMessage,
+      partnerCatalog,
+      packageCreditsRemaining,
+      admittedPatientSession,
+      completedBreakdown,
+      activePaymentQr,
+      likedSocialPosts,
+      savedSocialPosts,
       setThemeMode,
       toggleThemeMode,
       showToast,
@@ -232,6 +405,12 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       addLoyaltyPoints,
       incrementStamp,
       redeemGiftCode,
+      addCatalogItem,
+      admitCustomerByQr,
+      publishCheckoutBreakdown,
+      completeQrPayment,
+      toggleLikeSocialPost,
+      toggleSaveSocialPost,
     }),
     [
       themeMode,
@@ -241,6 +420,13 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       stampCount,
       walletBalanceMinor,
       toastMessage,
+      partnerCatalog,
+      packageCreditsRemaining,
+      admittedPatientSession,
+      completedBreakdown,
+      activePaymentQr,
+      likedSocialPosts,
+      savedSocialPosts,
       toggleThemeMode,
       showToast,
       confirmBooking,
@@ -251,6 +437,12 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       addLoyaltyPoints,
       incrementStamp,
       redeemGiftCode,
+      addCatalogItem,
+      admitCustomerByQr,
+      publishCheckoutBreakdown,
+      completeQrPayment,
+      toggleLikeSocialPost,
+      toggleSaveSocialPost,
     ]
   );
 

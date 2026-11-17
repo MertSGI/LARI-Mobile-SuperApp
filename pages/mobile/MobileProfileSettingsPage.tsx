@@ -129,44 +129,66 @@ export const MobileProfileSettingsPage: React.FC<
       <div className={`rounded-3xl p-4 space-y-4 shadow-sm ${cardSurface}`}>
         <div className="space-y-2">
           <span className="text-xs font-black uppercase tracking-wider text-slate-500 block">
-            Uygulama Teması
+            Uygulama Teması (Güneş / Ay)
           </span>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => {
                 setThemeMode('light');
-                showToast('Açık (Kurumsal) mod aktif edildi.');
+                showToast('Güneş • Açık (Kurumsal) mod aktif edildi.');
               }}
-              style={{ minHeight: '46px' }}
-              className={`rounded-xl border-2 px-3 py-2 text-sm font-bold flex items-center justify-center gap-2 ${
+              style={{ minHeight: '48px' }}
+              className={`rounded-xl border-2 px-3 py-2 text-sm font-black flex items-center justify-center gap-2 transition ${
                 !isDark
-                  ? 'bg-[#EEF2FF] border-[#4F46E5] text-[#4338CA]'
+                  ? 'bg-amber-50 border-amber-400 text-amber-900 shadow-xs'
                   : 'bg-slate-800 border-slate-700 text-slate-300'
               }`}
               data-testid="theme-light-btn"
             >
-              <Sun className="w-4 h-4" />
-              Açık Mod
+              <Sun className="w-5 h-5 text-amber-500 fill-amber-400/40" />
+              Güneş • Açık Mod
             </button>
             <button
               type="button"
               onClick={() => {
                 setThemeMode('dark');
-                showToast('Koyu mod aktif edildi.');
+                showToast('Ay • Koyu mod aktif edildi.');
               }}
-              style={{ minHeight: '46px' }}
-              className={`rounded-xl border-2 px-3 py-2 text-sm font-bold flex items-center justify-center gap-2 ${
+              style={{ minHeight: '48px' }}
+              className={`rounded-xl border-2 px-3 py-2 text-sm font-black flex items-center justify-center gap-2 transition ${
                 isDark
-                  ? 'bg-[#4F46E5] border-[#4338CA] text-white'
+                  ? 'bg-[#4F46E5] border-[#818CF8] text-white shadow-xs'
                   : 'bg-white border-slate-300 text-slate-700'
               }`}
               data-testid="theme-dark-btn"
             >
-              <Moon className="w-4 h-4" />
-              Koyu Mod
+              <Moon className="w-5 h-5 fill-current/20" />
+              Ay • Koyu Mod
             </button>
           </div>
+        </div>
+
+        {/* Role & Panel Visibility Boundary Matrix */}
+        <div
+          className={`rounded-2xl p-3 border-2 space-y-1.5 text-xs ${
+            isDark
+              ? 'bg-slate-800 border-slate-700 text-slate-200'
+              : 'bg-[#F8FAFC] border-slate-200 text-slate-700'
+          }`}
+          data-testid="panel-visibility-boundaries-card"
+        >
+          <span className="text-xs font-black text-[#4F46E5] flex items-center gap-1.5">
+            <ShieldCheck className="w-4 h-4" />
+            Panel Erişim Sınırı ({isPartner ? 'İşletme / Partner Yetkili' : 'Müşteri Profili'})
+          </span>
+          <p className="text-xs leading-relaxed">
+            {isPartner
+              ? 'Aktif Yetki: Cep Ajanda, QR Müşteri Kabul, Sesli Katalog Eşleştirme, Cep POS, Fiyat Dökümü, Katalog Yönetimi ve (FaceID ile) Klinik PHI.'
+              : hasPartnerAccess
+                ? 'Aktif Görünüm: Keşfet & Sosyal Akış, Google Haritalar, Randevu/Paket QR, Fiyat Dökümü Ödeme ve Sağlık Turizmi. İşletme araçları yalnızca Partner modunda açılır.'
+                : 'Misafir / Müşteri Hesabı: Yalnızca Keşfet, Randevu, QR Pass, Fiyat Dökümü ve Sağlık Turizmi ekranlarını görür; İşletme/POS panelleri rol bazlı kilitlidir.'}
+          </p>
         </div>
 
         {hasPartnerAccess && onToggleMode && (
