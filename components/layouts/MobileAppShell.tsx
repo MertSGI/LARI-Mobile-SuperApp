@@ -134,6 +134,7 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
     const onScroll = () => {
       const y = window.scrollY || 0;
       const delta = y - lastScrollY.current;
@@ -145,9 +146,14 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
         setBottomNavVisible(true);
       }
       lastScrollY.current = y;
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => setBottomNavVisible(true), 650);
     };
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (idleTimer) clearTimeout(idleTimer);
+    };
   }, []);
 
   const hasPartnerAccess = shellState.availablePersonas.some((p) =>
@@ -473,3 +479,5 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
     </div>
   );
 };
+
+export default MobileAppShell;
