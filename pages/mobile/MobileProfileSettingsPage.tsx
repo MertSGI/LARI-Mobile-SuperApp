@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Bell,
@@ -28,6 +28,18 @@ import {
 } from '../../services/mobile/mobileShellPolicyService';
 import { useMobileAppSession } from '../../contexts/MobileAppSessionContext';
 import { sanitizeUserMessage } from '../../services/mobile/mobileUiSanitizer';
+import {
+  COUNTRY_CONFIGS,
+  INTERESTED_SECTOR_OPTIONS,
+  MobileUserProfile,
+  SupportedCurrency,
+  UserGender,
+  formatPhoneDisplay,
+  getCountryConfig,
+  resolveDefaultCurrencyForLocation,
+  sanitizePhoneDigits,
+  validateMobileUserProfile,
+} from '../../services/mobile/mobileRegionCurrencyService';
 
 const PERSONA_LABELS: Record<MobilePersonaType, { tr: string; en: string }> = {
   salon_customer: { tr: 'Müşteri • Keşfet & Randevu', en: 'Customer • Explore' },
@@ -72,11 +84,19 @@ export const MobileProfileSettingsPage: React.FC<
     bookingHistory,
     themeMode,
     setThemeMode,
+    userProfile,
+    updateUserProfile,
+    selectedCurrency,
+    setSelectedCurrency,
   } = useMobileAppSession();
   const isDark = themeMode === 'dark';
 
-  const [displayName, setDisplayName] = useState('Mert Özçelikbaş');
-  const [phone, setPhone] = useState('+90 532 555 01 40');
+  const [profileDraft, setProfileDraft] = useState<MobileUserProfile>(() => ({
+    ...userProfile,
+    interestedSectors: [...userProfile.interestedSectors],
+  }));
+  const [profileErrors, setProfileErrors] = useState<Record<string, string>>({});
+  const [profileSaving, setProfileSaving] = useState(false);
   const [pushBooking, setPushBooking] = useState(true);
   const [pushHt, setPushHt] = useState(true);
   const [biometricConfirmed, setBiometricConfirmed] = useState(false);
@@ -89,6 +109,14 @@ export const MobileProfileSettingsPage: React.FC<
   const [showPermissionDetail, setShowPermissionDetail] = useState(false);
   const [deletionResult, setDeletionResult] =
     useState<AccountDeletionResult | null>(null);
+  const profileSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (profileSaveTimerRef.current) clearTimeout(profileSaveTimerRef.current);
+    },
+    []
+  );
 
   const isPartner = shellState?.effectiveMode === 'b2b_partner';
   const hasPartnerAccess = Boolean(
@@ -109,7 +137,11 @@ export const MobileProfileSettingsPage: React.FC<
     ? 'bg-slate-800 border-2 border-slate-700 text-white placeholder-slate-400'
     : 'bg-[#F8FAFC] border-2 border-slate-300 text-slate-900 placeholder-slate-400';
 
-  const initials = displayName
+  const countryConfig = getCountryConfig(profileDraft.countryCode);
+  const cityOptions = Object.keys(countryConfig.cities);
+  const districtOptions = countryConfig.cities[profileDraft.city] ?? [];
+
+  const initials = profileDraft.fullName
     .split(' ')
     .map((p) => p[0])
     .join('')
@@ -117,9 +149,54 @@ export const MobileProfileSettingsPage: React.FC<
     .toUpperCase();
 
   const handleSaveProfile = () => {
-    showToast('Profil ve iletişim bilgileriniz kaydedildi.');
-    setOpenSection(null);
+    const res = validateMobileUserProfile(profileDraft);
+    if (!res.valid) {
+      setProfileErrors(res.errors);
+      showToast('Lütfen kırmızı ile işaretlenen zorunlu alanları düzeltin.');
+      return;
+    }
+
+    setProfileErrors({});
+    const preferredCurrency = selectedCurrency;
+    updateUserProfile(profileDraft);
+    setTimeout(() => setSelectedCurrency(preferredCurrency), 0);
+    setProfileSaving(true);
+    if (profileSaveTimerRef.current) clearTimeout(profileSaveTimerRef.current);
+    profileSaveTimerRef.current = setTimeout(() => {
+      setProfileSaving(false);
+      profileSaveTimerRef.current = null;
+    }, 1500);
+    showToast('Profil ve iletişim bilgileriniz doğrulandı ve kaydedildi.');
   };
+
+  const updateProfileField = <K extends keyof MobileUserProfile,>(
+    field: K,
+    value: MobileUserProfile[K]
+  ) => {
+    setProfileDraft((current) => ({ ...current, [field]: value }));
+    setProfileErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const clearProfileErrors = (...fields: Array<keyof MobileUserProfile>) => {
+    setProfileErrors((current) => {
+      if (!fields.some((field) => current[field])) return current;
+      const next = { ...current };
+      fields.forEach((field) => delete next[field]);
+      return next;
+    });
+  };
+
+  const fieldClassName = (field: keyof MobileUserProfile) =>
+    `w-full rounded-xl px-3 py-2.5 text-sm font-medium outline-none transition ${inputSurface} ${
+      profileErrors[field]
+        ? 'border-rose-500 focus:border-rose-500'
+        : 'focus:border-[#4F46E5]'
+    }`;
 
   const handleDelete = () => {
     const res = executeMobileAccountDeletion({
@@ -157,13 +234,14 @@ export const MobileProfileSettingsPage: React.FC<
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-black truncate">{displayName}</h2>
+                <h2 className="text-base font-black truncate">{profileDraft.fullName}</h2>
                 <span className="shrink-0 rounded-full bg-[#15B89B]/25 border border-[#16CFD1]/50 px-2 py-0.5 text-[10px] font-black text-[#A7F3D0]">
                   {isPartner ? 'Partner' : 'Üye'}
                 </span>
               </div>
               <p className="text-xs text-indigo-100/85 truncate mt-0.5">
-                Nişantaşı, İstanbul • {phone}
+                {profileDraft.district}, {profileDraft.city} •{' '}
+                {formatPhoneDisplay(profileDraft.countryCode, profileDraft.phoneDigits)}
               </p>
             </div>
           </div>
@@ -534,36 +612,320 @@ export const MobileProfileSettingsPage: React.FC<
           </button>
 
           {openSection === 'personal' && (
-            <div className="px-4 pb-4 pt-1 space-y-2.5">
+            <div className="px-4 pb-4 pt-1 space-y-3">
               <div>
-                <label className="text-xs font-bold text-slate-500 block mb-1">
+                <label htmlFor="profile-full-name" className="text-xs font-bold text-slate-500 block mb-1">
                   Ad Soyad
                 </label>
                 <input
+                  id="profile-full-name"
                   type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  className={`w-full rounded-xl px-3 py-2.5 text-sm font-medium ${inputSurface}`}
+                  required
+                  value={profileDraft.fullName}
+                  onChange={(event) => updateProfileField('fullName', event.target.value)}
+                  aria-invalid={Boolean(profileErrors.fullName)}
+                  className={fieldClassName('fullName')}
                 />
+                {profileErrors.fullName && (
+                  <p className="mt-1 text-[11px] font-bold text-rose-600">{profileErrors.fullName}</p>
+                )}
               </div>
+
               <div>
-                <label className="text-xs font-bold text-slate-500 block mb-1">
-                  Telefon Numarası
+                <label htmlFor="profile-email" className="text-xs font-bold text-slate-500 block mb-1">
+                  E-posta
                 </label>
                 <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className={`w-full rounded-xl px-3 py-2.5 text-sm font-medium ${inputSurface}`}
+                  id="profile-email"
+                  type="email"
+                  required
+                  value={profileDraft.email}
+                  onChange={(event) => updateProfileField('email', event.target.value)}
+                  aria-invalid={Boolean(profileErrors.email)}
+                  className={fieldClassName('email')}
                 />
+                {profileErrors.email && (
+                  <p className="mt-1 text-[11px] font-bold text-rose-600">{profileErrors.email}</p>
+                )}
               </div>
+
+              <div>
+                <label htmlFor="profile-country" className="text-xs font-bold text-slate-500 block mb-1">
+                  Ülke
+                </label>
+                <select
+                  id="profile-country"
+                  required
+                  value={profileDraft.countryCode}
+                  onChange={(event) => {
+                    const nextConfig = getCountryConfig(event.target.value);
+                    const nextCity = Object.keys(nextConfig.cities)[0] ?? '';
+                    const nextDistrict = nextConfig.cities[nextCity]?.[0] ?? '';
+                    setProfileDraft((current) => ({
+                      ...current,
+                      countryCode: nextConfig.code,
+                      country: nextConfig.label,
+                      city: nextCity,
+                      district: nextDistrict,
+                      phoneDigits: sanitizePhoneDigits(
+                        current.phoneDigits,
+                        nextConfig.maxDigits
+                      ),
+                    }));
+                    clearProfileErrors('country', 'city', 'district', 'phoneDigits');
+                    setSelectedCurrency(
+                      resolveDefaultCurrencyForLocation(
+                        nextConfig.code,
+                        nextCity,
+                        nextDistrict
+                      )
+                    );
+                  }}
+                  aria-invalid={Boolean(profileErrors.country)}
+                  className={fieldClassName('country')}
+                >
+                  {COUNTRY_CONFIGS.map((country) => (
+                    <option key={country.code} value={country.code}>
+                      {country.label}
+                    </option>
+                  ))}
+                </select>
+                {profileErrors.country && (
+                  <p className="mt-1 text-[11px] font-bold text-rose-600">{profileErrors.country}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="profile-phone" className="text-xs font-bold text-slate-500 block mb-1">
+                  Telefon Numarası
+                </label>
+                <div className="flex gap-2">
+                  <span
+                    className={`flex min-w-16 items-center justify-center rounded-xl border-2 px-3 text-sm font-black ${
+                      isDark
+                        ? 'border-slate-700 bg-slate-800 text-indigo-300'
+                        : 'border-indigo-200 bg-[#EEF2FF] text-[#4338CA]'
+                    }`}
+                    aria-label="Ülke telefon kodu"
+                  >
+                    {countryConfig.dialCode}
+                  </span>
+                  <input
+                    id="profile-phone"
+                    type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    required
+                    value={profileDraft.phoneDigits}
+                    onChange={(event) =>
+                      updateProfileField(
+                        'phoneDigits',
+                        sanitizePhoneDigits(event.target.value, countryConfig.maxDigits)
+                      )
+                    }
+                    placeholder={countryConfig.placeholder}
+                    aria-invalid={Boolean(profileErrors.phoneDigits)}
+                    className={fieldClassName('phoneDigits')}
+                  />
+                </div>
+                {profileErrors.phoneDigits && (
+                  <p className="mt-1 text-[11px] font-bold text-rose-600">{profileErrors.phoneDigits}</p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label htmlFor="profile-age" className="text-xs font-bold text-slate-500 block mb-1">
+                    Yaş
+                  </label>
+                  <input
+                    id="profile-age"
+                    type="number"
+                    min="16"
+                    max="110"
+                    required
+                    value={profileDraft.age}
+                    onChange={(event) => updateProfileField('age', event.target.value)}
+                    aria-invalid={Boolean(profileErrors.age)}
+                    className={fieldClassName('age')}
+                  />
+                  {profileErrors.age && (
+                    <p className="mt-1 text-[11px] font-bold text-rose-600">{profileErrors.age}</p>
+                  )}
+                </div>
+                <div>
+                  <label htmlFor="profile-gender" className="text-xs font-bold text-slate-500 block mb-1">
+                    Cinsiyet
+                  </label>
+                  <select
+                    id="profile-gender"
+                    required
+                    value={profileDraft.gender}
+                    onChange={(event) =>
+                      updateProfileField('gender', event.target.value as UserGender | '')
+                    }
+                    aria-invalid={Boolean(profileErrors.gender)}
+                    className={fieldClassName('gender')}
+                  >
+                    <option value="">Seçiniz</option>
+                    <option value="female">Kadın</option>
+                    <option value="male">Erkek</option>
+                    <option value="other">Diğer</option>
+                    <option value="prefer_not_to_say">Belirtmek İstemiyorum</option>
+                  </select>
+                  {profileErrors.gender && (
+                    <p className="mt-1 text-[11px] font-bold text-rose-600">{profileErrors.gender}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label htmlFor="profile-city" className="text-xs font-bold text-slate-500 block mb-1">
+                    İl
+                  </label>
+                  {cityOptions.length > 0 ? (
+                    <select
+                      id="profile-city"
+                      required
+                      value={profileDraft.city}
+                      onChange={(event) => {
+                        const nextCity = event.target.value;
+                        const nextDistrict = countryConfig.cities[nextCity]?.[0] ?? '';
+                        setProfileDraft((current) => ({
+                          ...current,
+                          city: nextCity,
+                          district: nextDistrict,
+                        }));
+                        clearProfileErrors('city', 'district');
+                        setSelectedCurrency(
+                          resolveDefaultCurrencyForLocation(
+                            profileDraft.countryCode,
+                            nextCity,
+                            nextDistrict
+                          )
+                        );
+                      }}
+                      aria-invalid={Boolean(profileErrors.city)}
+                      className={fieldClassName('city')}
+                    >
+                      {cityOptions.map((city) => (
+                        <option key={city} value={city}>{city}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      id="profile-city"
+                      type="text"
+                      required
+                      value={profileDraft.city}
+                      onChange={(event) => updateProfileField('city', event.target.value)}
+                      aria-invalid={Boolean(profileErrors.city)}
+                      className={fieldClassName('city')}
+                    />
+                  )}
+                  {profileErrors.city && (
+                    <p className="mt-1 text-[11px] font-bold text-rose-600">{profileErrors.city}</p>
+                  )}
+                </div>
+                <div>
+                  <label htmlFor="profile-district" className="text-xs font-bold text-slate-500 block mb-1">
+                    İlçe
+                  </label>
+                  {districtOptions.length > 0 ? (
+                    <select
+                      id="profile-district"
+                      required
+                      value={profileDraft.district}
+                      onChange={(event) => updateProfileField('district', event.target.value)}
+                      aria-invalid={Boolean(profileErrors.district)}
+                      className={fieldClassName('district')}
+                    >
+                      {districtOptions.map((district) => (
+                        <option key={district} value={district}>{district}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      id="profile-district"
+                      type="text"
+                      required
+                      value={profileDraft.district}
+                      onChange={(event) => updateProfileField('district', event.target.value)}
+                      aria-invalid={Boolean(profileErrors.district)}
+                      className={fieldClassName('district')}
+                    />
+                  )}
+                  {profileErrors.district && (
+                    <p className="mt-1 text-[11px] font-bold text-rose-600">{profileErrors.district}</p>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="profile-currency" className="text-xs font-bold text-slate-500 block mb-1">
+                  Tercih Edilen Para Birimi
+                </label>
+                <select
+                  id="profile-currency"
+                  value={selectedCurrency}
+                  onChange={(event) =>
+                    setSelectedCurrency(event.target.value as SupportedCurrency)
+                  }
+                  className={`${inputSurface} w-full rounded-xl px-3 py-2.5 text-sm font-medium`}
+                >
+                  {(['TRY', 'USD', 'EUR', 'GBP'] as SupportedCurrency[]).map((currency) => (
+                    <option key={currency} value={currency}>{currency}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+                  Ülke ve il seçiminize göre otomatik belirlenir; dilediğiniz zaman değiştirebilirsiniz.
+                </p>
+              </div>
+
+              <fieldset className="space-y-2">
+                <legend className="text-xs font-bold text-slate-500">
+                  İlgilendiğiniz Sektörler (İsteğe Bağlı)
+                </legend>
+                <div className="flex flex-wrap gap-2">
+                  {INTERESTED_SECTOR_OPTIONS.map((sector) => {
+                    const selected = profileDraft.interestedSectors.includes(sector.id);
+                    return (
+                      <button
+                        key={sector.id}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() =>
+                          updateProfileField(
+                            'interestedSectors',
+                            selected
+                              ? profileDraft.interestedSectors.filter((id) => id !== sector.id)
+                              : [...profileDraft.interestedSectors, sector.id]
+                          )
+                        }
+                        className={`min-h-10 rounded-full border-2 px-3 py-2 text-[11px] font-black transition ${
+                          selected
+                            ? 'border-[#4338CA] bg-[#4F46E5] text-white'
+                            : isDark
+                              ? 'border-slate-700 bg-slate-800 text-slate-200'
+                              : 'border-slate-300 bg-white text-slate-700'
+                        }`}
+                      >
+                        {sector.labelTr}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+
               <button
                 type="button"
                 onClick={handleSaveProfile}
+                disabled={profileSaving}
                 style={{ minHeight: '46px' }}
-                className="w-full rounded-xl bg-[#4F46E5] hover:bg-[#4338CA] text-white text-sm font-black"
+                className="w-full rounded-xl bg-[#4F46E5] hover:bg-[#4338CA] text-white text-sm font-black disabled:cursor-wait disabled:opacity-60"
               >
-                Bilgileri Güncelle
+                {profileSaving ? 'Bilgiler Kaydedildi' : 'Bilgileri Güncelle'}
               </button>
             </div>
           )}

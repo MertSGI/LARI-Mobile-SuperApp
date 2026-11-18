@@ -94,6 +94,7 @@ export const MobileSuperAppContent: React.FC = () => {
         ? 'storefront'
         : 'explore'
   );
+  const [partnerQuickAddTick, setPartnerQuickAddTick] = useState(0);
   const [partnerOnboardingOpen, setPartnerOnboardingOpen] = useState(false);
   const [bookingListing, setBookingListing] =
     useState<MobileDiscoveryListingItem | null>(null);
@@ -275,11 +276,20 @@ export const MobileSuperAppContent: React.FC = () => {
           />
         );
       case 'partner_agenda':
+        return (
+          <MobilePartnerAgendaAndInboxPage
+            tenantId={tenantId}
+            userRole={effectiveRole}
+            initialTabFocus="agenda"
+            partnerQuickAddTick={partnerQuickAddTick}
+          />
+        );
       case 'partner_inbox':
         return (
           <MobilePartnerAgendaAndInboxPage
             tenantId={tenantId}
             userRole={effectiveRole}
+            initialTabFocus="inbox"
           />
         );
       case 'partner_pos':
@@ -315,6 +325,11 @@ export const MobileSuperAppContent: React.FC = () => {
         onSwitchPersona={handleSwitchPersona}
         onToggleMode={handleToggleMode}
         onQuickPlusAction={() => {
+          if (shellState.effectiveMode === 'b2b_partner') {
+            setPartnerQuickAddTick((current) => current + 1);
+            setActiveTabId('partner_agenda');
+            return;
+          }
           const first = DEFAULT_MOBILE_MARKETPLACE_LISTINGS[0];
           handleOpenBooking({
             ...first,

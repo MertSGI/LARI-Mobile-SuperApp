@@ -5,11 +5,13 @@ import {
   CheckCheck,
   Clock3,
   Gift,
+  Inbox,
   RotateCcw,
   ShieldCheck,
   X,
 } from 'lucide-react';
 import { useMobileAppSession } from '../../contexts/MobileAppSessionContext';
+import { MobileShellMode } from '../../services/mobile/mobileShellPolicyService';
 
 interface NotificationDrawerProps {
   open: boolean;
@@ -18,6 +20,8 @@ interface NotificationDrawerProps {
   onClose: () => void;
   onMarkAllRead: () => void;
   onRepeatAppointment?: (businessName: string, serviceName: string) => void;
+  mode?: MobileShellMode;
+  onPartnerInboxAction?: () => void;
 }
 
 const RECENT_APPOINTMENTS = [
@@ -72,6 +76,8 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   onClose,
   onMarkAllRead,
   onRepeatAppointment,
+  mode = 'b2c_customer',
+  onPartnerInboxAction,
 }) => {
   const { bookingHistory } = useMobileAppSession();
   const recentAppointments = bookingHistory.length > 0
@@ -98,6 +104,15 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   const cardSurface = isDark
     ? 'bg-slate-900 border-slate-700'
     : 'bg-white border-slate-200';
+
+  const handleAppointmentAction = (businessName: string, serviceName: string) => {
+    if (mode === 'b2b_partner') {
+      onClose();
+      onPartnerInboxAction?.();
+      return;
+    }
+    onRepeatAppointment?.(businessName, serviceName);
+  };
 
   return (
     <div
@@ -138,6 +153,26 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
         </div>
 
         <div className="space-y-6 px-4 pb-28 pt-5">
+          {mode === 'b2b_partner' && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onPartnerInboxAction?.();
+              }}
+              className="flex min-h-12 w-full items-center justify-between rounded-2xl border-2 border-indigo-300 bg-[#EEF2FF] px-4 text-left text-sm font-black text-[#312E81] dark:border-indigo-500/60 dark:bg-indigo-950/50 dark:text-indigo-100"
+              data-testid="notification-partner-inbox-cta"
+            >
+              <span className="flex items-center gap-2">
+                <Inbox className="h-5 w-5" />
+                Onay & Erteleme Kutusuna Git
+              </span>
+              <span className="rounded-full bg-[#4F46E5] px-2 py-1 text-[10px] text-white">
+                Hızlı Aç
+              </span>
+            </button>
+          )}
+
           <section className="space-y-3" aria-labelledby="recent-appointments-title">
             <div className="flex items-center justify-between">
               <h3 id="recent-appointments-title" className="text-sm font-black">
@@ -158,13 +193,18 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                   <p className="mt-2 text-[11px] text-slate-500">{appointment.date}</p>
                   <button
                     type="button"
-                    onClick={() =>
-                      onRepeatAppointment?.(appointment.businessName, appointment.serviceName)
-                    }
+                    onClick={() => handleAppointmentAction(
+                      appointment.businessName,
+                      appointment.serviceName
+                    )}
                     className="mt-3 flex min-h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-[#4F46E5] px-3 text-xs font-black text-white"
                   >
-                    <RotateCcw className="h-4 w-4" />
-                    Tekrarla
+                    {mode === 'b2b_partner' ? (
+                      <Inbox className="h-4 w-4" />
+                    ) : (
+                      <RotateCcw className="h-4 w-4" />
+                    )}
+                    {mode === 'b2b_partner' ? 'İşlem Kutusuna Git' : 'Tekrarla'}
                   </button>
                 </article>
               ))}

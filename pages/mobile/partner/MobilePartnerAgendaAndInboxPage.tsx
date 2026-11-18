@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Award,
@@ -31,6 +31,11 @@ import {
 } from 'lucide-react';
 import { Role } from '../../../types';
 import { sanitizeUserMessage } from '../../../services/mobile/mobileUiSanitizer';
+import {
+  convertFromTryMajor,
+  SupportedCurrency,
+} from '../../../services/mobile/mobileRegionCurrencyService';
+import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
 
 export interface PartnerAgendaItem {
   appointmentId: string;
@@ -176,13 +181,19 @@ export interface MobilePartnerAgendaAndInboxPageProps {
   tenantId: string;
   userRole: Role | 'guest';
   language?: 'tr' | 'en';
+  initialTabFocus?: 'agenda' | 'inbox';
+  partnerQuickAddTick?: number;
 }
-
-import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
 
 export const MobilePartnerAgendaAndInboxPage: React.FC<
   MobilePartnerAgendaAndInboxPageProps
-> = ({ tenantId, userRole, language = 'tr' }) => {
+> = ({
+  tenantId,
+  userRole,
+  language = 'tr',
+  initialTabFocus = 'agenda',
+  partnerQuickAddTick = 0,
+}) => {
   const {
     addCatalogItem,
     addVenuePhoto,
@@ -197,6 +208,8 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     showToast,
     themeMode,
     updateCatalogItem,
+    selectedCurrency,
+    setSelectedCurrency,
   } = useMobileAppSession();
   const isDark = themeMode === 'dark';
   const access = verifyPartnerMobileAccess(userRole, tenantId, tenantId);
@@ -265,6 +278,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   const [activeManagementTab, setActiveManagementTab] =
     useState<PartnerManagementTab>('agenda');
   const [isAgendaAddOpen, setIsAgendaAddOpen] = useState(false);
+  const inboxFocusRef = useRef<HTMLDivElement | null>(null);
   const [newAgendaCustomer, setNewAgendaCustomer] = useState('');
   const [newAgendaService, setNewAgendaService] = useState('');
   const [newAgendaStaff, setNewAgendaStaff] = useState('Merve Yılmaz');
@@ -329,12 +343,31 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   const [newCampaignCode, setNewCampaignCode] = useState('');
   const [newCampaignDiscount, setNewCampaignDiscount] = useState('10');
 
+  useEffect(() => {
+    setActiveManagementTab('agenda');
+    if (initialTabFocus !== 'inbox') return;
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      inboxFocusRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [initialTabFocus]);
+
+  useEffect(() => {
+    if (partnerQuickAddTick <= 0) return;
+    setActiveManagementTab('agenda');
+    setIsAgendaAddOpen(true);
+  }, [partnerQuickAddTick]);
+
   const visiblePartnerCatalog = partnerCatalog.filter(
     (item) => item.tenantId === tenantId
   );
   const storefrontUrl = `https://app.randevulari.com/#/m?slug=atelier-nisantasi`;
   const venuePhotos = customVenuePhotos[PARTNER_TENANT_SLUG] ?? [];
   const selectedRevenue = REVENUE_REPORTS[selectedRevenuePeriod];
+  const formatPartnerMoney = (amountTry: number) =>
+    `${convertFromTryMajor(amountTry, selectedCurrency).toLocaleString('tr-TR')} ${selectedCurrency}`;
+  const isInboxFocus = initialTabFocus === 'inbox';
 
   if (!access.allowed) {
     return (
@@ -657,7 +690,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
             UZMAN CEP STÜDYOSU • CANLI PRİM SAYACI
           </span>
           <p className="text-lg font-black mt-0.5">
-            {(1860).toLocaleString('tr-TR')} TRY{' '}
+            {formatPartnerMoney(1860)}{' '}
             <span className="text-xs font-semibold text-emerald-600">
               (Bugünkü Net Primin)
             </span>
@@ -681,14 +714,35 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
         aria-label="İşletme Yönetim Merkezi"
         data-testid="partner-management-center"
       >
-        <div className="mb-3 flex items-center gap-2 px-1">
-          <ClipboardList className="h-4 w-4 text-[#5B5FEF]" />
-          <div>
-            <h2 className="text-sm font-black">İşletme Yönetim Merkezi</h2>
-            <p className="text-[10px] text-slate-500">
-              Ajanda, katalog, ekip ve doğrudan mağaza tek merkezde
-            </p>
+        <div className="mb-3 flex items-start justify-between gap-3 px-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <ClipboardList className="h-4 w-4 shrink-0 text-[#5B5FEF]" />
+            <div>
+              <h2 className="text-sm font-black">İşletme Yönetim Merkezi</h2>
+              <p className="text-[10px] text-slate-500">
+                Ajanda, katalog, ekip ve doğrudan mağaza tek merkezde
+              </p>
+            </div>
           </div>
+          <label className="shrink-0 text-[9px] font-black uppercase tracking-wide text-slate-500">
+            Para Birimi
+            <select
+              value={selectedCurrency}
+              onChange={(event) =>
+                setSelectedCurrency(event.target.value as SupportedCurrency)
+              }
+              className={`mt-1 block min-h-9 rounded-xl border-2 px-2 text-[11px] font-black outline-none ${
+                isDark
+                  ? 'border-slate-700 bg-slate-800 text-white'
+                  : 'border-indigo-200 bg-[#EEF2FF] text-[#4338CA]'
+              }`}
+              data-testid="partner-currency-select"
+            >
+              {(['TRY', 'USD', 'EUR', 'GBP'] as SupportedCurrency[]).map((currency) => (
+                <option key={currency} value={currency}>{currency}</option>
+              ))}
+            </select>
+          </label>
         </div>
         <div className="grid grid-cols-2 gap-2" role="tablist">
           {PARTNER_MANAGEMENT_TABS.map((tab) => {
@@ -719,13 +773,43 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
 
       {activeManagementTab === 'agenda' && (
         <div
-          className="space-y-4"
+          className="flex flex-col gap-4"
           role="tabpanel"
           id="partner-management-panel-agenda"
           data-testid="partner-management-agenda-panel"
         >
+      {isInboxFocus && (
+        <div
+          className={`order-0 rounded-3xl border-2 p-4 shadow-sm ${
+            isDark
+              ? 'border-indigo-400 bg-indigo-950/50 text-indigo-100'
+              : 'border-indigo-300 bg-[#EEF2FF] text-[#312E81]'
+          }`}
+          data-testid="partner-inbox-focus-banner"
+        >
+          <p className="flex items-center gap-2 text-sm font-black">
+            <Inbox className="h-5 w-5" />
+            Onay & Erteleme Kutusu Odakta
+          </p>
+          <p className="mt-1 text-[11px] font-semibold opacity-80">
+            Bekleyen randevu, erteleme ve bekleme listesi taleplerini buradan sonuçlandırın.
+          </p>
+        </div>
+      )}
       {/* Reschedule & Approval Inbox */}
-      <div className="rounded-3xl bg-white border border-slate-200 p-4 space-y-2.5 shadow-sm">
+      <div
+        ref={inboxFocusRef}
+        className={`rounded-3xl border-2 p-4 space-y-2.5 shadow-sm ${
+          isInboxFocus ? 'order-1 ring-2 ring-[#4F46E5]/25' : 'order-2'
+        } ${
+          isDark
+            ? 'bg-slate-900 border-slate-700'
+            : isInboxFocus
+              ? 'bg-white border-[#4F46E5]'
+              : 'bg-white border-slate-200'
+        }`}
+        data-testid="partner-inbox-focus-card"
+      >
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
             <Inbox className="w-4 h-4 text-[#5B5FEF]" />
@@ -789,7 +873,9 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
       </div>
 
       {/* Chairside Agenda with Hospitality & Passport Formula Drawer */}
-      <div className="rounded-3xl bg-white border border-slate-200 p-4 space-y-3 shadow-sm">
+      <div className={`rounded-3xl bg-white border border-slate-200 p-4 space-y-3 shadow-sm ${
+        isInboxFocus ? 'order-2' : 'order-1'
+      }`}>
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
             <CalendarClock className="w-4 h-4 text-[#5B5FEF]" />
@@ -1175,7 +1261,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                       • KDV %{item.taxRateBps / 100}
                     </p>
                     <span className="mt-1 block text-sm font-black text-[#4338CA]">
-                      {item.unitPriceMajor.toLocaleString('tr-TR')} {item.currency}
+                      {formatPartnerMoney(item.unitPriceMajor)}
                     </span>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
@@ -1372,7 +1458,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                       {report.label} Ciro
                     </span>
                     <p className="mt-1 text-sm font-black text-[#312E81]">
-                      {report.revenue.toLocaleString('tr-TR')} TRY
+                      {formatPartnerMoney(report.revenue)}
                     </p>
                   </div>
                 );
@@ -1383,16 +1469,16 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                 <span className="flex items-center gap-1 text-slate-600">
                   <TrendingUp className="h-3.5 w-3.5" /> Hizmet Geliri
                 </span>
-                <strong>{selectedRevenue.serviceRevenue.toLocaleString('tr-TR')} TRY</strong>
+                <strong>{formatPartnerMoney(selectedRevenue.serviceRevenue)}</strong>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-600">Ürün Geliri</span>
-                <strong>{selectedRevenue.productRevenue.toLocaleString('tr-TR')} TRY</strong>
+                <strong>{formatPartnerMoney(selectedRevenue.productRevenue)}</strong>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-600">Tahmini Net Gelir</span>
                 <strong>
-                  {selectedRevenue.estimatedNetRevenue.toLocaleString('tr-TR')} TRY
+                  {formatPartnerMoney(selectedRevenue.estimatedNetRevenue)}
                 </strong>
               </div>
               <div className="flex items-center justify-between">
@@ -1708,7 +1794,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                     {item.name}
                   </span>
                   <strong className="shrink-0 text-xs text-[#4338CA]">
-                    {item.unitPriceMajor.toLocaleString('tr-TR')} TRY
+                    {formatPartnerMoney(item.unitPriceMajor)}
                   </strong>
                 </div>
               ))}

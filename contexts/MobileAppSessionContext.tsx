@@ -17,6 +17,13 @@ import {
   INITIAL_PARTNER_CATALOG,
   PartnerCatalogItem,
 } from '../services/mobile/voiceCatalogMatcherService';
+import {
+  DEFAULT_USER_PROFILE,
+  MobileUserProfile,
+  resolveDefaultCurrencyForLocation,
+  SupportedCurrency,
+} from '../services/mobile/mobileRegionCurrencyService';
+import { sanitizeUserMessage } from '../services/mobile/mobileUiSanitizer';
 
 export interface MobileActiveBooking {
   appointmentId: string;
@@ -25,6 +32,7 @@ export interface MobileActiveBooking {
   businessName: string;
   branchLabel: string;
   serviceName: string;
+  serviceCategory?: string;
   specialistName: string;
   scheduledDate: string;
   scheduledTime: string;
@@ -122,10 +130,23 @@ export interface MobileAppSessionValue {
   customSocialPosts: MobileCustomSocialPost[];
   partnerSubscription: PartnerSubscriptionSnapshot | null;
   liveAppointmentStage: 1 | 2 | 3 | 4;
+  userProfile: MobileUserProfile;
+  selectedCurrency: SupportedCurrency;
   setThemeMode: (mode: 'light' | 'dark') => void;
   toggleThemeMode: () => void;
   showToast: (message: string) => void;
-  confirmBooking: (input: ConfirmBookingInput) => void;
+  confirmBooking: (input: ConfirmBookingInput) => {
+    accepted: boolean;
+    reasonCode?: 'SAME_CATEGORY_DAILY_CONFLICT';
+    message?: string;
+  };
+  checkSameDayCategoryConflict: (
+    scheduledDate: string,
+    serviceName: string,
+    serviceCategory?: string
+  ) => { conflict: boolean; conflictingService?: string; message?: string };
+  updateUserProfile: (nextProfile: MobileUserProfile) => void;
+  setSelectedCurrency: (currency: SupportedCurrency) => void;
   rescheduleActiveBooking: (newDate: string, newTime: string) => void;
   cancelActiveBooking: (reason?: string) => void;
   setHospitalityPreferences: (drink: string, quiet: boolean) => void;
@@ -227,6 +248,78 @@ const INITIAL_BOOKING_HISTORY: MobileActiveBooking[] = [
 ];
 
 const noop = () => undefined;
+const noopBooking = () => ({ accepted: true });
+const noopConflict = () => ({ conflict: false });
+
+export function inferFineBookingCategory(
+  serviceName: string,
+  explicitVertical?: string
+): string {
+  const normalized = serviceName.toLocaleLowerCase('tr-TR');
+  if (/(tırnak|tirnak|manikür|pedikür|protez|jel oje|nail)/i.test(normalized)) {
+    return 'nail_studio';
+  }
+  if (/(berber|sakal|tıraş|tiras|damat)/i.test(normalized)) {
+    return 'barber';
+  }
+  if (/(saç|sac|balayage|boya|fön|keratin|kesim)/i.test(normalized)) {
+    return 'beauty_hair';
+  }
+  if (/(diş|dis|gülüş|zirkonyum|implant|ortodonti|muayene)/i.test(normalized)) {
+    return 'dental_clinic';
+  }
+  if (/(oto|sanayi|periyodik|fren|yağ|yag|servis|motor|araç)/i.test(normalized)) {
+    return 'auto_service';
+  }
+  if (/(masaj|spa|hamam|ritüel|aromaterapi|wellness)/i.test(normalized)) {
+    return 'spa_wellness';
+  }
+  if (/(botoks|dolgu|lazer|cilt|estetik|hydrafacial)/i.test(normalized)) {
+    return 'aesthetic_clinic';
+  }
+  if (/(pet|kedi|köpek|grooming)/i.test(normalized)) {
+    return 'pet_grooming';
+  }
+  return explicitVertical || normalized.replace(/\s+/g, '_');
+}
+
+export function findSameDayCategoryConflict(
+  bookingHistory: MobileActiveBooking[],
+  scheduledDate: string,
+  serviceName: string,
+  serviceCategory?: string
+): { conflict: boolean; conflictingService?: string; message?: string } {
+  const targetCategory = inferFineBookingCategory(serviceName, serviceCategory);
+  const normalizedService = serviceName.trim().toLocaleLowerCase('tr-TR');
+
+  const match = bookingHistory.find((item) => {
+    if (item.status !== 'confirmed' && item.status !== 'rescheduled') {
+      return false;
+    }
+    if (item.scheduledDate !== scheduledDate) {
+      return false;
+    }
+    const existingCategory = inferFineBookingCategory(
+      item.serviceName,
+      item.serviceCategory
+    );
+    const existingServiceNorm = item.serviceName.trim().toLocaleLowerCase('tr-TR');
+    return (
+      existingCategory === targetCategory ||
+      existingServiceNorm === normalizedService
+    );
+  });
+
+  if (!match) {
+    return { conflict: false };
+  }
+
+  return {
+    conflict: true,
+    conflictingService: `${match.businessName} (${match.serviceName})`,
+    message: `Aynı gün (${scheduledDate}) için "${match.serviceName}" kategorisinde aktif bir randevunuz zaten var. Aynı gün yalnızca farklı bir kategori/hizmetten (örn. farklı sektör veya tırnak/oto bakım) randevu alabilirsiniz.`,
+  };
+}
 
 const SAFE_FALLBACK: MobileAppSessionValue = {
   themeMode: 'light',
@@ -248,10 +341,15 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   customSocialPosts: [],
   partnerSubscription: null,
   liveAppointmentStage: 2,
+  userProfile: DEFAULT_USER_PROFILE,
+  selectedCurrency: 'TRY',
   setThemeMode: noop,
   toggleThemeMode: noop,
   showToast: noop,
-  confirmBooking: noop,
+  confirmBooking: noopBooking,
+  checkSameDayCategoryConflict: noopConflict,
+  updateUserProfile: noop,
+  setSelectedCurrency: noop,
   rescheduleActiveBooking: noop,
   cancelActiveBooking: noop,
   setHospitalityPreferences: noop,
@@ -314,6 +412,24 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
   const [partnerSubscription, setPartnerSubscription] =
     useState<PartnerSubscriptionSnapshot | null>(null);
   const [liveAppointmentStage, setLiveAppointmentStage] = useState<1 | 2 | 3 | 4>(2);
+  const [userProfile, setUserProfile] = useState<MobileUserProfile>(() => {
+    try {
+      const raw =
+        typeof window !== 'undefined'
+          ? window.localStorage.getItem('lari_mobile_user_profile_v1')
+          : null;
+      return raw ? { ...DEFAULT_USER_PROFILE, ...JSON.parse(raw) } : DEFAULT_USER_PROFILE;
+    } catch {
+      return DEFAULT_USER_PROFILE;
+    }
+  });
+  const [selectedCurrency, setSelectedCurrency] = useState<SupportedCurrency>(() =>
+    resolveDefaultCurrencyForLocation(
+      DEFAULT_USER_PROFILE.countryCode,
+      DEFAULT_USER_PROFILE.city,
+      DEFAULT_USER_PROFILE.district
+    )
+  );
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
@@ -332,9 +448,45 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     }, 3500);
   }, []);
 
+  const checkSameDayCategoryConflict = useCallback(
+    (scheduledDate: string, serviceName: string, serviceCategory?: string) =>
+      findSameDayCategoryConflict(
+        bookingHistory,
+        scheduledDate,
+        serviceName,
+        serviceCategory
+      ),
+    [bookingHistory]
+  );
+
   const confirmBooking = useCallback(
     (input: ConfirmBookingInput) => {
-      const confirmedItem: MobileActiveBooking = { ...input, status: 'confirmed' };
+      const conflict = findSameDayCategoryConflict(
+        bookingHistory,
+        input.scheduledDate,
+        input.serviceName,
+        input.serviceCategory
+      );
+      if (conflict.conflict) {
+        const friendly = sanitizeUserMessage(
+          conflict.message || 'SAME_CATEGORY_DAILY_CONFLICT'
+        );
+        showToast(friendly);
+        return {
+          accepted: false,
+          reasonCode: 'SAME_CATEGORY_DAILY_CONFLICT' as const,
+          message: friendly,
+        };
+      }
+
+      const confirmedItem: MobileActiveBooking = {
+        ...input,
+        serviceCategory: inferFineBookingCategory(
+          input.serviceName,
+          input.serviceCategory
+        ),
+        status: 'confirmed',
+      };
       setActiveBooking(confirmedItem);
       setBookingHistory((prev) => [
         confirmedItem,
@@ -342,9 +494,35 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       ]);
       setLoyaltyPoints((points) => points + 50);
       showToast('Randevunuz onaylandı • +50 LARİ Puan');
+      return { accepted: true };
     },
-    [showToast]
+    [bookingHistory, showToast]
   );
+
+  const updateUserProfile = useCallback((nextProfile: MobileUserProfile) => {
+    setUserProfile((prev) => {
+      if (prev.countryCode !== nextProfile.countryCode || prev.country !== nextProfile.country) {
+        setSelectedCurrency(
+          resolveDefaultCurrencyForLocation(
+            nextProfile.countryCode,
+            nextProfile.city,
+            nextProfile.district
+          )
+        );
+      }
+      return nextProfile;
+    });
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(
+          'lari_mobile_user_profile_v1',
+          JSON.stringify(nextProfile)
+        );
+      }
+    } catch {
+      // ignore storage failure
+    }
+  }, []);
 
   const rescheduleActiveBooking = useCallback(
     (newDate: string, newTime: string) => {
@@ -667,10 +845,15 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       customSocialPosts,
       partnerSubscription,
       liveAppointmentStage,
+      userProfile,
+      selectedCurrency,
       setThemeMode,
       toggleThemeMode,
       showToast,
       confirmBooking,
+      checkSameDayCategoryConflict,
+      updateUserProfile,
+      setSelectedCurrency,
       rescheduleActiveBooking,
       cancelActiveBooking,
       setHospitalityPreferences,
@@ -712,9 +895,13 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       customSocialPosts,
       partnerSubscription,
       liveAppointmentStage,
+      userProfile,
+      selectedCurrency,
       toggleThemeMode,
       showToast,
       confirmBooking,
+      checkSameDayCategoryConflict,
+      updateUserProfile,
       rescheduleActiveBooking,
       cancelActiveBooking,
       setHospitalityPreferences,

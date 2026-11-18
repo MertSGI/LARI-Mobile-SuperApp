@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   BellRing,
   Calendar,
   CheckCircle2,
@@ -19,6 +20,7 @@ import {
 } from '../../../services/mobile/mobileDiscoveryService';
 import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
 import { sanitizeUserMessage } from '../../../services/mobile/mobileUiSanitizer';
+import { convertFromTryMajor } from '../../../services/mobile/mobileRegionCurrencyService';
 
 export interface MobileBookingBottomSheetProps {
   listing: MobileDiscoveryListingItem;
@@ -89,7 +91,13 @@ export const MobileBookingBottomSheet: React.FC<
   onClose,
   onBookingConfirmed,
 }) => {
-  const { confirmBooking, showToast, themeMode } = useMobileAppSession();
+  const {
+    confirmBooking,
+    checkSameDayCategoryConflict,
+    selectedCurrency,
+    showToast,
+    themeMode,
+  } = useMobileAppSession();
   const isDark = themeMode === 'dark';
 
   const todayIso = useMemo(() => toLocalIsoDate(new Date()), []);
@@ -108,9 +116,25 @@ export const MobileBookingBottomSheet: React.FC<
   const [quietSession, setQuietSession] = useState<boolean>(false);
   const [confirmed, setConfirmed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [conflictNotice, setConflictNotice] = useState<string | null>(null);
   const [waitlistStatus, setWaitlistStatus] = useState<string | null>(null);
   const [waitlistLocked, setWaitlistLocked] = useState(false);
   const confirmLockRef = useRef(false);
+
+  const primaryService = listing.popularServices[0];
+  const serviceLabel = preselectedServiceNames?.length
+    ? preselectedServiceNames.join(' + ')
+    : primaryService?.name || 'Hizmet';
+
+  const displayedPriceMajor = convertFromTryMajor(
+    primaryService?.priceMajor || 0,
+    selectedCurrency
+  );
+  const liveConflict = useMemo(
+    () =>
+      checkSameDayCategoryConflict(selectedDate, serviceLabel, listing.vertical),
+    [checkSameDayCategoryConflict, selectedDate, serviceLabel, listing.vertical]
+  );
 
   const visibleDays = useMemo(
     () => Array.from({ length: 4 }, (_, idx) => addDaysToIso(todayIso, dayOffset + idx)),
@@ -129,32 +153,48 @@ export const MobileBookingBottomSheet: React.FC<
     [selectedDate, todayIso]
   );
 
-  const primaryService = listing.popularServices[0];
-  const serviceLabel = preselectedServiceNames?.length
-    ? preselectedServiceNames.join(' + ')
-    : primaryService?.name || 'Hizmet';
-
   const handleFastConfirm = async () => {
     if (confirmLockRef.current || confirmed || isSubmitting) return;
+    if (liveConflict.conflict) {
+      setConflictNotice(
+        liveConflict.message ||
+          sanitizeUserMessage('SAME_CATEGORY_DAILY_CONFLICT')
+      );
+      showToast(
+        liveConflict.message ||
+          sanitizeUserMessage('SAME_CATEGORY_DAILY_CONFLICT')
+      );
+      return;
+    }
     confirmLockRef.current = true;
     setIsSubmitting(true);
-    setConfirmed(true);
-    confirmBooking({
+    const res = confirmBooking({
       appointmentId: `apt-live-${Date.now()}`,
       tenantId: listing.tenantId,
       tenantSlug: listing.slug,
       businessName: listing.name,
       branchLabel: `${listing.district}, ${listing.city}`,
       serviceName: serviceLabel,
+      serviceCategory: listing.vertical,
       specialistName: selectedSpecialist,
       scheduledDate: selectedDate,
       scheduledTime: selectedSlot,
-      priceMajor: primaryService?.priceMajor || 0,
-      currency: primaryService?.currency || 'TRY',
+      priceMajor: displayedPriceMajor,
+      currency: selectedCurrency,
       hospitalityDrink: hospitalityDrink === 'Yok' ? 'İkram Seçilmedi' : hospitalityDrink,
       quietSession,
       attachedStyleNote,
     });
+    if (!res.accepted) {
+      confirmLockRef.current = false;
+      setIsSubmitting(false);
+      setConflictNotice(
+        res.message || sanitizeUserMessage('SAME_CATEGORY_DAILY_CONFLICT')
+      );
+      return;
+    }
+    setConflictNotice(null);
+    setConfirmed(true);
     onBookingConfirmed?.({
       tenantId: listing.tenantId,
       serviceId: primaryService?.id || 'srv-default',
@@ -464,23 +504,42 @@ export const MobileBookingBottomSheet: React.FC<
           </div>
         )}
 
+        {(liveConflict.conflict || conflictNotice) && !confirmed && (
+          <div
+            className="rounded-2xl bg-amber-50 border-2 border-amber-300 p-3 flex items-start gap-2.5 text-amber-950 text-xs"
+            data-testid="booking-same-category-conflict-warning"
+          >
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-black">Aynı Gün Kategori Çakışması</p>
+              <p className="font-medium mt-0.5">
+                {conflictNotice || liveConflict.message}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Primary 1-Tap Instant Booking Button */}
         <div className="space-y-2 pt-1">
           <button
             type="button"
-            disabled={confirmed || isSubmitting}
+            disabled={confirmed || isSubmitting || liveConflict.conflict}
             onClick={handleFastConfirm}
             style={{ minHeight: '52px' }}
             className={`w-full rounded-2xl text-white text-sm font-black flex items-center justify-center gap-2 shadow-md transition ${
-              confirmed || isSubmitting
+              confirmed
                 ? 'bg-emerald-600 cursor-not-allowed opacity-90'
-                : 'bg-[#4F46E5] hover:bg-[#4338CA]'
+                : isSubmitting || liveConflict.conflict
+                  ? 'bg-slate-400 cursor-not-allowed'
+                  : 'bg-[#4F46E5] hover:bg-[#4338CA]'
             }`}
           >
             <CheckCircle2 className="w-5 h-5" />
             {confirmed
               ? 'Randevunuz Onaylandı ✓'
-              : `Hemen Randevu Al (${(primaryService?.priceMajor || 0).toLocaleString('tr-TR')} ${primaryService?.currency || 'TRY'})`}
+              : liveConflict.conflict
+                ? 'Aynı Gün Aynı Kategoride Randevu Mevcut'
+                : `Hemen Randevu Al (${displayedPriceMajor.toLocaleString('tr-TR')} ${selectedCurrency})`}
           </button>
 
           <button

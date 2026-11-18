@@ -106,6 +106,7 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
   activeTabId,
   onSelectTab,
   onQuickPlusAction,
+  onNotificationBellClick,
   onBrandHeaderClick,
   isOffline = false,
   language = 'tr',
@@ -202,7 +203,11 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
                 className={`w-10 h-10 rounded-full flex items-center justify-center transition active:scale-95 ${
                   isDark ? 'text-white hover:bg-slate-800' : 'text-slate-900 hover:bg-slate-100'
                 }`}
-                aria-label="Hızlı Randevu Oluştur"
+                aria-label={
+                  shellState.effectiveMode === 'b2b_partner'
+                    ? 'Walk-in Randevu Ekle'
+                    : 'Hızlı Randevu Oluştur'
+                }
                 data-testid="header-quick-plus-btn"
               >
                 <CalendarPlus className="w-6 h-6 stroke-[2.3]" />
@@ -280,6 +285,8 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
         open={notificationDrawerOpen}
         unreadCount={unreadNotificationCount}
         isDark={isDark}
+        mode={shellState.effectiveMode}
+        onPartnerInboxAction={onNotificationBellClick}
         onClose={() => setNotificationDrawerOpen(false)}
         onMarkAllRead={() => {
           setUnreadNotificationCount(0);
