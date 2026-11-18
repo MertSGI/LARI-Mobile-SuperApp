@@ -27,6 +27,7 @@ import {
   MobileShellResolutionResult,
 } from '../../services/mobile/mobileShellPolicyService';
 import { useMobileAppSession } from '../../contexts/MobileAppSessionContext';
+import { sanitizeUserMessage } from '../../services/mobile/mobileUiSanitizer';
 
 const PERSONA_LABELS: Record<MobilePersonaType, { tr: string; en: string }> = {
   salon_customer: { tr: 'Müşteri • Keşfet & Randevu', en: 'Customer • Explore' },
@@ -715,8 +716,11 @@ export const MobileProfileSettingsPage: React.FC<
                   <CheckCircle2 className="w-4 h-4 shrink-0" />
                   <span>
                     {deletionResult.success
-                      ? `İşlem Tamamlandı: ${deletionResult.outcome}`
-                      : `Reddedildi: ${deletionResult.reasonCode}`}
+                      ? sanitizeUserMessage(deletionResult.outcome, 'Hesap silme talebiniz güvenle işlendi.')
+                      : sanitizeUserMessage(
+                          deletionResult.reasonCode,
+                          'Hesap silme işlemi güvenlik doğrulaması nedeniyle tamamlanamadı.'
+                        )}
                   </span>
                 </div>
               )}

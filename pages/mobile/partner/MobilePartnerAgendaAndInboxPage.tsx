@@ -30,6 +30,7 @@ import {
   X,
 } from 'lucide-react';
 import { Role } from '../../../types';
+import { sanitizeUserMessage } from '../../../services/mobile/mobileUiSanitizer';
 
 export interface PartnerAgendaItem {
   appointmentId: string;
@@ -191,6 +192,8 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     publishSocialPost,
     removeCatalogItem,
     removeVenuePhoto,
+    liveAppointmentStage,
+    updateLiveAppointmentStage,
     showToast,
     themeMode,
     updateCatalogItem,
@@ -339,7 +342,10 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
         className="rounded-2xl bg-rose-950/40 border border-rose-500/40 p-4 text-xs text-rose-200"
         data-testid="partner-agenda-forbidden"
       >
-        Erişim Engellendi: {access.reasonCode}
+        {sanitizeUserMessage(
+          access.reasonCode,
+          'Bu işletme paneline erişmek için yetkili Partner hesabıyla giriş yapmalısınız.'
+        )}
       </div>
     );
   }
@@ -635,7 +641,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
 
   return (
     <div
-      className={`space-y-4 ${isDark ? 'text-white' : 'text-[#111827]'}`}
+      className={`space-y-4 pb-32 ${isDark ? 'text-white' : 'text-[#111827]'}`}
       data-testid="mobile-partner-agenda-page"
     >
       {/* Staff Live Commission & Daily Performance Header */}
@@ -971,11 +977,28 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                 )}
               </div>
 
-              <div className="flex items-center justify-between gap-2 pt-1">
-                <span className="text-[10px] text-slate-500 flex items-center gap-1">
-                  <ShieldAlert className="w-3 h-3 text-emerald-600" />
-                  Durum: <strong className="text-[#111827]">{item.status}</strong>
-                </span>
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <div className="flex flex-wrap items-center gap-1">
+                  {[
+                    { s: 1 as const, label: 'Onaylandı' },
+                    { s: 2 as const, label: 'Yola Çık' },
+                    { s: 3 as const, label: 'Check-in' },
+                    { s: 4 as const, label: 'Koltukta' },
+                  ].map((st) => (
+                    <button
+                      key={st.s}
+                      type="button"
+                      onClick={() => updateLiveAppointmentStage(st.s, userRole)}
+                      className={`px-2 py-1 rounded-lg border text-[10px] font-bold transition ${
+                        liveAppointmentStage === st.s
+                          ? 'bg-[#EEF0FF] border-[#5B5FEF] text-[#4338CA]'
+                          : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
+                      }`}
+                    >
+                      {st.label}
+                    </button>
+                  ))}
+                </div>
                 <div className="flex items-center gap-1.5">
                 {item.status === 'confirmed' && (
                   <button

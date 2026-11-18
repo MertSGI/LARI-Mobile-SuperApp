@@ -18,6 +18,7 @@ import {
   MobileResourceWaitlistRegistry,
 } from '../../../services/mobile/mobileDiscoveryService';
 import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
+import { sanitizeUserMessage } from '../../../services/mobile/mobileUiSanitizer';
 
 export interface MobileBookingBottomSheetProps {
   listing: MobileDiscoveryListingItem;
@@ -106,7 +107,10 @@ export const MobileBookingBottomSheet: React.FC<
   const [hospitalityDrink, setHospitalityDrink] = useState<string>('Yok');
   const [quietSession, setQuietSession] = useState<boolean>(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [waitlistStatus, setWaitlistStatus] = useState<string | null>(null);
+  const [waitlistLocked, setWaitlistLocked] = useState(false);
+  const confirmLockRef = useRef(false);
 
   const visibleDays = useMemo(
     () => Array.from({ length: 4 }, (_, idx) => addDaysToIso(todayIso, dayOffset + idx)),
@@ -131,6 +135,9 @@ export const MobileBookingBottomSheet: React.FC<
     : primaryService?.name || 'Hizmet';
 
   const handleFastConfirm = async () => {
+    if (confirmLockRef.current || confirmed || isSubmitting) return;
+    confirmLockRef.current = true;
+    setIsSubmitting(true);
     setConfirmed(true);
     confirmBooking({
       appointmentId: `apt-live-${Date.now()}`,
@@ -156,9 +163,15 @@ export const MobileBookingBottomSheet: React.FC<
       hospitalityDrink,
       quietSession,
     });
+    setTimeout(() => {
+      setIsSubmitting(false);
+    }, 1200);
   };
 
   const handleWaitlistClaim = async () => {
+    if (waitlistLocked) return;
+    setWaitlistLocked(true);
+    setTimeout(() => setWaitlistLocked(false), 2000);
     const res = await sharedWaitlistRegistry.claimSlot({
       tenantId: listing.tenantId,
       customerId: 'cust-mobile-guest',
@@ -167,8 +180,12 @@ export const MobileBookingBottomSheet: React.FC<
       requiredResourceId: primaryService?.requiredResourceId || 'room-1',
       resourceCapacity: 1,
     });
-    setWaitlistStatus(res.reasonCode);
-    showToast(`Waitlist Durumu: ${res.reasonCode}`);
+    const friendlyWaitlistMsg = sanitizeUserMessage(
+      res.reasonCode,
+      'Seçtiğiniz saat dilimi dolu görünüyor. Yedek sıra talebiniz kontrol edildi.'
+    );
+    setWaitlistStatus(friendlyWaitlistMsg);
+    showToast(friendlyWaitlistMsg);
   };
 
   return (
@@ -451,9 +468,14 @@ export const MobileBookingBottomSheet: React.FC<
         <div className="space-y-2 pt-1">
           <button
             type="button"
+            disabled={confirmed || isSubmitting}
             onClick={handleFastConfirm}
             style={{ minHeight: '52px' }}
-            className="w-full rounded-2xl bg-[#4F46E5] hover:bg-[#4338CA] text-white text-sm font-black flex items-center justify-center gap-2 shadow-md"
+            className={`w-full rounded-2xl text-white text-sm font-black flex items-center justify-center gap-2 shadow-md transition ${
+              confirmed || isSubmitting
+                ? 'bg-emerald-600 cursor-not-allowed opacity-90'
+                : 'bg-[#4F46E5] hover:bg-[#4338CA]'
+            }`}
           >
             <CheckCircle2 className="w-5 h-5" />
             {confirmed
@@ -463,13 +485,18 @@ export const MobileBookingBottomSheet: React.FC<
 
           <button
             type="button"
+            disabled={waitlistLocked}
             onClick={handleWaitlistClaim}
             style={{ minHeight: '42px' }}
-            className="w-full rounded-xl bg-amber-50 border-2 border-amber-300 text-amber-900 text-xs font-bold flex items-center justify-center gap-1.5"
+            className={`w-full rounded-xl border-2 text-xs font-bold flex items-center justify-center gap-1.5 transition ${
+              waitlistLocked
+                ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                : 'bg-amber-50 border-amber-300 text-amber-900'
+            }`}
           >
             <BellRing className="w-4 h-4" />
             {waitlistStatus
-              ? `Waitlist: ${waitlistStatus}`
+              ? waitlistStatus
               : 'Doluysa Oda Kilitli Yedek Sıraya Gir'}
           </button>
         </div>

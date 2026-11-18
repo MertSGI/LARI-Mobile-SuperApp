@@ -33,6 +33,7 @@ import {
   QR_USAGE_SCENARIOS_BY_KIND,
 } from '../../../services/mobile/lariQrEcosystemService';
 import LariQrCodeSvg from '../../../components/mobile/LariQrCodeSvg';
+import { sanitizeUserMessage } from '../../../services/mobile/mobileUiSanitizer';
 
 export interface MobileCustomerWalletPageProps {
   tenantId: string;
@@ -64,6 +65,7 @@ export const MobileCustomerWalletPage: React.FC<
     incrementStamp,
     redeemGiftCode,
     completeQrPayment,
+    liveAppointmentStage,
     showToast,
   } = useMobileAppSession();
   const isDark = themeMode === 'dark';
@@ -74,22 +76,29 @@ export const MobileCustomerWalletPage: React.FC<
   const [historyFilter, setHistoryFilter] = useState<'all' | 'upcoming' | 'past'>('all');
   const [qrMode, setQrMode] = useState<'appointment' | 'package'>('appointment');
   const [customerTipRate, setCustomerTipRate] = useState<0 | 5 | 10 | 15>(0);
-  const [liveStage, setLiveStage] = useState<1 | 2 | 3 | 4>(2);
+  const liveStage = liveAppointmentStage;
   const [cancelledEmpty, setCancelledEmpty] = useState(false);
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('Programım değişti');
   const [showRescheduleSlots, setShowRescheduleSlots] = useState(false);
-  const [routineChecks, setRoutineChecks] = useState<Record<string, boolean>>({
-    morning_serum: true,
-    evening_mask: false,
-    night_retainer: false,
+  const [routineClaims, setRoutineClaims] = useState<Record<string, number>>(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem('lari_routine_claims_v1') : null;
+      return raw ? JSON.parse(raw) : { morning_serum: Date.now() - 3600_000 };
+    } catch {
+      return { morning_serum: Date.now() - 3600_000 };
+    }
   });
+  const [routineCooldownSec, setRoutineCooldownSec] = useState(0);
+  const [routineCooldownNotice, setRoutineCooldownNotice] = useState<string | null>(null);
 
   const [giftCode, setGiftCode] = useState('');
   const [giftMessage, setGiftMessage] = useState<string | null>(null);
   const [rating, setRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
   const [reviewStatus, setReviewStatus] = useState<string | null>(null);
+  const [reviewSubmitted, setReviewSubmitted] = useState(false);
+  const [giftLocked, setGiftLocked] = useState(false);
 
   const cardSurface = isDark
     ? 'bg-slate-900 border-2 border-slate-700 text-white'
@@ -192,6 +201,9 @@ export const MobileCustomerWalletPage: React.FC<
   };
 
   const handleRedeemGiftCard = () => {
+    if (giftLocked) return;
+    setGiftLocked(true);
+    setTimeout(() => setGiftLocked(false), 2000);
     if (giftCode.trim().toUpperCase() === 'LARI500') {
       redeemGiftCode(giftCode);
       setGiftMessage(`LARI500 (+${(50000 / 100).toLocaleString('tr-TR')} TRY) cüzdana eklendi!`);
@@ -216,18 +228,46 @@ export const MobileCustomerWalletPage: React.FC<
     showToast('Hediye bakım zarfı kodu (LARI-ARKADAS) paylaşıma hazır!');
   };
 
+  React.useEffect(() => {
+    if (routineCooldownSec <= 0) return;
+    const timer = setTimeout(() => setRoutineCooldownSec((s) => Math.max(0, s - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [routineCooldownSec]);
+
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
   const handleToggleRoutine = (key: string) => {
-    setRoutineChecks((prev) => {
-      const next = !prev[key];
-      if (next) {
-        addLoyaltyPoints(15);
-        showToast('Günlük rutin tamamlandı • +15 LARİ Puan');
-      }
-      return { ...prev, [key]: next };
-    });
+    if (routineCooldownSec > 0) return;
+    const now = Date.now();
+    const lastClaimed = routineClaims[key] || 0;
+    const within24h = now - lastClaimed < DAY_MS;
+
+    setRoutineCooldownSec(4);
+
+    if (within24h) {
+      const remainingHours = Math.max(1, Math.ceil((DAY_MS - (now - lastClaimed)) / 3600_000));
+      setRoutineCooldownNotice(`Bu rutin 24 saatte 1 kez puan kazandırır (Yenilenmeye ~${remainingHours} saat).`);
+      showToast(`Günlük rutin zaten tamamlandı. Yenilenmesine ~${remainingHours} saat var.`);
+      return;
+    }
+
+    const updated = { ...routineClaims, [key]: now };
+    setRoutineClaims(updated);
+    try {
+      window.localStorage.setItem('lari_routine_claims_v1', JSON.stringify(updated));
+    } catch {
+      // ignore storage errors
+    }
+    addLoyaltyPoints(15);
+    setRoutineCooldownNotice('Günlük rutin puanı eklendi (+15 LARİ Puan). Sonraki hak 24 saat sonra açılır.');
+    showToast('Günlük rutin tamamlandı • +15 LARİ Puan');
   };
 
   const handleSubmitReview = () => {
+    if (reviewSubmitted) {
+      setReviewStatus('Bu randevu için zaten bir değerlendirme paylaştınız.');
+      return;
+    }
     const res = walletReviewRegistry.submitVerifiedReview({
       tenantId,
       appointmentId: 'apt-past-99',
@@ -239,11 +279,13 @@ export const MobileCustomerWalletPage: React.FC<
       comment: reviewComment,
     });
     if (res.accepted) {
+      setReviewSubmitted(true);
       addLoyaltyPoints(50);
       setReviewStatus('Doğrulanmış yorumunuz yayınlandı (+50 Sadakat Puanı)!');
       showToast('Doğrulanmış yorumunuz eklendi (+50 Puan)');
     } else {
-      setReviewStatus(`Yorum reddedildi: ${res.reasonCode}`);
+      setReviewSubmitted(true);
+      setReviewStatus(sanitizeUserMessage(res.reasonCode));
     }
   };
 
@@ -319,27 +361,28 @@ export const MobileCustomerWalletPage: React.FC<
                   </span>
                 </div>
 
-                <div className="grid grid-cols-4 gap-1.5 pt-1">
+                <div className="grid grid-cols-4 gap-1.5 pt-1" aria-label="Canlı Randevu Durumu">
                   {[
                     { s: 1, label: 'Onaylandı' },
                     { s: 2, label: 'Yola Çık' },
                     { s: 3, label: 'Check-in' },
                     { s: 4, label: 'Koltukta' },
                   ].map((st) => (
-                    <button
+                    <div
                       key={st.s}
-                      type="button"
-                      onClick={() => setLiveStage(st.s as 1 | 2 | 3 | 4)}
-                      className={`rounded-xl p-2 text-center border transition ${
+                      className={`rounded-xl p-2 text-center border transition select-none ${
                         liveStage >= st.s
                           ? 'bg-[#EEF0FF] border-[#5B5FEF]/40 text-[#4338CA]'
                           : 'bg-[#F8F9FB] border-slate-200 text-slate-400'
                       }`}
                     >
                       <span className="text-[10px] font-bold block">{st.label}</span>
-                    </button>
+                    </div>
                   ))}
                 </div>
+                <p className="text-[10px] text-slate-500 font-medium">
+                  Bu aşamalar yalnızca işletme (Partner) onayı ve QR check-in ile otomatik güncellenir.
+                </p>
 
                 {/* Pre-Arrival VIP Hospitality Controls */}
                 <div className="rounded-2xl bg-[#F8F9FB] border border-slate-200 p-3 space-y-2">
@@ -795,10 +838,22 @@ export const MobileCustomerWalletPage: React.FC<
                 <Sparkles className="w-4 h-4 text-[#5B5FEF]" />
                 Bugünkü Ev Devam Rutinin (+15 Puan)
               </span>
-              <span className="text-[11px] font-black text-amber-600">
-                {loyaltyPoints} P
-              </span>
+              <div className="flex items-center gap-2">
+                {routineCooldownSec > 0 && (
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                    {routineCooldownSec}s
+                  </span>
+                )}
+                <span className="text-[11px] font-black text-amber-600">
+                  {loyaltyPoints} P
+                </span>
+              </div>
             </div>
+            {routineCooldownNotice && (
+              <p className="text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                {routineCooldownNotice}
+              </p>
+            )}
             {[
               {
                 key: 'morning_serum',
@@ -812,25 +867,33 @@ export const MobileCustomerWalletPage: React.FC<
                 key: 'night_retainer',
                 label: 'Gece: Şeffaf Koruyucu Plak (Retainer) Takibi',
               },
-            ].map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => handleToggleRoutine(item.key)}
-                className={`w-full rounded-xl p-2.5 border text-left text-xs font-semibold flex items-center justify-between transition ${
-                  routineChecks[item.key]
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                    : 'bg-[#F8F9FB] border-slate-200 text-slate-700'
-                }`}
-              >
-                <span>{item.label}</span>
-                <CheckCircle2
-                  className={`w-4 h-4 ${
-                    routineChecks[item.key] ? 'text-emerald-600' : 'text-slate-400'
+            ].map((item) => {
+              const lastClaimAt = routineClaims[item.key] || 0;
+              const isClaimedToday = lastClaimAt > 0 && Date.now() - lastClaimAt < 24 * 60 * 60 * 1000;
+              const isDisabled = isClaimedToday || routineCooldownSec > 0;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  disabled={isDisabled}
+                  onClick={() => handleToggleRoutine(item.key)}
+                  className={`w-full rounded-xl p-2.5 border text-left text-xs font-semibold flex items-center justify-between transition ${
+                    isClaimedToday
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800 cursor-default'
+                      : isDisabled
+                        ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                        : 'bg-[#F8F9FB] border-slate-200 text-slate-700 hover:border-[#5B5FEF]/40'
                   }`}
-                />
-              </button>
-            ))}
+                >
+                  <span>{item.label}</span>
+                  <CheckCircle2
+                    className={`w-4 h-4 ${
+                      isClaimedToday ? 'text-emerald-600' : 'text-slate-400'
+                    }`}
+                  />
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -1010,11 +1073,16 @@ export const MobileCustomerWalletPage: React.FC<
           />
           <button
             type="button"
+            disabled={reviewSubmitted}
             onClick={handleSubmitReview}
             style={{ minHeight: '44px' }}
-            className="w-full rounded-xl bg-[#5B5FEF] hover:bg-[#4A4EE0] text-white text-xs font-bold"
+            className={`w-full rounded-xl text-white text-xs font-bold transition ${
+              reviewSubmitted
+                ? 'bg-emerald-600 cursor-not-allowed opacity-90'
+                : 'bg-[#5B5FEF] hover:bg-[#4A4EE0]'
+            }`}
           >
-            Doğrulanmış Yorumu Gönder (+50 Puan)
+            {reviewSubmitted ? 'Değerlendirmeniz Kaydedildi ✓' : 'Doğrulanmış Yorumu Gönder (+50 Puan)'}
           </button>
           {reviewStatus && (
             <p className="text-[11px] text-emerald-700 font-semibold">{reviewStatus}</p>

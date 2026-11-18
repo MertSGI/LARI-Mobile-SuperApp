@@ -43,6 +43,7 @@ import {
   VoiceMatchedLine,
 } from '../../../services/mobile/voiceCatalogMatcherService';
 import LariQrCodeSvg from '../../../components/mobile/LariQrCodeSvg';
+import { sanitizeUserMessage } from '../../../services/mobile/mobileUiSanitizer';
 
 export interface MobilePosCheckoutRequest {
   userRole: Role | 'guest';
@@ -339,7 +340,10 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
         className="rounded-2xl bg-rose-50 border-2 border-rose-300 p-4 text-xs text-rose-800 font-bold"
         data-testid="partner-pos-forbidden"
       >
-        Erişim Engellendi: {access.reasonCode}
+        {sanitizeUserMessage(
+          access.reasonCode,
+          'Bu kasa ve stok ekranına erişim için yetkili Partner hesabı gereklidir.'
+        )}
       </div>
     );
   }
@@ -630,7 +634,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
       tipMinorUnits: liveBreakdown.optionalTipMajor * 100,
     });
     setCheckoutStatus(
-      `${res.reasonCode} • Tahsilat: ${(res.totalMinorUnits / 100).toLocaleString('tr-TR')} TRY • Bahşiş: ${(res.tipMinorUnits / 100).toLocaleString('tr-TR')} TRY • Prim: ${(res.staffCommissionMinor / 100).toLocaleString('tr-TR')} TRY`
+      `${sanitizeUserMessage(res.reasonCode, 'Tahsilat durumu güncellendi.')} • Tahsilat: ${(res.totalMinorUnits / 100).toLocaleString('tr-TR')} TRY • Bahşiş: ${(res.tipMinorUnits / 100).toLocaleString('tr-TR')} TRY • Prim: ${(res.staffCommissionMinor / 100).toLocaleString('tr-TR')} TRY`
     );
   };
 
@@ -643,11 +647,11 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
       idempotencyKey: `po-ui-${Date.now()}`,
       items: [{ poItemId: 'serum-100ml', quantity: 12 }],
     });
-    setPoStatus(res.reasonCode);
+    setPoStatus(sanitizeUserMessage(res.reasonCode, 'Stok alım kaydı işlendi.'));
   };
 
   return (
-    <div className="space-y-4" data-testid="mobile-partner-pos-page">
+    <div className="space-y-4 pb-32" data-testid="mobile-partner-pos-page">
       {/* 1. QR İLE MÜŞTERİ KABULÜ (SAĞLIK TURİZMİ / PAKETLİ / STANDART) */}
       <div className={`rounded-3xl p-4 space-y-3 shadow-sm ${cardSurface}`}>
         <div className="flex items-center justify-between gap-2">
@@ -1182,8 +1186,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
         <div className="rounded-xl bg-amber-50 border-2 border-amber-300 p-3 text-xs text-amber-900 flex items-start gap-2">
           <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
           <span>
-            Fiziksel POS donanımı (`card_terminal_adapter`) canlı PSP kimliği gelene kadar{' '}
-            <strong>EXTERNAL_HOLD</strong> kapsamındadır; QR/Nakit tahsilat ve kalem dökümü tam çalışır.
+            Fiziksel kart terminali entegrasyonu hazırlık aşamasındadır; QR/Nakit tahsilat ve kalem dökümü tam çalışır.
           </span>
         </div>
 

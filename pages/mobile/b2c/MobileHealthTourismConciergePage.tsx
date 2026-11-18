@@ -16,6 +16,7 @@ import {
   Stethoscope,
 } from 'lucide-react';
 import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
+import { sanitizeUserMessage } from '../../../services/mobile/mobileUiSanitizer';
 import { createMobileQrArtifact } from '../../../services/mobile/lariQrEcosystemService';
 import LariQrCodeSvg from '../../../components/mobile/LariQrCodeSvg';
 
@@ -356,8 +357,11 @@ export const MobileHealthTourismConciergePage: React.FC<
         data-testid="ht-concierge-blocked"
       >
         {language === 'tr'
-          ? `Sağlık Turizmi Modülü Kapalı (${state.reasonCode})`
-          : `Health Tourism Module Unavailable (${state.reasonCode})`}
+          ? sanitizeUserMessage(
+              state.reasonCode,
+              'Sağlık Turizmi modülü şu anda bu işletme paketi için aktif değil.'
+            )
+          : 'Health Tourism Module is currently unavailable for this plan.'}
       </div>
     );
   }

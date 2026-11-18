@@ -121,6 +121,7 @@ export interface MobileAppSessionValue {
   customVenuePhotos: Record<string, string[]>;
   customSocialPosts: MobileCustomSocialPost[];
   partnerSubscription: PartnerSubscriptionSnapshot | null;
+  liveAppointmentStage: 1 | 2 | 3 | 4;
   setThemeMode: (mode: 'light' | 'dark') => void;
   toggleThemeMode: () => void;
   showToast: (message: string) => void;
@@ -147,6 +148,7 @@ export interface MobileAppSessionValue {
   removeVenuePhoto: (tenantSlug: string, photoUrl: string) => void;
   publishSocialPost: (post: PublishSocialPostInput) => void;
   upgradeToPartnerAccount: (input: UpgradePartnerInput) => void;
+  updateLiveAppointmentStage: (stage: 1 | 2 | 3 | 4, actorRole: string) => void;
 }
 
 const INITIAL_PASSPORT_ENTRIES: MobilePassportEntry[] = [
@@ -245,6 +247,7 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   customVenuePhotos: {},
   customSocialPosts: [],
   partnerSubscription: null,
+  liveAppointmentStage: 2,
   setThemeMode: noop,
   toggleThemeMode: noop,
   showToast: noop,
@@ -268,6 +271,7 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   removeVenuePhoto: noop,
   publishSocialPost: noop,
   upgradeToPartnerAccount: noop,
+  updateLiveAppointmentStage: noop,
 };
 
 const MobileAppSessionContext = createContext<MobileAppSessionValue | null>(null);
@@ -309,6 +313,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
   );
   const [partnerSubscription, setPartnerSubscription] =
     useState<PartnerSubscriptionSnapshot | null>(null);
+  const [liveAppointmentStage, setLiveAppointmentStage] = useState<1 | 2 | 3 | 4>(2);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
@@ -623,6 +628,24 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     [showToast]
   );
 
+  const updateLiveAppointmentStage = useCallback(
+    (stage: 1 | 2 | 3 | 4, actorRole: string) => {
+      if (!['tenant_owner', 'staff', 'super_admin'].includes(actorRole)) {
+        showToast('Randevu aşamalarını yalnızca yetkili işletme hesabı güncelleyebilir.');
+        return;
+      }
+      setLiveAppointmentStage(stage);
+      const labels: Record<1 | 2 | 3 | 4, string> = {
+        1: 'Onaylandı',
+        2: 'Yola Çık',
+        3: 'Check-in',
+        4: 'Koltukta',
+      };
+      showToast(`Canlı randevu aşaması "${labels[stage]}" olarak güncellendi.`);
+    },
+    [showToast]
+  );
+
   const value = useMemo<MobileAppSessionValue>(
     () => ({
       themeMode,
@@ -643,6 +666,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       customVenuePhotos,
       customSocialPosts,
       partnerSubscription,
+      liveAppointmentStage,
       setThemeMode,
       toggleThemeMode,
       showToast,
@@ -666,6 +690,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       removeVenuePhoto,
       publishSocialPost,
       upgradeToPartnerAccount,
+      updateLiveAppointmentStage,
     }),
     [
       themeMode,
@@ -686,6 +711,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       customVenuePhotos,
       customSocialPosts,
       partnerSubscription,
+      liveAppointmentStage,
       toggleThemeMode,
       showToast,
       confirmBooking,
@@ -708,6 +734,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       removeVenuePhoto,
       publishSocialPost,
       upgradeToPartnerAccount,
+      updateLiveAppointmentStage,
     ]
   );
 

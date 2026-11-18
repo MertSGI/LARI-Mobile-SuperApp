@@ -36,7 +36,7 @@ export const MobileSuperAppContent: React.FC = () => {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const { currentUser } = useAuth();
-  const { activeBooking, toastMessage, confirmBooking, partnerSubscription } =
+  const { activeBooking, toastMessage, partnerSubscription } =
     useMobileAppSession();
 
   const windowSearchParams =
@@ -365,29 +365,7 @@ export const MobileSuperAppContent: React.FC = () => {
           preselectedSpecialistName={bookingSpecialistName}
           preselectedServiceNames={bookingServiceNames}
           attachedStyleNote={attachedAiStyleNote}
-          onBookingConfirmed={(summary) => {
-            const primaryService = bookingListing.popularServices[0];
-            confirmBooking({
-              appointmentId: 'apt-mobile-' + Date.now(),
-              tenantId: summary.tenantId,
-              tenantSlug: bookingListing.slug,
-              businessName: bookingListing.name,
-              branchLabel: bookingListing.district + ' Şubesi',
-              serviceName:
-                bookingServiceNames?.[0] ||
-                primaryService?.name ||
-                'LARİ Randevusu',
-              specialistName:
-                bookingSpecialistName || 'İlk uygun uzman',
-              scheduledDate: '2026-11-18',
-              scheduledTime: summary.slotTime,
-              priceMajor: primaryService?.priceMajor || 0,
-              currency: primaryService?.currency || 'TRY',
-              hospitalityDrink:
-                summary.hospitalityDrink || 'Filtre Kahve',
-              quietSession: summary.quietSession || false,
-              attachedStyleNote: attachedAiStyleNote,
-            });
+          onBookingConfirmed={() => {
             setBookingListing(null);
             setBookingSpecialistName(undefined);
             setBookingServiceNames(undefined);
