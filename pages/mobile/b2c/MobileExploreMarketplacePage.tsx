@@ -25,7 +25,10 @@ import {
   PastAppointmentSnapshot,
   searchMobileMarketplace,
 } from '../../../services/mobile/mobileDiscoveryService';
-import { convertFromTryMajor } from '../../../services/mobile/mobileRegionCurrencyService';
+import {
+  convertFromTryMajor,
+  validateMobileUserProfile,
+} from '../../../services/mobile/mobileRegionCurrencyService';
 import {
   MOBILE_CATEGORY_ARTWORKS,
   VENUE_VISUAL_CATALOG,
@@ -293,6 +296,7 @@ export interface MobileExploreMarketplacePageProps {
   ) => void;
   onOneTapRebook?: (tenantSlug: string, date: string, time: string) => void;
   onOpenPartnerOnboarding?: () => void;
+  onOpenProfile?: () => void;
 }
 
 export const MobileExploreMarketplacePage: React.FC<
@@ -304,12 +308,15 @@ export const MobileExploreMarketplacePage: React.FC<
   onOpenBookingSheet,
   onOneTapRebook,
   onOpenPartnerOnboarding,
+  onOpenProfile,
 }) => {
   const {
     showToast,
     themeMode,
     selectedCurrency,
+    userProfile,
   } = useMobileAppSession();
+  const isProfileIncomplete = !validateMobileUserProfile(userProfile).valid;
   const isDark = themeMode === 'dark';
 
   const [vertical, setVertical] = useState<LariBusinessVertical | 'all'>('all');
@@ -464,6 +471,33 @@ export const MobileExploreMarketplacePage: React.FC<
 
   return (
     <div className="space-y-5 pb-28" data-testid="mobile-explore-marketplace-page">
+      {isProfileIncomplete && onOpenProfile && (
+        <div
+          className={`flex items-center justify-between gap-3 rounded-2xl border-2 px-3.5 py-2.5 ${
+            isDark
+              ? 'border-indigo-500/40 bg-indigo-950/50 text-indigo-100'
+              : 'border-indigo-200 bg-[#EEF2FF] text-[#312E81]'
+          }`}
+          data-testid="explore-profile-completion-banner"
+        >
+          <div className="min-w-0">
+            <p className="text-xs font-black">
+              Hızlı Randevu İçin Profilinizi Tamamlayın
+            </p>
+            <p className="text-[11px] opacity-85 truncate">
+              Ad, e-posta ve telefon ekleyerek 3 saniyede randevu alın. Misafir gezinme açık.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenProfile}
+            className="shrink-0 rounded-xl bg-[#4F46E5] px-3 py-1.5 text-[11px] font-black text-white"
+            data-testid="explore-complete-profile-btn"
+          >
+            Tamamla
+          </button>
+        </div>
+      )}
       {searchResult.storefrontLockActive ? (
         <div
           className="rounded-2xl bg-emerald-50 border-2 border-emerald-400 p-4 flex items-center justify-between gap-2"

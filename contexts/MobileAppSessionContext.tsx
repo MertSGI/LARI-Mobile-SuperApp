@@ -139,6 +139,124 @@ export const DEFAULT_STOREFRONT_CUSTOMIZATION: PartnerStorefrontCustomization = 
   whatsappNumber: '905325550140',
 };
 
+export interface PartnerStaffMember {
+  id: string;
+  name: string;
+  specialty: string;
+  active: boolean;
+  available: boolean;
+  commissionRate: number;
+  workDaysLabel: string;
+  shiftHours: string;
+}
+
+export type BusinessHoursKey = 'weekdays' | 'saturday' | 'sunday';
+export type DailyBusinessHoursKey =
+  | 'monday'
+  | 'tuesday'
+  | 'wednesday'
+  | 'thursday'
+  | 'friday'
+  | 'saturday'
+  | 'sunday';
+
+export interface BusinessHoursSchedule {
+  label: string;
+  open: boolean;
+  openTime: string;
+  closeTime: string;
+}
+
+export interface PartnerCampaign {
+  id: string;
+  code: string;
+  discountPercent: number;
+  active: boolean;
+}
+
+export const INITIAL_PARTNER_STAFF: PartnerStaffMember[] = [
+  {
+    id: 'staff-merve',
+    name: 'Merve Yılmaz',
+    specialty: 'Renk & Balayage Uzmanı',
+    active: true,
+    available: true,
+    commissionRate: 25,
+    workDaysLabel: 'Pzt–Cmt',
+    shiftHours: '09:30–19:30',
+  },
+  {
+    id: 'staff-ece',
+    name: 'Dr. Ece Aksoy',
+    specialty: 'Medikal Estetik & Lazer',
+    active: true,
+    available: true,
+    commissionRate: 30,
+    workDaysLabel: 'Pzt–Cum',
+    shiftHours: '10:00–18:30',
+  },
+  {
+    id: 'staff-kemal',
+    name: 'Kemal Usta',
+    specialty: 'Kıdemli Bakım & Keratin',
+    active: true,
+    available: false,
+    commissionRate: 20,
+    workDaysLabel: 'Sal–Paz',
+    shiftHours: '10:00–20:00',
+  },
+];
+
+export const INITIAL_GROUPED_HOURS: Record<BusinessHoursKey, BusinessHoursSchedule> = {
+  weekdays: {
+    label: 'Hafta İçi (Pzt-Cum)',
+    open: true,
+    openTime: '09:30',
+    closeTime: '20:00',
+  },
+  saturday: {
+    label: 'Cumartesi',
+    open: true,
+    openTime: '10:00',
+    closeTime: '19:00',
+  },
+  sunday: {
+    label: 'Pazar',
+    open: false,
+    openTime: '11:00',
+    closeTime: '17:00',
+  },
+};
+
+export const INITIAL_DAILY_HOURS: Record<DailyBusinessHoursKey, BusinessHoursSchedule> = {
+  monday: { label: 'Pazartesi', open: true, openTime: '09:30', closeTime: '20:00' },
+  tuesday: { label: 'Salı', open: true, openTime: '09:30', closeTime: '20:00' },
+  wednesday: { label: 'Çarşamba', open: true, openTime: '09:30', closeTime: '20:00' },
+  thursday: { label: 'Perşembe', open: true, openTime: '09:30', closeTime: '20:00' },
+  friday: { label: 'Cuma', open: true, openTime: '09:30', closeTime: '20:00' },
+  saturday: { label: 'Cumartesi', open: true, openTime: '10:00', closeTime: '19:00' },
+  sunday: { label: 'Pazar', open: false, openTime: '11:00', closeTime: '17:00' },
+};
+
+export const INITIAL_PARTNER_CAMPAIGNS: PartnerCampaign[] = [
+  { id: 'camp-hosgeldin15', code: 'HOSGELDIN15', discountPercent: 15, active: true },
+  { id: 'camp-vip-sessiz', code: 'SESSIZVIP', discountPercent: 10, active: false },
+];
+
+export function slugifyBusinessName(name: string): string {
+  const ascii = (name || '')
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ş/g, 's')
+    .replace(/ı/g, 'i')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return ascii || 'atelier-nisantasi';
+}
+
 export interface MobileAppSessionValue {
   themeMode: 'light' | 'dark';
   activeBooking: MobileActiveBooking | null;
@@ -159,6 +277,18 @@ export interface MobileAppSessionValue {
   customSocialPosts: MobileCustomSocialPost[];
   partnerSubscription: PartnerSubscriptionSnapshot | null;
   liveAppointmentStage: 1 | 2 | 3 | 4;
+  liveStagesByAppointmentId: Record<string, 1 | 2 | 3 | 4>;
+  getLiveStageForAppointment: (appointmentId?: string) => 1 | 2 | 3 | 4;
+  partnerStaffMembers: PartnerStaffMember[];
+  setPartnerStaffMembers: React.Dispatch<React.SetStateAction<PartnerStaffMember[]>>;
+  partnerGroupedHours: Record<BusinessHoursKey, BusinessHoursSchedule>;
+  setPartnerGroupedHours: React.Dispatch<React.SetStateAction<Record<BusinessHoursKey, BusinessHoursSchedule>>>;
+  partnerDailyHours: Record<DailyBusinessHoursKey, BusinessHoursSchedule>;
+  setPartnerDailyHours: React.Dispatch<React.SetStateAction<Record<DailyBusinessHoursKey, BusinessHoursSchedule>>>;
+  partnerDailyHoursMode: boolean;
+  setPartnerDailyHoursMode: React.Dispatch<React.SetStateAction<boolean>>;
+  partnerCampaigns: PartnerCampaign[];
+  setPartnerCampaigns: React.Dispatch<React.SetStateAction<PartnerCampaign[]>>;
   userProfile: MobileUserProfile;
   selectedCurrency: SupportedCurrency;
   storefrontCustomization: PartnerStorefrontCustomization;
@@ -181,7 +311,14 @@ export interface MobileAppSessionValue {
   ) => { conflict: boolean; conflictingService?: string; message?: string };
   updateUserProfile: (nextProfile: MobileUserProfile) => void;
   setSelectedCurrency: (currency: SupportedCurrency) => void;
-  rescheduleActiveBooking: (newDate: string, newTime: string) => void;
+  rescheduleActiveBooking: (
+    newDate: string,
+    newTime: string
+  ) => {
+    accepted: boolean;
+    reasonCode?: 'SAME_CATEGORY_DAILY_CONFLICT';
+    message?: string;
+  };
   cancelActiveBooking: (reason?: string) => void;
   setHospitalityPreferences: (drink: string, quiet: boolean) => void;
   appendPassportFormula: (entry: MobilePassportEntry) => void;
@@ -203,7 +340,11 @@ export interface MobileAppSessionValue {
   removeVenuePhoto: (tenantSlug: string, photoUrl: string) => void;
   publishSocialPost: (post: PublishSocialPostInput) => void;
   upgradeToPartnerAccount: (input: UpgradePartnerInput) => void;
-  updateLiveAppointmentStage: (stage: 1 | 2 | 3 | 4, actorRole: string) => void;
+  updateLiveAppointmentStage: (
+    stage: 1 | 2 | 3 | 4,
+    actorRole: string,
+    appointmentId?: string
+  ) => void;
 }
 
 const INITIAL_PASSPORT_ENTRIES: MobilePassportEntry[] = [
@@ -297,7 +438,7 @@ export function inferFineBookingCategory(
     return 'barber';
   }
   if (/(saç|sac|balayage|boya|fön|keratin|kesim)/i.test(normalized)) {
-    return 'beauty_hair';
+    return 'beauty_salon';
   }
   if (/(diş|dis|gülüş|zirkonyum|implant|ortodonti|muayene)/i.test(normalized)) {
     return 'dental_clinic';
@@ -375,6 +516,18 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   customSocialPosts: [],
   partnerSubscription: null,
   liveAppointmentStage: 2,
+  liveStagesByAppointmentId: {},
+  getLiveStageForAppointment: () => 2,
+  partnerStaffMembers: INITIAL_PARTNER_STAFF,
+  setPartnerStaffMembers: noop as any,
+  partnerGroupedHours: INITIAL_GROUPED_HOURS,
+  setPartnerGroupedHours: noop as any,
+  partnerDailyHours: INITIAL_DAILY_HOURS,
+  setPartnerDailyHours: noop as any,
+  partnerDailyHoursMode: false,
+  setPartnerDailyHoursMode: noop as any,
+  partnerCampaigns: INITIAL_PARTNER_CAMPAIGNS,
+  setPartnerCampaigns: noop as any,
   userProfile: DEFAULT_USER_PROFILE,
   selectedCurrency: 'TRY',
   storefrontCustomization: DEFAULT_STOREFRONT_CUSTOMIZATION,
@@ -387,7 +540,7 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   checkSameDayCategoryConflict: noopConflict,
   updateUserProfile: noop,
   setSelectedCurrency: noop,
-  rescheduleActiveBooking: noop,
+  rescheduleActiveBooking: noopBooking,
   cancelActiveBooking: noop,
   setHospitalityPreferences: noop,
   appendPassportFormula: noop,
@@ -448,7 +601,89 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
   );
   const [partnerSubscription, setPartnerSubscription] =
     useState<PartnerSubscriptionSnapshot | null>(null);
-  const [liveAppointmentStage, setLiveAppointmentStage] = useState<1 | 2 | 3 | 4>(2);
+  const [liveStagesByAppointmentId, setLiveStagesByAppointmentId] = useState<
+    Record<string, 1 | 2 | 3 | 4>
+  >({});
+  const [partnerStaffMembers, setPartnerStaffMembers] = useState<PartnerStaffMember[]>(() => {
+    try {
+      const raw =
+        typeof window !== 'undefined'
+          ? window.localStorage.getItem('lari_partner_staff_v1')
+          : null;
+      return raw ? JSON.parse(raw) : INITIAL_PARTNER_STAFF;
+    } catch {
+      return INITIAL_PARTNER_STAFF;
+    }
+  });
+  const [partnerGroupedHours, setPartnerGroupedHours] = useState<
+    Record<BusinessHoursKey, BusinessHoursSchedule>
+  >(() => {
+    try {
+      const raw =
+        typeof window !== 'undefined'
+          ? window.localStorage.getItem('lari_partner_grouped_hours_v1')
+          : null;
+      return raw ? JSON.parse(raw) : INITIAL_GROUPED_HOURS;
+    } catch {
+      return INITIAL_GROUPED_HOURS;
+    }
+  });
+  const [partnerDailyHours, setPartnerDailyHours] = useState<
+    Record<DailyBusinessHoursKey, BusinessHoursSchedule>
+  >(() => {
+    try {
+      const raw =
+        typeof window !== 'undefined'
+          ? window.localStorage.getItem('lari_partner_daily_hours_v1')
+          : null;
+      return raw ? JSON.parse(raw) : INITIAL_DAILY_HOURS;
+    } catch {
+      return INITIAL_DAILY_HOURS;
+    }
+  });
+  const [partnerDailyHoursMode, setPartnerDailyHoursMode] = useState<boolean>(false);
+  const [partnerCampaigns, setPartnerCampaigns] = useState<PartnerCampaign[]>(
+    () => INITIAL_PARTNER_CAMPAIGNS
+  );
+
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(
+          'lari_partner_staff_v1',
+          JSON.stringify(partnerStaffMembers)
+        );
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [partnerStaffMembers]);
+
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(
+          'lari_partner_grouped_hours_v1',
+          JSON.stringify(partnerGroupedHours)
+        );
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [partnerGroupedHours]);
+
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(
+          'lari_partner_daily_hours_v1',
+          JSON.stringify(partnerDailyHours)
+        );
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [partnerDailyHours]);
   const [storefrontCustomization, setStorefrontCustomization] =
     useState<PartnerStorefrontCustomization>(() => {
       try {
@@ -586,6 +821,29 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
 
   const rescheduleActiveBooking = useCallback(
     (newDate: string, newTime: string) => {
+      const targetBooking = activeBooking;
+      if (targetBooking) {
+        const conflict = findSameDayCategoryConflict(
+          bookingHistory.filter(
+            (item) => item.appointmentId !== targetBooking.appointmentId
+          ),
+          newDate,
+          targetBooking.serviceName,
+          targetBooking.serviceCategory
+        );
+        if (conflict.conflict) {
+          const friendly = sanitizeUserMessage(
+            conflict.message || 'SAME_CATEGORY_DAILY_CONFLICT'
+          );
+          showToast(friendly);
+          return {
+            accepted: false,
+            reasonCode: 'SAME_CATEGORY_DAILY_CONFLICT' as const,
+            message: friendly,
+          };
+        }
+      }
+
       setActiveBooking((booking) => {
         if (!booking) return null;
         const updated: MobileActiveBooking = {
@@ -602,8 +860,9 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
         return updated;
       });
       showToast('Randevu tarihi güncellendi.');
+      return { accepted: true };
     },
-    [showToast]
+    [activeBooking, bookingHistory, showToast]
   );
 
   const cancelActiveBooking = useCallback(
@@ -796,22 +1055,42 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     [showToast]
   );
 
-  const addVenuePhoto = useCallback((tenantSlug: string, photoUrl: string) => {
-    const normalizedUrl = photoUrl.trim();
-    if (!normalizedUrl) return;
-    setCustomVenuePhotos((current) => {
-      const existing = current[tenantSlug] ?? [];
-      if (existing.includes(normalizedUrl)) return current;
-      return { ...current, [tenantSlug]: [normalizedUrl, ...existing] };
-    });
-  }, []);
+  const addVenuePhoto = useCallback(
+    (tenantSlug: string, photoUrl: string) => {
+      const lockStatus = getStorefrontEditLockStatus(storefrontLastEditedAtIso);
+      if (lockStatus.locked) {
+        showToast(
+          `24 saatlik vitrin düzenleme kilidi aktif (${lockStatus.countdownText} kaldı).`
+        );
+        return;
+      }
+      const normalizedUrl = photoUrl.trim();
+      if (!normalizedUrl) return;
+      setCustomVenuePhotos((current) => {
+        const existing = current[tenantSlug] ?? [];
+        if (existing.includes(normalizedUrl)) return current;
+        return { ...current, [tenantSlug]: [normalizedUrl, ...existing] };
+      });
+    },
+    [storefrontLastEditedAtIso, showToast]
+  );
 
-  const removeVenuePhoto = useCallback((tenantSlug: string, photoUrl: string) => {
-    setCustomVenuePhotos((current) => ({
-      ...current,
-      [tenantSlug]: (current[tenantSlug] ?? []).filter((url) => url !== photoUrl),
-    }));
-  }, []);
+  const removeVenuePhoto = useCallback(
+    (tenantSlug: string, photoUrl: string) => {
+      const lockStatus = getStorefrontEditLockStatus(storefrontLastEditedAtIso);
+      if (lockStatus.locked) {
+        showToast(
+          `24 saatlik vitrin düzenleme kilidi aktif (${lockStatus.countdownText} kaldı).`
+        );
+        return;
+      }
+      setCustomVenuePhotos((current) => ({
+        ...current,
+        [tenantSlug]: (current[tenantSlug] ?? []).filter((url) => url !== photoUrl),
+      }));
+    },
+    [storefrontLastEditedAtIso, showToast]
+  );
 
   const publishSocialPost = useCallback((post: PublishSocialPostInput) => {
     setCustomSocialPosts((current) => [
@@ -926,13 +1205,27 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     [showToast]
   );
 
+  const getLiveStageForAppointment = useCallback(
+    (appointmentId?: string): 1 | 2 | 3 | 4 => {
+      const key = appointmentId || activeBooking?.appointmentId || 'apt-live-101';
+      return liveStagesByAppointmentId[key] ?? 2;
+    },
+    [activeBooking?.appointmentId, liveStagesByAppointmentId]
+  );
+
+  const liveAppointmentStage = useMemo<1 | 2 | 3 | 4>(() => {
+    const activeId = activeBooking?.appointmentId || 'apt-live-101';
+    return liveStagesByAppointmentId[activeId] ?? 2;
+  }, [activeBooking?.appointmentId, liveStagesByAppointmentId]);
+
   const updateLiveAppointmentStage = useCallback(
-    (stage: 1 | 2 | 3 | 4, actorRole: string) => {
+    (stage: 1 | 2 | 3 | 4, actorRole: string, appointmentId?: string) => {
       if (!['tenant_owner', 'staff', 'super_admin'].includes(actorRole)) {
         showToast('Randevu aşamalarını yalnızca yetkili işletme hesabı güncelleyebilir.');
         return;
       }
-      setLiveAppointmentStage(stage);
+      const targetId = appointmentId || activeBooking?.appointmentId || 'apt-live-101';
+      setLiveStagesByAppointmentId((prev) => ({ ...prev, [targetId]: stage }));
       const labels: Record<1 | 2 | 3 | 4, string> = {
         1: 'Onaylandı',
         2: 'Yola Çık',
@@ -941,7 +1234,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       };
       showToast(`Canlı randevu aşaması "${labels[stage]}" olarak güncellendi.`);
     },
-    [showToast]
+    [activeBooking?.appointmentId, showToast]
   );
 
   const value = useMemo<MobileAppSessionValue>(
@@ -965,6 +1258,18 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       customSocialPosts,
       partnerSubscription,
       liveAppointmentStage,
+      liveStagesByAppointmentId,
+      getLiveStageForAppointment,
+      partnerStaffMembers,
+      setPartnerStaffMembers,
+      partnerGroupedHours,
+      setPartnerGroupedHours,
+      partnerDailyHours,
+      setPartnerDailyHours,
+      partnerDailyHoursMode,
+      setPartnerDailyHoursMode,
+      partnerCampaigns,
+      setPartnerCampaigns,
       userProfile,
       selectedCurrency,
       storefrontCustomization,
@@ -1018,6 +1323,18 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       customSocialPosts,
       partnerSubscription,
       liveAppointmentStage,
+      liveStagesByAppointmentId,
+      getLiveStageForAppointment,
+      partnerStaffMembers,
+      setPartnerStaffMembers,
+      partnerGroupedHours,
+      setPartnerGroupedHours,
+      partnerDailyHours,
+      setPartnerDailyHours,
+      partnerDailyHoursMode,
+      setPartnerDailyHoursMode,
+      partnerCampaigns,
+      setPartnerCampaigns,
       userProfile,
       selectedCurrency,
       storefrontCustomization,

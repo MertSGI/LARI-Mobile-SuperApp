@@ -19,6 +19,8 @@ export interface PartnerFeatureEntitlements {
   voiceCatalogMatchEnabled: boolean;
   aiVisualizerEnabled: boolean;
   aiVisualizerActiveOnStorefront: boolean;
+  clinicPersonaAllowed: boolean;
+  htPersonaAllowed: boolean;
   requiredUpgradeForVoice: string;
   requiredUpgradeForAi: string;
   requiredUpgradeForHtQr: string;
@@ -27,6 +29,8 @@ export interface PartnerFeatureEntitlements {
 /**
  * Resolves package-based feature gates across Partner QR Admission,
  * Voice Catalog Matching, and Embedded AI Image Processing.
+ * SECURITY INVARIANT: When an active `partnerSubscription` exists, `planId`
+ * is strictly authoritative — demo persona switching CANNOT bypass paid tiers.
  */
 export function resolvePartnerFeatureEntitlements(input: {
   partnerSubscription?: PartnerSubscriptionSnapshot | null;
@@ -34,29 +38,34 @@ export function resolvePartnerFeatureEntitlements(input: {
 }): PartnerFeatureEntitlements {
   const persona = input.effectivePersona ?? 'salon_partner';
   const rawPlanId = (input.partnerSubscription?.planId || '') as string;
-  const category = (input.partnerSubscription?.category || '').toLocaleLowerCase('tr-TR');
+  const hasExplicitSubscription = Boolean(input.partnerSubscription && rawPlanId);
 
   let effectivePlanId: PartnerPackageTierId = 'baslangic';
   let effectivePlanLabel = 'Başlangıç (999 TRY)';
 
-  if (persona === 'ht_coordinator' || rawPlanId === 'health_tourism') {
-    effectivePlanId = 'health_tourism';
-    effectivePlanLabel = input.partnerSubscription?.planName || 'Sağlık Turizmi';
-  } else if (persona === 'clinic_practitioner' || rawPlanId === 'clinic') {
-    effectivePlanId = 'clinic';
-    effectivePlanLabel = input.partnerSubscription?.planName || 'Klinik';
-  } else if (
-    rawPlanId === 'kurumsal' ||
-    rawPlanId === 'premium' ||
-    rawPlanId === 'professional' ||
-    rawPlanId === 'standart' ||
-    rawPlanId === 'baslangic'
-  ) {
-    effectivePlanId = rawPlanId;
-    effectivePlanLabel = input.partnerSubscription?.planName || rawPlanId;
-  } else if (category.includes('diş') || category.includes('estetik') || category.includes('klinik')) {
-    effectivePlanId = 'clinic';
-    effectivePlanLabel = 'Klinik';
+  if (hasExplicitSubscription) {
+    if (
+      rawPlanId === 'kurumsal' ||
+      rawPlanId === 'premium' ||
+      rawPlanId === 'professional' ||
+      rawPlanId === 'standart' ||
+      rawPlanId === 'baslangic' ||
+      rawPlanId === 'clinic' ||
+      rawPlanId === 'health_tourism'
+    ) {
+      effectivePlanId = rawPlanId;
+      effectivePlanLabel = input.partnerSubscription?.planName || rawPlanId;
+    }
+  } else {
+    // Unsubscribed local preview owner switching personas before plan selection:
+    // salon_partner stays at basic/non-HT; clinic_practitioner / ht_coordinator preview their verticals.
+    if (persona === 'ht_coordinator') {
+      effectivePlanId = 'health_tourism';
+      effectivePlanLabel = 'Sağlık Turizmi';
+    } else if (persona === 'clinic_practitioner') {
+      effectivePlanId = 'clinic';
+      effectivePlanLabel = 'Klinik';
+    }
   }
 
   // Health Tourism QR Admission: visible ONLY for Health Tourism or Kurumsal packages
@@ -77,6 +86,16 @@ export function resolvePartnerFeatureEntitlements(input: {
     effectivePlanId === 'clinic' ||
     effectivePlanId === 'health_tourism';
 
+  const clinicPersonaAllowed = hasExplicitSubscription
+    ? effectivePlanId === 'clinic' ||
+      effectivePlanId === 'health_tourism' ||
+      effectivePlanId === 'kurumsal'
+    : true;
+
+  const htPersonaAllowed = hasExplicitSubscription
+    ? effectivePlanId === 'health_tourism' || effectivePlanId === 'kurumsal'
+    : true;
+
   return {
     effectivePlanId,
     effectivePlanLabel,
@@ -86,6 +105,8 @@ export function resolvePartnerFeatureEntitlements(input: {
     voiceCatalogMatchEnabled,
     aiVisualizerEnabled,
     aiVisualizerActiveOnStorefront: aiVisualizerEnabled,
+    clinicPersonaAllowed,
+    htPersonaAllowed,
     requiredUpgradeForVoice: 'Klinik veya Sağlık Turizmi Paketi',
     requiredUpgradeForAi: 'Profesyonel veya Klinik / Sağlık Turizmi Paketi',
     requiredUpgradeForHtQr: 'Sağlık Turizmi Paketi',

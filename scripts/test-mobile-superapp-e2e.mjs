@@ -539,6 +539,17 @@ async function run() {
       );
       await page.click('[data-testid="partner-management-tab-storefront"]');
       await page.waitForSelector('[data-testid="partner-management-storefront-panel"]');
+
+      // Verify daily working hours persistence across Partner tab navigation
+      await page.click('[data-testid="partner-hours-daily-mode-toggle"]');
+      await page.waitForSelector('[data-testid="partner-hours-toggle-monday"]');
+      await page.click('[data-testid="mobile-tab-partner_pos"]');
+      await page.waitForSelector('[data-testid="mobile-partner-pos-page"]');
+      await page.click('[data-testid="mobile-tab-partner_agenda"]');
+      await page.click('[data-testid="partner-management-tab-storefront"]');
+      await page.waitForSelector('[data-testid="partner-hours-toggle-monday"]');
+
+      // Trigger 24h storefront edit lock and confirm hours/gallery are locked
       await page.click('[data-testid="partner-storefront-save-btn"]');
       const editLockBanner = page.locator(
         '[data-testid="partner-storefront-edit-lock-banner"]'
@@ -546,6 +557,47 @@ async function run() {
       await editLockBanner.waitFor();
       assert.match(await editLockBanner.innerText(), /24 saatlik vitrin düzenleme kilidi/i);
       assert.match(await editLockBanner.innerText(), /\d{2}:\d{2}:\d{2} kaldı/);
+      assert.equal(
+        await page.locator('[data-testid="partner-hours-toggle-monday"]').isDisabled(),
+        true,
+        `Storefront lock must disable working hours edits on ${vp.name}`
+      );
+      assert.equal(
+        await page.locator('[data-testid="partner-gallery-add-url-btn"]').isDisabled(),
+        true,
+        `Storefront lock must disable gallery URL additions on ${vp.name}`
+      );
+
+      // [SEV-0] Baslangic subscriber must NOT escalate persona to ht_coordinator or clinic_practitioner
+      await page.click('[data-testid="mobile-tab-partner_switch"]');
+      await page.click('[data-testid="persona-role-dropdown-btn"]');
+      assert.equal(
+        await page.locator('[data-testid="persona-pill-ht_coordinator"]').count(),
+        0,
+        `Baslangic plan must not expose ht_coordinator persona on ${vp.name}`
+      );
+      assert.equal(
+        await page.locator('[data-testid="persona-pill-clinic_practitioner"]').count(),
+        0,
+        `Baslangic plan must not expose clinic_practitioner persona on ${vp.name}`
+      );
+
+      // [SEV-1] Multi-currency selection (USD) must propagate across Wallet
+      await page.click('[data-testid="mobile-mode-customer-btn"]');
+      await page.click('[data-testid="mobile-tab-profile"]');
+      if ((await page.locator('#profile-currency').count()) === 0) {
+        await page.click('button:has-text("Kişisel Bilgiler & İletişim")');
+      }
+      await page.waitForSelector('#profile-currency');
+      await page.selectOption('#profile-currency', 'USD');
+      await page.click('[data-testid="mobile-tab-wallet"]');
+      await page.click('[data-testid="wallet-subtab-loyalty"]');
+      await page.waitForSelector('[data-testid="wallet-loyalty-panel"]');
+      const walletLoyaltyText = await page
+        .locator('[data-testid="wallet-loyalty-panel"]')
+        .innerText();
+      assert.match(walletLoyaltyText, /\bUSD\b/);
+      assert.doesNotMatch(walletLoyaltyText, /\bTRY\b/);
 
       // G) White-Label Storefront Lock (/m?slug=atelier-nisantasi)
       await page.goto(`${url}/#/m?slug=atelier-nisantasi`, { waitUntil: 'networkidle' });

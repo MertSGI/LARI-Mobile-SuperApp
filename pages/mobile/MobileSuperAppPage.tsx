@@ -38,7 +38,7 @@ export const MobileSuperAppContent: React.FC = () => {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const { currentUser } = useAuth();
-  const { activeBooking, toastMessage, partnerSubscription } =
+  const { activeBooking, toastMessage, partnerSubscription, showToast } =
     useMobileAppSession();
 
   const windowSearchParams =
@@ -148,8 +148,8 @@ export const MobileSuperAppContent: React.FC = () => {
         requestedPersona,
         verticals: {
           eligible: true,
-          clinicEnabled: true,
-          healthTourismEnabled: true,
+          clinicEnabled: partnerEntitlements.clinicPersonaAllowed,
+          healthTourismEnabled: partnerEntitlements.htPersonaAllowed,
           posInventoryEnabled: true,
           loyaltyWalletEnabled: true,
           aiVisualizerEnabled: b2cAiAvailable,
@@ -157,7 +157,7 @@ export const MobileSuperAppContent: React.FC = () => {
         whiteLabelLockedTenantSlug: tenantSlug,
         activeLanguage: 'tr',
       }),
-    [b2cAiAvailable, effectiveRole, requestedMode, requestedPersona, tenantSlug]
+    [b2cAiAvailable, effectiveRole, partnerEntitlements.clinicPersonaAllowed, partnerEntitlements.htPersonaAllowed, requestedMode, requestedPersona, tenantSlug]
   );
 
   const handleSelectTab = (tab: MobileTabDescriptor) => {
@@ -180,6 +180,15 @@ export const MobileSuperAppContent: React.FC = () => {
   };
 
   const handleSwitchPersona = (persona: MobilePersonaType) => {
+    if (
+      partnerSubscription &&
+      ((persona === 'clinic_practitioner' && !partnerEntitlements.clinicPersonaAllowed) ||
+        (persona === 'ht_coordinator' && !partnerEntitlements.htPersonaAllowed))
+    ) {
+      showToast('Bu role geçmek için Klinik veya Sağlık Turizmi paketine yükseltmelisiniz.');
+      setPartnerOnboardingOpen(true);
+      return;
+    }
     setRequestedPersona(persona);
     const isPartnerPersona =
       persona === 'salon_partner' ||
@@ -259,6 +268,7 @@ export const MobileSuperAppContent: React.FC = () => {
               });
             }}
             onOpenPartnerOnboarding={() => setPartnerOnboardingOpen(true)}
+            onOpenProfile={() => setActiveTabId('profile')}
           />
         );
       case 'wallet':
@@ -342,6 +352,7 @@ export const MobileSuperAppContent: React.FC = () => {
             whiteLabelLockedTenantSlug={tenantSlug}
             onOpenBookingSheet={handleOpenBooking}
             onOpenPartnerOnboarding={() => setPartnerOnboardingOpen(true)}
+            onOpenProfile={() => setActiveTabId('profile')}
           />
         );
     }

@@ -34,6 +34,7 @@ import {
   MobileUserProfile,
   SupportedCurrency,
   UserGender,
+  convertFromTryMajor,
   formatPhoneDisplay,
   getCountryConfig,
   resolveDefaultCurrencyForLocation,
@@ -103,9 +104,9 @@ export const MobileProfileSettingsPage: React.FC<
   const [confirmPhrase, setConfirmPhrase] = useState('');
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
   const [showAllBookings, setShowAllBookings] = useState(false);
-  const [openSection, setOpenSection] = useState<
-    'personal' | 'notifications' | 'security' | null
-  >(null);
+  const [openSection, setOpenSection] = useState<'personal' | 'notifications' | 'security' | null>(() =>
+    validateMobileUserProfile(userProfile).valid ? null : 'personal'
+  );
   const [showPermissionDetail, setShowPermissionDetail] = useState(false);
   const [deletionResult, setDeletionResult] =
     useState<AccountDeletionResult | null>(null);
@@ -581,7 +582,11 @@ export const MobileProfileSettingsPage: React.FC<
                         : 'Tamamlandı'}
                 </span>
                 <p className="text-xs font-black">
-                  {apt.priceMajor.toLocaleString('tr-TR')} {apt.currency}
+                  {(apt.currency === 'TRY'
+                    ? convertFromTryMajor(apt.priceMajor, selectedCurrency)
+                    : apt.priceMajor
+                  ).toLocaleString('tr-TR')}{' '}
+                  {apt.currency === 'TRY' ? selectedCurrency : apt.currency}
                 </p>
               </div>
             </div>

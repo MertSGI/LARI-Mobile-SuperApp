@@ -28,6 +28,7 @@ import {
 } from '../../../services/mobile/qrCheckinService';
 import { buildAppointmentIcsContent } from '../../../services/mobile/nativeBridgeService';
 import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
+import { convertFromTryMajor } from '../../../services/mobile/mobileRegionCurrencyService';
 import {
   createMobileQrArtifact,
   QR_USAGE_SCENARIOS_BY_KIND,
@@ -65,7 +66,8 @@ export const MobileCustomerWalletPage: React.FC<
     incrementStamp,
     redeemGiftCode,
     completeQrPayment,
-    liveAppointmentStage,
+    getLiveStageForAppointment,
+    selectedCurrency,
     showToast,
   } = useMobileAppSession();
   const isDark = themeMode === 'dark';
@@ -76,7 +78,7 @@ export const MobileCustomerWalletPage: React.FC<
   const [historyFilter, setHistoryFilter] = useState<'all' | 'upcoming' | 'past'>('all');
   const [qrMode, setQrMode] = useState<'appointment' | 'package'>('appointment');
   const [customerTipRate, setCustomerTipRate] = useState<0 | 5 | 10 | 15>(0);
-  const liveStage = liveAppointmentStage;
+  const liveStage = getLiveStageForAppointment(activeBooking?.appointmentId);
   const [cancelledEmpty, setCancelledEmpty] = useState(false);
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('Programım değişti');
@@ -206,7 +208,9 @@ export const MobileCustomerWalletPage: React.FC<
     setTimeout(() => setGiftLocked(false), 2000);
     if (giftCode.trim().toUpperCase() === 'LARI500') {
       redeemGiftCode(giftCode);
-      setGiftMessage(`LARI500 (+${(50000 / 100).toLocaleString('tr-TR')} TRY) cüzdana eklendi!`);
+      setGiftMessage(
+        `LARI500 (+${convertFromTryMajor(500, selectedCurrency).toLocaleString('tr-TR')} ${selectedCurrency}) cüzdana eklendi!`
+      );
       setGiftCode('');
     } else {
       setGiftMessage('Geçersiz hediye kartı kodu (Örn: LARI500)');
@@ -543,16 +547,19 @@ export const MobileCustomerWalletPage: React.FC<
                             </span>
                             <span className="font-bold">
                               {ln.coveredByPackage
-                                ? '0 TRY'
-                                : `${ln.subtotalMajor.toLocaleString('tr-TR')} TRY`}
+                                ? `0 ${selectedCurrency}`
+                                : `${convertFromTryMajor(ln.subtotalMajor, selectedCurrency).toLocaleString('tr-TR')} ${selectedCurrency}`}
                             </span>
                           </div>
                         ))}
                         <div className="border-t border-slate-200 pt-1 flex justify-between font-semibold text-slate-600">
                           <span>KDV + Net İşlem Tutarı</span>
                           <span>
-                            {completedBreakdown.netPayableBeforeTipMajor.toLocaleString('tr-TR')}{' '}
-                            {completedBreakdown.currency}
+                            {convertFromTryMajor(
+                              completedBreakdown.netPayableBeforeTipMajor,
+                              selectedCurrency
+                            ).toLocaleString('tr-TR')}{' '}
+                            {selectedCurrency}
                           </span>
                         </div>
                       </div>
@@ -607,16 +614,22 @@ export const MobileCustomerWalletPage: React.FC<
                             <CheckCircle2 className="w-4 h-4" />
                             QR ile Ödemeyi Onayla (
                             {(
-                              completedBreakdown.netPayableBeforeTipMajor +
+                              convertFromTryMajor(
+                                completedBreakdown.netPayableBeforeTipMajor,
+                                selectedCurrency
+                              ) +
                               (customerTipRate > 0
                                 ? Math.round(
-                                    (completedBreakdown.netPayableBeforeTipMajor *
+                                    (convertFromTryMajor(
+                                      completedBreakdown.netPayableBeforeTipMajor,
+                                      selectedCurrency
+                                    ) *
                                       customerTipRate) /
                                       100
                                   )
                                 : 0)
                             ).toLocaleString('tr-TR')}{' '}
-                            {completedBreakdown.currency})
+                            {selectedCurrency})
                           </button>
                         </>
                       )}
@@ -634,8 +647,10 @@ export const MobileCustomerWalletPage: React.FC<
                             key={slot}
                             type="button"
                             onClick={() => {
-                              rescheduleActiveBooking('2026-11-19', slot);
-                              setShowRescheduleSlots(false);
+                              const res = rescheduleActiveBooking('2026-11-19', slot);
+                              if (res.accepted) {
+                                setShowRescheduleSlots(false);
+                              }
                             }}
                             className="py-1.5 rounded-lg bg-white border border-slate-200 hover:border-[#5B5FEF] text-[11px] font-bold text-[#111827]"
                           >
@@ -783,7 +798,8 @@ export const MobileCustomerWalletPage: React.FC<
                           {statusBadge.text}
                         </span>
                         <span className="text-xs font-black">
-                          {item.priceMajor.toLocaleString('tr-TR')} {item.currency}
+                          {convertFromTryMajor(item.priceMajor, selectedCurrency).toLocaleString('tr-TR')}{' '}
+                          {selectedCurrency}
                         </span>
                       </div>
                     </div>
@@ -909,7 +925,8 @@ export const MobileCustomerWalletPage: React.FC<
                 LARİ PLATINUM CÜZDAN
               </span>
               <p className="text-xl font-black text-white mt-1">
-                {(walletBalanceMinor / 100).toLocaleString('tr-TR')} TRY
+                {convertFromTryMajor(walletBalanceMinor / 100, selectedCurrency).toLocaleString('tr-TR')}{' '}
+                {selectedCurrency}
               </p>
             </div>
             <div className="text-right">

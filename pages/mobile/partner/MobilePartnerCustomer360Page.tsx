@@ -10,21 +10,34 @@ export async function scanMobileReactivationCohorts(tenantId: string, days: 60 |
 export async function grantMobileCustomerPackage(input: Parameters<typeof loyaltyReactivationService.grantCustomerPackage>[0], deps: Customer360Deps = {}) { return (deps.loyalty ?? loyaltyReactivationService).grantCustomerPackage(input); }
 
 import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
+import { convertFromTryMajor } from '../../../services/mobile/mobileRegionCurrencyService';
+import { sanitizeUserMessage } from '../../../services/mobile/mobileUiSanitizer';
 
 export const MobilePartnerCustomer360Page: React.FC = () => {
-  const { showToast } = useMobileAppSession();
+  const { showToast, selectedCurrency } = useMobileAppSession();
   const [unlocked, setUnlocked] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
   const [reactivationQueued, setReactivationQueued] = useState(false);
   const [packageGranted, setPackageGranted] = useState(false);
 
-  const handleUnlock = async () => {
+  const handleUnlock = async (viaBiometricButton = false) => {
+    const validPin = pinInput.trim().length >= 4 || viaBiometricButton;
+    const token = validPin ? 'mobile-preview-biometric-verified' : undefined;
     const auth = await requireBiometricReauth({
       tenantId: 'ten-1',
       staffOrUserId: 'staff-1',
       scope: 'customer_360_pii',
-      pinOrBiometricToken: 'mobile-preview-biometric-verified',
+      pinOrBiometricToken: token,
     });
-    if (auth.verified) setUnlocked(true);
+    if (auth.verified) {
+      setAuthError(null);
+      setUnlocked(true);
+    } else {
+      const msg = sanitizeUserMessage('BIOMETRIC_REAUTH_REQUIRED');
+      setAuthError(msg);
+      showToast(msg);
+    }
   };
 
   return (
@@ -41,15 +54,41 @@ export const MobilePartnerCustomer360Page: React.FC = () => {
         </div>
 
         {!unlocked ? (
-          <button
-            type="button"
-            onClick={handleUnlock}
-            style={{ minHeight: '46px' }}
-            className="w-full rounded-xl bg-[#5B5FEF] hover:bg-[#4A4EE0] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm"
-          >
-            <Fingerprint className="w-4 h-4" />
-            Biyometrik Doğrulama ile PII / Harcama Özeti Aç
-          </button>
+          <div className="space-y-2.5">
+            <div className="flex gap-2">
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value.replace(/\D+/g, ''))}
+                placeholder="4-6 Haneli İşletme PIN (Örn: 1234)"
+                className="flex-1 rounded-xl border border-slate-300 bg-[#F8F9FB] px-3 py-2 text-xs text-slate-900"
+                data-testid="customer360-pin-input"
+              />
+              <button
+                type="button"
+                onClick={() => void handleUnlock(false)}
+                className="px-3.5 rounded-xl border border-[#5B5FEF] text-[#4338CA] text-xs font-bold"
+              >
+                PIN Aç
+              </button>
+            </div>
+            {authError && (
+              <p className="text-[11px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+                {authError}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => void handleUnlock(true)}
+              style={{ minHeight: '46px' }}
+              className="w-full rounded-xl bg-[#5B5FEF] hover:bg-[#4A4EE0] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm"
+            >
+              <Fingerprint className="w-4 h-4" />
+              Biyometrik Doğrulama ile PII / Harcama Özeti Aç
+            </button>
+          </div>
         ) : (
           <div className="space-y-2.5 text-xs">
             <div className="rounded-2xl bg-[#F8F9FB] border border-amber-200 p-3 flex items-center justify-between">
@@ -58,7 +97,11 @@ export const MobilePartnerCustomer360Page: React.FC = () => {
                   <Crown className="w-3.5 h-3.5 text-amber-500" />
                   Selin Demir (VIP Segment)
                 </p>
-                <p className="text-slate-500 text-[11px]">Toplam Harcama: {(18450).toLocaleString('tr-TR')} TRY • 14 Ziyaret</p>
+                <p className="text-slate-500 text-[11px]">
+                  Toplam Harcama:{' '}
+                  {convertFromTryMajor(18450, selectedCurrency).toLocaleString('tr-TR')}{' '}
+                  {selectedCurrency} • 14 Ziyaret
+                </p>
               </div>
               <span className="px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold">Sadık</span>
             </div>

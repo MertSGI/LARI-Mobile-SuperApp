@@ -37,7 +37,13 @@ import {
   sanitizePhoneDigits,
   SupportedCurrency,
 } from '../../../services/mobile/mobileRegionCurrencyService';
-import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
+import {
+  BusinessHoursKey,
+  BusinessHoursSchedule,
+  DailyBusinessHoursKey,
+  slugifyBusinessName,
+  useMobileAppSession,
+} from '../../../contexts/MobileAppSessionContext';
 import MobileAIStyleVisualizerPage from '../b2c/MobileAIStyleVisualizerPage';
 import { resolvePartnerFeatureEntitlements } from '../../../services/mobile/mobilePackageEntitlementService';
 import { MobilePersonaType } from '../../../services/mobile/mobileShellPolicyService';
@@ -90,41 +96,8 @@ const PARTNER_MANAGEMENT_TABS: ReadonlyArray<{
   { id: 'storefront', label: 'Mağaza & %0 Komisyon' },
 ];
 
-interface PartnerStaffMember {
-  id: string;
-  name: string;
-  specialty: string;
-  active: boolean;
-  available: boolean;
-  commissionRate: number;
-  workDaysLabel: string;
-  shiftHours: string;
-}
-
 type RevenuePeriod = 'daily' | 'weekly' | 'monthly' | 'quarterly';
-type BusinessHoursKey = 'weekdays' | 'saturday' | 'sunday';
-type DailyBusinessHoursKey =
-  | 'monday'
-  | 'tuesday'
-  | 'wednesday'
-  | 'thursday'
-  | 'friday'
-  | 'saturday'
-  | 'sunday';
-
-interface BusinessHoursSchedule {
-  label: string;
-  open: boolean;
-  openTime: string;
-  closeTime: string;
-}
-
-interface PartnerCampaign {
-  id: string;
-  code: string;
-  discountPercent: number;
-  active: boolean;
-}
+const SIGNATURE_ACCENT_COLORS = ['#4F46E5', '#7C3AED', '#DB2777', '#0F766E', '#EA580C'];
 
 const PARTNER_TENANT_SLUG = 'atelier-nisantasi';
 const PARTNER_BUSINESS_NAME = 'Atelier Nişantaşı Hair & Spa';
@@ -223,8 +196,18 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     publishSocialPost,
     removeCatalogItem,
     removeVenuePhoto,
-    liveAppointmentStage,
+    getLiveStageForAppointment,
     updateLiveAppointmentStage,
+    partnerStaffMembers: staffMembers,
+    setPartnerStaffMembers: setStaffMembers,
+    partnerGroupedHours: businessHours,
+    setPartnerGroupedHours: setBusinessHours,
+    partnerDailyHours: dailyBusinessHours,
+    setPartnerDailyHours: setDailyBusinessHours,
+    partnerDailyHoursMode: dailyHoursMode,
+    setPartnerDailyHoursMode: setDailyHoursMode,
+    partnerCampaigns: campaigns,
+    setPartnerCampaigns: setCampaigns,
     showToast,
     themeMode,
     updateCatalogItem,
@@ -235,6 +218,15 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     saveStorefrontCustomization,
   } = useMobileAppSession();
   const isDark = themeMode === 'dark';
+  const lastPartnerActionRef = useRef<Record<string, number>>({});
+  const acquireActionGate = (actionKey: string, cooldownMs = 700): boolean => {
+    const now = Date.now();
+    if (now - (lastPartnerActionRef.current[actionKey] || 0) < cooldownMs) {
+      return false;
+    }
+    lastPartnerActionRef.current[actionKey] = now;
+    return true;
+  };
   const access = verifyPartnerMobileAccess(userRole, tenantId, tenantId);
   const entitlements = resolvePartnerFeatureEntitlements({
     partnerSubscription,
@@ -320,38 +312,6 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   const [editingCatalogId, setEditingCatalogId] = useState<string | null>(null);
   const [editingCatalogName, setEditingCatalogName] = useState('');
   const [editingCatalogPrice, setEditingCatalogPrice] = useState('');
-  const [staffMembers, setStaffMembers] = useState<PartnerStaffMember[]>([
-    {
-      id: 'staff-merve',
-      name: 'Merve Yılmaz',
-      specialty: 'Renk & Saç Tasarım Uzmanı',
-      active: true,
-      available: true,
-      commissionRate: 30,
-      workDaysLabel: 'Pzt–Cmt',
-      shiftHours: '09:00–19:00',
-    },
-    {
-      id: 'staff-ece',
-      name: 'Dr. Ece Aksoy',
-      specialty: 'Medikal Estetik Uzmanı',
-      active: true,
-      available: false,
-      commissionRate: 25,
-      workDaysLabel: 'Pzt–Cum',
-      shiftHours: '10:00–18:00',
-    },
-    {
-      id: 'staff-deniz',
-      name: 'Deniz Arslan',
-      specialty: 'Bakım & Stil Uzmanı',
-      active: true,
-      available: true,
-      commissionRate: 20,
-      workDaysLabel: 'Sal–Paz',
-      shiftHours: '11:00–20:00',
-    },
-  ]);
   const [isStaffAddOpen, setIsStaffAddOpen] = useState(false);
   const [newStaffName, setNewStaffName] = useState('');
   const [newStaffSpecialty, setNewStaffSpecialty] = useState('');
@@ -359,33 +319,11 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   const [newStaffShift, setNewStaffShift] = useState('09:00–19:00');
   const [selectedRevenuePeriod, setSelectedRevenuePeriod] =
     useState<RevenuePeriod>('daily');
-  const [businessHours, setBusinessHours] = useState<
-    Record<BusinessHoursKey, BusinessHoursSchedule>
-  >({
-    weekdays: { label: 'Hafta İçi', open: true, openTime: '09:00', closeTime: '20:00' },
-    saturday: { label: 'Cumartesi', open: true, openTime: '10:00', closeTime: '19:00' },
-    sunday: { label: 'Pazar', open: false, openTime: '10:00', closeTime: '17:00' },
-  });
-  const [dailyHoursMode, setDailyHoursMode] = useState(false);
-  const [dailyBusinessHours, setDailyBusinessHours] = useState<
-    Record<DailyBusinessHoursKey, BusinessHoursSchedule>
-  >({
-    monday: { label: 'Pazartesi', open: true, openTime: '09:00', closeTime: '20:00' },
-    tuesday: { label: 'Salı', open: true, openTime: '09:00', closeTime: '20:00' },
-    wednesday: { label: 'Çarşamba', open: true, openTime: '09:00', closeTime: '20:00' },
-    thursday: { label: 'Perşembe', open: true, openTime: '09:00', closeTime: '20:00' },
-    friday: { label: 'Cuma', open: true, openTime: '09:00', closeTime: '20:00' },
-    saturday: { label: 'Cumartesi', open: true, openTime: '10:00', closeTime: '19:00' },
-    sunday: { label: 'Pazar', open: false, openTime: '10:00', closeTime: '17:00' },
-  });
   const [galleryUrl, setGalleryUrl] = useState(QUICK_GALLERY_PHOTO_URL);
   const [selectedGalleryPhoto, setSelectedGalleryPhoto] = useState<string | null>(
     null
   );
   const [socialCaption, setSocialCaption] = useState('Yeni çalışmamızı keşfedin.');
-  const [campaigns, setCampaigns] = useState<PartnerCampaign[]>([
-    { id: 'lari15', code: 'LARİ15', discountPercent: 15, active: true },
-  ]);
   const [newCampaignCode, setNewCampaignCode] = useState('');
   const [newCampaignDiscount, setNewCampaignDiscount] = useState('10');
   const [storefrontBusinessName, setStorefrontBusinessName] = useState(
@@ -396,6 +334,12 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   );
   const [storefrontWhatsapp, setStorefrontWhatsapp] = useState(
     storefrontCustomization.whatsappNumber
+  );
+  const [storefrontAccentColor, setStorefrontAccentColor] = useState(
+    storefrontCustomization.accentColor || '#4F46E5'
+  );
+  const [storefrontCoverUrl, setStorefrontCoverUrl] = useState(
+    storefrontCustomization.coverPhotoUrl || ''
   );
   const [storefrontNowMs, setStorefrontNowMs] = useState(() => Date.now());
 
@@ -419,6 +363,8 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     setStorefrontBusinessName(storefrontCustomization.businessName);
     setStorefrontTagline(storefrontCustomization.tagline);
     setStorefrontWhatsapp(storefrontCustomization.whatsappNumber);
+    setStorefrontAccentColor(storefrontCustomization.accentColor || '#4F46E5');
+    setStorefrontCoverUrl(storefrontCustomization.coverPhotoUrl || '');
   }, [storefrontCustomization]);
 
   useEffect(() => {
@@ -429,7 +375,10 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   const visiblePartnerCatalog = partnerCatalog.filter(
     (item) => item.tenantId === tenantId
   );
-  const storefrontUrl = `https://app.randevulari.com/#/m?slug=atelier-nisantasi`;
+  const dynamicStorefrontSlug = slugifyBusinessName(
+    storefrontCustomization.businessName || PARTNER_BUSINESS_NAME
+  );
+  const storefrontUrl = `https://app.randevulari.com/#/m?slug=${dynamicStorefrontSlug}`;
   const venuePhotos = customVenuePhotos[PARTNER_TENANT_SLUG] ?? [];
   const selectedRevenue = REVENUE_REPORTS[selectedRevenuePeriod];
   const storefrontLockStatus = getStorefrontEditLockStatus(
@@ -466,6 +415,8 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
       businessName: storefrontBusinessName.trim(),
       tagline: storefrontTagline.trim(),
       whatsappNumber: sanitizePhoneDigits(storefrontWhatsapp, 15),
+      accentColor: storefrontAccentColor,
+      coverPhotoUrl: storefrontCoverUrl.trim(),
     });
     if (result.accepted) setStorefrontNowMs(Date.now());
   };
@@ -476,11 +427,27 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   };
 
   const handleAddAgendaItem = () => {
+    if (!acquireActionGate('agenda_add')) return;
     const customerName = newAgendaCustomer.trim();
     const serviceName = newAgendaService.trim();
     const staffName = newAgendaStaff.trim();
     if (!customerName || !serviceName || !staffName || !newAgendaTime) {
       showToast('Müşteri, hizmet, uzman ve saat alanlarını doldurun.');
+      return;
+    }
+
+    const slotCollision = agenda.find(
+      (item) =>
+        item.status !== 'cancelled_by_salon' &&
+        item.status !== 'no_show' &&
+        item.scheduledTime === newAgendaTime &&
+        (item.staffName.trim().toLowerCase() === staffName.toLowerCase() ||
+          item.customerName.trim().toLowerCase() === customerName.toLowerCase())
+    );
+    if (slotCollision) {
+      showToast(
+        `${newAgendaTime} saatinde ${slotCollision.staffName} / ${slotCollision.customerName} için çakışan aktif randevu mevcut.`
+      );
       return;
     }
 
@@ -549,6 +516,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   };
 
   const handleAddCatalogItem = () => {
+    if (!acquireActionGate('catalog_add')) return;
     const normalizedName = newCatalogName.trim();
     const parsedPrice = Number(newCatalogPrice);
     const parsedDuration = Number(newCatalogDuration);
@@ -602,6 +570,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   };
 
   const handleAddStaffMember = () => {
+    if (!acquireActionGate('staff_add')) return;
     const name = newStaffName.trim();
     const specialty = newStaffSpecialty.trim();
     const shiftHours = newStaffShift.trim();
@@ -677,6 +646,10 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   };
 
   const handleToggleBusinessDay = (key: BusinessHoursKey) => {
+    if (storefrontLockStatus.locked) {
+      showToast(`24 saatlik vitrin kilidi aktif (${storefrontLockStatus.countdownText} kaldı).`);
+      return;
+    }
     setBusinessHours((current) => ({
       ...current,
       [key]: { ...current[key], open: !current[key].open },
@@ -688,6 +661,10 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     field: 'openTime' | 'closeTime',
     value: string
   ) => {
+    if (storefrontLockStatus.locked) {
+      showToast(`24 saatlik vitrin kilidi aktif (${storefrontLockStatus.countdownText} kaldı).`);
+      return;
+    }
     setBusinessHours((current) => ({
       ...current,
       [key]: { ...current[key], [field]: value },
@@ -696,6 +673,10 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   };
 
   const handleToggleDailyBusinessDay = (key: DailyBusinessHoursKey) => {
+    if (storefrontLockStatus.locked) {
+      showToast(`24 saatlik vitrin kilidi aktif (${storefrontLockStatus.countdownText} kaldı).`);
+      return;
+    }
     setDailyBusinessHours((current) => ({
       ...current,
       [key]: { ...current[key], open: !current[key].open },
@@ -707,6 +688,10 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     field: 'openTime' | 'closeTime',
     value: string
   ) => {
+    if (storefrontLockStatus.locked) {
+      showToast(`24 saatlik vitrin kilidi aktif (${storefrontLockStatus.countdownText} kaldı).`);
+      return;
+    }
     setDailyBusinessHours((current) => ({
       ...current,
       [key]: { ...current[key], [field]: value },
@@ -715,6 +700,11 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   };
 
   const handleGalleryFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (storefrontLockStatus.locked) {
+      showToast(`24 saatlik vitrin kilidi aktif (${storefrontLockStatus.countdownText} kaldı).`);
+      event.target.value = '';
+      return;
+    }
     const file = event.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -730,6 +720,10 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   };
 
   const handleAddGalleryUrl = () => {
+    if (storefrontLockStatus.locked) {
+      showToast(`24 saatlik vitrin kilidi aktif (${storefrontLockStatus.countdownText} kaldı).`);
+      return;
+    }
     const normalizedUrl = galleryUrl.trim();
     if (!normalizedUrl) {
       showToast('Geçerli bir fotoğraf URL’si girin.');
@@ -741,6 +735,10 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   };
 
   const handleRemoveGalleryPhoto = (photoUrl: string) => {
+    if (storefrontLockStatus.locked) {
+      showToast(`24 saatlik vitrin kilidi aktif (${storefrontLockStatus.countdownText} kaldı).`);
+      return;
+    }
     removeVenuePhoto(PARTNER_TENANT_SLUG, photoUrl);
     setSelectedGalleryPhoto((current) => (current === photoUrl ? null : current));
     showToast('Fotoğraf işletme galerisinden silindi.');
@@ -1208,20 +1206,23 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                     { s: 2 as const, label: 'Yola Çık' },
                     { s: 3 as const, label: 'Check-in' },
                     { s: 4 as const, label: 'Koltukta' },
-                  ].map((st) => (
+                  ].map((st) => {
+                    const currentStage = getLiveStageForAppointment(item.appointmentId);
+                    return (
                     <button
                       key={st.s}
                       type="button"
-                      onClick={() => updateLiveAppointmentStage(st.s, userRole)}
+                      onClick={() => updateLiveAppointmentStage(st.s, userRole, item.appointmentId)}
                       className={`px-2 py-1 rounded-lg border text-[10px] font-bold transition ${
-                        liveAppointmentStage === st.s
+                        currentStage === st.s
                           ? 'bg-[#EEF0FF] border-[#5B5FEF] text-[#4338CA]'
                           : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
                       }`}
                     >
                       {st.label}
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
                 <div className="flex items-center gap-1.5">
                 {item.status === 'confirmed' && (
@@ -1763,6 +1764,45 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                   data-testid="partner-storefront-whatsapp-input"
                 />
               </label>
+              <label className="block text-[11px] font-black">
+                Vitrin Kapak Fotoğrafı URL (Opsiyonel)
+                <input
+                  type="url"
+                  value={storefrontCoverUrl}
+                  onChange={(event) => setStorefrontCoverUrl(event.target.value)}
+                  disabled={storefrontLockStatus.locked}
+                  placeholder="https://..."
+                  className="mt-1 min-h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-[#4F46E5] disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  data-testid="partner-storefront-cover-url-input"
+                />
+              </label>
+              <div>
+                <span className="mb-1.5 block text-[11px] font-black">
+                  İmza Rengi (Vitrin Buton & Etiket Aksanı)
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {SIGNATURE_ACCENT_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      disabled={storefrontLockStatus.locked}
+                      onClick={() => setStorefrontAccentColor(color)}
+                      aria-label={`Vitrin rengi ${color}`}
+                      aria-pressed={storefrontAccentColor === color}
+                      style={{ backgroundColor: color }}
+                      className={`flex h-9 w-9 items-center justify-center rounded-full border-2 transition disabled:opacity-50 ${
+                        storefrontAccentColor === color
+                          ? 'scale-105 border-slate-900 dark:border-white'
+                          : 'border-transparent'
+                      }`}
+                    >
+                      {storefrontAccentColor === color ? (
+                        <Check className="h-4 w-4 text-white" />
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={handleSaveStorefrontCustomization}
@@ -1783,8 +1823,9 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
             <button
               type="button"
               aria-pressed={dailyHoursMode}
+              disabled={storefrontLockStatus.locked}
               onClick={() => setDailyHoursMode((current) => !current)}
-              className={`mb-3 flex min-h-11 w-full items-center justify-between rounded-2xl border-2 px-3 text-left text-[11px] font-black transition ${
+              className={`mb-3 flex min-h-11 w-full items-center justify-between rounded-2xl border-2 px-3 text-left text-[11px] font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
                 dailyHoursMode
                   ? 'border-[#4F46E5] bg-[#EEF2FF] text-[#4338CA]'
                   : 'border-slate-200 bg-slate-50 text-slate-700'
@@ -1809,12 +1850,13 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                     <button
                       type="button"
                       aria-pressed={isOpen}
+                      disabled={storefrontLockStatus.locked}
                       onClick={() =>
                         dailyHoursMode
                           ? handleToggleDailyBusinessDay(key as DailyBusinessHoursKey)
                           : handleToggleBusinessDay(key as BusinessHoursKey)
                       }
-                      className="flex min-h-10 w-full items-center justify-between text-left"
+                      className="flex min-h-10 w-full items-center justify-between text-left disabled:cursor-not-allowed disabled:opacity-55"
                       data-testid={`partner-hours-toggle-${key}`}
                     >
                       <span>
@@ -1839,6 +1881,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                           Açılış
                           <input
                             type="time"
+                            disabled={storefrontLockStatus.locked}
                             value={schedule.openTime}
                             onChange={(event) =>
                               dailyHoursMode
@@ -1853,7 +1896,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                                     event.target.value
                                   )
                             }
-                            className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-2 text-xs text-slate-900"
+                            className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-2 text-xs text-slate-900 disabled:cursor-not-allowed disabled:opacity-55"
                             data-testid={`partner-hours-open-${key}`}
                           />
                         </label>
@@ -1861,6 +1904,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                           Kapanış
                           <input
                             type="time"
+                            disabled={storefrontLockStatus.locked}
                             value={schedule.closeTime}
                             onChange={(event) =>
                               dailyHoursMode
@@ -1875,7 +1919,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                                     event.target.value
                                   )
                             }
-                            className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-2 text-xs text-slate-900"
+                            className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-2 text-xs text-slate-900 disabled:cursor-not-allowed disabled:opacity-55"
                             data-testid={`partner-hours-close-${key}`}
                           />
                         </label>
@@ -1892,12 +1936,17 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
               <ImagePlus className="h-4 w-4 text-[#5B5FEF]" />
               İşletme Fotoğraf Galerisi
             </span>
-            <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-indigo-300 bg-[#F8FAFF] px-3 text-xs font-black text-[#4338CA]">
+            <label
+              className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border-2 border-dashed border-indigo-300 bg-[#F8FAFF] px-3 text-xs font-black text-[#4338CA] ${
+                storefrontLockStatus.locked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+              }`}
+            >
               <ImagePlus className="h-4 w-4" />
               Cihazdan Fotoğraf Yükle
               <input
                 type="file"
                 accept="image/*"
+                disabled={storefrontLockStatus.locked}
                 onChange={handleGalleryFileChange}
                 className="sr-only"
                 data-testid="partner-gallery-file-input"
@@ -1906,16 +1955,18 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
             <div className="mt-2 flex gap-2">
               <input
                 type="url"
+                disabled={storefrontLockStatus.locked}
                 value={galleryUrl}
                 onChange={(event) => setGalleryUrl(event.target.value)}
                 aria-label="Hızlı fotoğraf URL’si"
-                className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 text-[10px] text-slate-900"
+                className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 text-[10px] text-slate-900 disabled:cursor-not-allowed disabled:opacity-55"
                 data-testid="partner-gallery-url-input"
               />
               <button
                 type="button"
+                disabled={storefrontLockStatus.locked}
                 onClick={handleAddGalleryUrl}
-                className="min-h-11 shrink-0 rounded-xl bg-[#4F46E5] px-3 text-[10px] font-black text-white"
+                className="min-h-11 shrink-0 rounded-xl bg-[#4F46E5] px-3 text-[10px] font-black text-white disabled:cursor-not-allowed disabled:opacity-45"
                 data-testid="partner-gallery-add-url-btn"
               >
                 URL Ekle
@@ -1948,9 +1999,10 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                     </button>
                     <button
                       type="button"
+                      disabled={storefrontLockStatus.locked}
                       aria-label={`${index + 1}. fotoğrafı sil`}
                       onClick={() => handleRemoveGalleryPhoto(photoUrl)}
-                      className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-rose-600 text-white shadow"
+                      className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-rose-600 text-white shadow disabled:cursor-not-allowed disabled:opacity-45"
                       data-testid={`partner-gallery-delete-${index}`}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -2086,41 +2138,55 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
             </button>
           </div>
 
-          <div className="overflow-hidden rounded-3xl border-2 border-slate-300 bg-white shadow-sm">
-            <div className="bg-gradient-to-br from-[#312E81] to-[#5B5FEF] p-4 text-white">
-              <span className="text-[10px] font-black uppercase tracking-wider text-indigo-100">
-                Müşteri Vitrini Önizlemesi
-              </span>
-              <h3 className="mt-1 text-lg font-black">Atelier Nişantaşı Hair & Spa</h3>
-              <p className="mt-1 text-xs text-indigo-100">
-                Google doğrulamalı • Nişantaşı • Bugün açık
-              </p>
-            </div>
-            <div className="space-y-2 p-4">
-              {visiblePartnerCatalog.slice(0, 2).map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between gap-2 rounded-xl bg-[#F8FAFC] p-2.5"
-                >
-                  <span className="truncate text-[11px] font-bold text-slate-900">
-                    {item.name}
-                  </span>
-                  <strong className="shrink-0 text-xs text-[#4338CA]">
-                    {formatPartnerMoney(item.unitPriceMajor)}
-                  </strong>
-                </div>
-              ))}
-              <a
-                href={storefrontUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex min-h-11 items-center justify-center gap-2 rounded-xl border-2 border-[#4F46E5] text-xs font-black text-[#4338CA]"
+            <div className="overflow-hidden rounded-3xl border-2 border-slate-300 bg-white shadow-sm">
+              <div
+                className="relative p-4 text-white"
+                style={{
+                  background: `linear-gradient(135deg, ${storefrontCustomization.accentColor || '#312E81'}, #111827)`,
+                }}
               >
-                <ExternalLink className="h-4 w-4" />
-                Müşteri Vitrinini Aç
-              </a>
+                <span className="text-[10px] font-black uppercase tracking-wider text-indigo-100">
+                  Müşteri Vitrini Önizlemesi
+                </span>
+                <h3 className="mt-1 text-lg font-black">
+                  {storefrontCustomization.businessName || PARTNER_BUSINESS_NAME}
+                </h3>
+                <p className="mt-1 text-xs text-indigo-100">
+                  {storefrontCustomization.tagline || 'Google doğrulamalı • Bugün açık'}
+                </p>
+              </div>
+              <div className="space-y-2 p-4">
+                {visiblePartnerCatalog.slice(0, 2).map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between gap-2 rounded-xl bg-[#F8FAFC] p-2.5"
+                  >
+                    <span className="truncate text-[11px] font-bold text-slate-900">
+                      {item.name}
+                    </span>
+                    <strong
+                      className="shrink-0 text-xs"
+                      style={{ color: storefrontCustomization.accentColor || '#4338CA' }}
+                    >
+                      {formatPartnerMoney(item.unitPriceMajor)}
+                    </strong>
+                  </div>
+                ))}
+                <a
+                  href={storefrontUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-xl border-2 text-xs font-black"
+                  style={{
+                    borderColor: storefrontCustomization.accentColor || '#4F46E5',
+                    color: storefrontCustomization.accentColor || '#4338CA',
+                  }}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Müşteri Vitrinini Aç
+                </a>
+              </div>
             </div>
-          </div>
         </div>
       )}
     </div>

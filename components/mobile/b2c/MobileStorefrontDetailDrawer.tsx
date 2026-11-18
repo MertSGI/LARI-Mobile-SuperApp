@@ -245,7 +245,13 @@ export const MobileStorefrontDetailDrawer: React.FC<
       ? [visual.coverPhotoUrl]
       : [];
   const heroImages = Array.from(
-    new Set([...(customVenuePhotos[listing.slug] ?? []), ...catalogHeroImages])
+    new Set([
+      ...(isActivePartnerStorefront && storefrontCustomization.coverPhotoUrl
+        ? [storefrontCustomization.coverPhotoUrl]
+        : []),
+      ...(customVenuePhotos[listing.slug] ?? []),
+      ...catalogHeroImages,
+    ])
   );
 
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([
@@ -404,8 +410,15 @@ export const MobileStorefrontDetailDrawer: React.FC<
         <div className="mx-auto max-w-lg space-y-3 px-4 pb-3 pt-9">
           <div className="min-w-0">
             <h2 className="text-base font-black leading-tight text-[#111827]">
-              {listing.name}
+              {isActivePartnerStorefront && storefrontCustomization.businessName
+                ? storefrontCustomization.businessName
+                : listing.name}
             </h2>
+            {isActivePartnerStorefront && storefrontCustomization.tagline && (
+              <p className="mt-0.5 text-[11px] font-bold text-[#4F46E5]">
+                {storefrontCustomization.tagline}
+              </p>
+            )}
             <p className="mt-0.5 truncate text-[11px] text-slate-500">
               {visual?.address || `${listing.district}, ${listing.city}`}
             </p>

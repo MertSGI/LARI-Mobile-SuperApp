@@ -44,6 +44,7 @@ import {
 } from '../../../services/mobile/voiceCatalogMatcherService';
 import LariQrCodeSvg from '../../../components/mobile/LariQrCodeSvg';
 import { sanitizeUserMessage } from '../../../services/mobile/mobileUiSanitizer';
+import { convertFromTryMajor } from '../../../services/mobile/mobileRegionCurrencyService';
 import { resolvePartnerFeatureEntitlements } from '../../../services/mobile/mobilePackageEntitlementService';
 import { MobilePersonaType } from '../../../services/mobile/mobileShellPolicyService';
 
@@ -299,6 +300,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
     addCatalogItem,
     removeCatalogItem,
     packageCreditsRemaining,
+    selectedCurrency,
     showToast,
   } = useMobileAppSession();
   const isDark = themeMode === 'dark';
@@ -340,6 +342,8 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
   >({});
   const [checkoutStatus, setCheckoutStatus] = useState<string | null>(null);
   const [poStatus, setPoStatus] = useState<string | null>(null);
+  const [checkoutLocked, setCheckoutLocked] = useState(false);
+  const [poLocked, setPoLocked] = useState(false);
 
   const tenantCatalog = partnerCatalog.filter((item) => item.tenantId === tenantId);
   const inventoryItems = tenantCatalog.filter((item) => item.category === 'product');
@@ -637,13 +641,19 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
   };
 
   const handleCashCheckout = () => {
+    if (checkoutLocked) return;
+    setCheckoutLocked(true);
+    setTimeout(() => setCheckoutLocked(false), 1800);
+    const folioSig = folioLines
+      .map((fl) => `${fl.catalogItem.id}:${fl.quantity}:${fl.coveredByPackage ? 1 : 0}`)
+      .join('|');
     const res = uiPosEngine.checkoutMixedCart({
       userRole,
       actorTenantId: tenantId,
       orderTenantId: tenantId,
       orderCurrency: 'TRY',
       paymentMethod: 'cash',
-      idempotencyKey: `ui-pos-${Date.now()}`,
+      idempotencyKey: `ui-pos-${tenantId}-${folioSig}-${liveBreakdown.optionalTipMajor}`,
       items: folioLines.map((fl) => ({
         itemType: fl.catalogItem.category === 'product' ? 'product' : 'service',
         name: fl.catalogItem.name,
@@ -655,18 +665,24 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
       })),
       tipMinorUnits: liveBreakdown.optionalTipMajor * 100,
     });
+    const totalDisp = convertFromTryMajor(res.totalMinorUnits / 100, selectedCurrency);
+    const tipDisp = convertFromTryMajor(res.tipMinorUnits / 100, selectedCurrency);
+    const commDisp = convertFromTryMajor(res.staffCommissionMinor / 100, selectedCurrency);
     setCheckoutStatus(
-      `${sanitizeUserMessage(res.reasonCode, 'Tahsilat durumu güncellendi.')} • Tahsilat: ${(res.totalMinorUnits / 100).toLocaleString('tr-TR')} TRY • Bahşiş: ${(res.tipMinorUnits / 100).toLocaleString('tr-TR')} TRY • Prim: ${(res.staffCommissionMinor / 100).toLocaleString('tr-TR')} TRY`
+      `${sanitizeUserMessage(res.reasonCode, 'Tahsilat durumu güncellendi.')} • Tahsilat: ${totalDisp.toLocaleString('tr-TR')} ${selectedCurrency} • Bahşiş: ${tipDisp.toLocaleString('tr-TR')} ${selectedCurrency} • Prim: ${commDisp.toLocaleString('tr-TR')} ${selectedCurrency}`
     );
   };
 
   const handleBarcodePoReceive = () => {
+    if (poLocked) return;
+    setPoLocked(true);
+    setTimeout(() => setPoLocked(false), 1800);
     const res = uiPosEngine.receivePurchaseOrder({
       userRole,
       actorTenantId: tenantId,
       poTenantId: tenantId,
       poId: 'po-2026-01',
-      idempotencyKey: `po-ui-${Date.now()}`,
+      idempotencyKey: `po-ui-${tenantId}-po-2026-01`,
       items: [{ poItemId: 'serum-100ml', quantity: 12 }],
     });
     setPoStatus(sanitizeUserMessage(res.reasonCode, 'Stok alım kaydı işlendi.'));
@@ -900,15 +916,15 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
                 </p>
                 <p className="text-[11px] text-slate-500">
                   {fl.coveredByPackage
-                    ? 'Paket Kapsamında Düşüldü (₺0)'
-                    : `${fl.catalogItem.unitPriceMajor.toLocaleString('tr-TR')} TRY/br + KDV`}
+                    ? 'Paket Kapsamında Düşüldü (Ücretsiz)'
+                    : `${convertFromTryMajor(fl.catalogItem.unitPriceMajor, selectedCurrency).toLocaleString('tr-TR')} ${selectedCurrency}/br + KDV`}
                 </p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 <span className="font-black">
                   {fl.coveredByPackage
-                    ? '0 TRY'
-                    : `${(fl.catalogItem.unitPriceMajor * fl.quantity).toLocaleString('tr-TR')} TRY`}
+                    ? `0 ${selectedCurrency}`
+                    : `${convertFromTryMajor(fl.catalogItem.unitPriceMajor * fl.quantity, selectedCurrency).toLocaleString('tr-TR')} ${selectedCurrency}`}
                 </span>
                 <button
                   type="button"
@@ -934,8 +950,8 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
               </span>
               <span className="font-black text-[#4F46E5]">
                 {liveBreakdown.optionalTipMajor === 0
-                  ? 'Bahşiş Yok (0 TRY)'
-                  : `+${liveBreakdown.optionalTipMajor.toLocaleString('tr-TR')} TRY`}
+                  ? `Bahşiş Yok (0 ${selectedCurrency})`
+                  : `+${convertFromTryMajor(liveBreakdown.optionalTipMajor, selectedCurrency).toLocaleString('tr-TR')} ${selectedCurrency}`}
               </span>
             </div>
             <div className="grid grid-cols-4 gap-1.5">
@@ -961,22 +977,32 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
           <div className="pt-2 border-t-2 border-slate-300 dark:border-slate-700 space-y-1 text-xs">
             <div className="flex justify-between text-slate-500">
               <span>Ara Toplam (Paket Öncesi)</span>
-              <span>{liveBreakdown.grossSubtotalMajor.toLocaleString('tr-TR')} TRY</span>
+              <span>
+                {convertFromTryMajor(liveBreakdown.grossSubtotalMajor, selectedCurrency).toLocaleString('tr-TR')}{' '}
+                {selectedCurrency}
+              </span>
             </div>
             {liveBreakdown.packageDiscountMajor > 0 && (
               <div className="flex justify-between text-emerald-700 font-bold">
                 <span>Paket / HT Hakkı Düşümü</span>
-                <span>-{liveBreakdown.packageDiscountMajor.toLocaleString('tr-TR')} TRY</span>
+                <span>
+                  -{convertFromTryMajor(liveBreakdown.packageDiscountMajor, selectedCurrency).toLocaleString('tr-TR')}{' '}
+                  {selectedCurrency}
+                </span>
               </div>
             )}
             <div className="flex justify-between text-slate-500">
               <span>KDV Toplamı</span>
-              <span>{liveBreakdown.taxTotalMajor.toLocaleString('tr-TR')} TRY</span>
+              <span>
+                {convertFromTryMajor(liveBreakdown.taxTotalMajor, selectedCurrency).toLocaleString('tr-TR')}{' '}
+                {selectedCurrency}
+              </span>
             </div>
             <div className="flex justify-between text-base font-black pt-1">
               <span>Ödenecek Genel Toplam</span>
               <span className="text-[#4F46E5]">
-                {liveBreakdown.grandTotalMajor.toLocaleString('tr-TR')} TRY
+                {convertFromTryMajor(liveBreakdown.grandTotalMajor, selectedCurrency).toLocaleString('tr-TR')}{' '}
+                {selectedCurrency}
               </span>
             </div>
           </div>
@@ -996,9 +1022,10 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
 
           <button
             type="button"
+            disabled={checkoutLocked}
             onClick={handleCashCheckout}
             style={{ minHeight: '44px' }}
-            className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-2"
+            className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center justify-center gap-2"
             data-testid="partner-pos-cash-checkout-btn"
           >
             <ShoppingBag className="w-4 h-4" />
@@ -1253,9 +1280,10 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
         </span>
         <button
           type="button"
+          disabled={poLocked}
           onClick={handleBarcodePoReceive}
           style={{ minHeight: '44px' }}
-          className="w-full rounded-xl bg-[#EEF2FF] border-2 border-[#4F46E5]/30 text-[#4338CA] text-xs font-bold flex items-center justify-center gap-2"
+          className="w-full rounded-xl bg-[#EEF2FF] border-2 border-[#4F46E5]/30 text-[#4338CA] text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           data-testid="partner-po-receive-btn"
         >
           <Barcode className="w-4 h-4" />

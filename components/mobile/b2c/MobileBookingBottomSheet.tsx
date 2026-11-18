@@ -18,7 +18,11 @@ import {
   MobileDiscoveryListingItem,
   MobileResourceWaitlistRegistry,
 } from '../../../services/mobile/mobileDiscoveryService';
-import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
+import {
+  useMobileAppSession,
+  BusinessHoursKey,
+  DailyBusinessHoursKey,
+} from '../../../contexts/MobileAppSessionContext';
 import { sanitizeUserMessage } from '../../../services/mobile/mobileUiSanitizer';
 import { convertFromTryMajor } from '../../../services/mobile/mobileRegionCurrencyService';
 
@@ -95,6 +99,11 @@ export const MobileBookingBottomSheet: React.FC<
     confirmBooking,
     checkSameDayCategoryConflict,
     selectedCurrency,
+    partnerStaffMembers,
+    partnerGroupedHours,
+    partnerDailyHours,
+    partnerDailyHoursMode,
+    storefrontCustomization,
     showToast,
     themeMode,
   } = useMobileAppSession();
@@ -141,12 +150,74 @@ export const MobileBookingBottomSheet: React.FC<
     [todayIso, dayOffset]
   );
 
-  const availableSlots = useMemo(() => {
-    if (selectedDate === todayIso) {
-      return ['13:30', '14:00', '15:30', '17:00'];
+  const isPartnerManagedListing =
+    listing.slug === 'atelier-nisantasi' ||
+    listing.tenantId === 'tenant-atelier-nisantasi' ||
+    listing.name === storefrontCustomization.businessName;
+
+  const selectedDaySchedule = useMemo(() => {
+    if (!isPartnerManagedListing) return null;
+    const [y, m, d] = selectedDate.split('-').map(Number);
+    const dayIdx = new Date(y, (m || 1) - 1, d || 1).getDay();
+    if (partnerDailyHoursMode) {
+      const dailyKeys: DailyBusinessHoursKey[] = [
+        'sunday',
+        'monday',
+        'tuesday',
+        'wednesday',
+        'thursday',
+        'friday',
+        'saturday',
+      ];
+      return partnerDailyHours[dailyKeys[dayIdx]] || null;
     }
-    return ['10:30', '13:30', '15:30', '17:00'];
-  }, [selectedDate, todayIso]);
+    const groupedKey: BusinessHoursKey =
+      dayIdx === 0 ? 'sunday' : dayIdx === 6 ? 'saturday' : 'weekdays';
+    return partnerGroupedHours[groupedKey] || null;
+  }, [
+    isPartnerManagedListing,
+    partnerDailyHours,
+    partnerDailyHoursMode,
+    partnerGroupedHours,
+    selectedDate,
+  ]);
+
+  const isSelectedDayClosed = Boolean(
+    selectedDaySchedule && !selectedDaySchedule.open
+  );
+
+  const specialistChoices = useMemo(() => {
+    const base = ['İlk Müsait Uzman'];
+    if (isPartnerManagedListing) {
+      const names = partnerStaffMembers
+        .filter((staff) => staff.active)
+        .map((staff) => staff.name);
+      return Array.from(new Set([...base, ...names]));
+    }
+    if (preselectedSpecialistName) {
+      return Array.from(new Set([...base, preselectedSpecialistName]));
+    }
+    return base;
+  }, [isPartnerManagedListing, partnerStaffMembers, preselectedSpecialistName]);
+
+  const availableSlots = useMemo(() => {
+    if (isSelectedDayClosed) {
+      return [];
+    }
+    const defaults =
+      selectedDate === todayIso
+        ? ['13:30', '14:00', '15:30', '17:00']
+        : ['10:30', '13:30', '15:30', '17:00'];
+    if (!selectedDaySchedule) {
+      return defaults;
+    }
+    const filtered = defaults.filter(
+      (slot) =>
+        slot >= selectedDaySchedule.openTime &&
+        slot < selectedDaySchedule.closeTime
+    );
+    return filtered;
+  }, [isSelectedDayClosed, selectedDate, selectedDaySchedule, todayIso]);
 
   const selectedChipInfo = useMemo(
     () => formatChipInfo(selectedDate, todayIso),
@@ -155,6 +226,10 @@ export const MobileBookingBottomSheet: React.FC<
 
   const handleFastConfirm = async () => {
     if (confirmLockRef.current || confirmed || isSubmitting) return;
+    if (isSelectedDayClosed || !availableSlots.includes(selectedSlot)) {
+      showToast('Seçili tarih veya saat işletmenin çalışma saatleri dışında.');
+      return;
+    }
     if (liveConflict.conflict) {
       setConflictNotice(
         liveConflict.message ||
@@ -270,7 +345,7 @@ export const MobileBookingBottomSheet: React.FC<
               </p>
             </div>
             <span className="font-black text-[#4F46E5] text-base shrink-0">
-              {primaryService.priceMajor.toLocaleString('tr-TR')} {primaryService.currency}
+              {displayedPriceMajor.toLocaleString('tr-TR')} {selectedCurrency}
             </span>
           </div>
         )}
@@ -410,26 +485,63 @@ export const MobileBookingBottomSheet: React.FC<
               ? 'Bugün Müsait Saatler'
               : `${selectedChipInfo.bottom} (${selectedChipInfo.top}) Müsait Saatler`}
           </span>
-          <div className="grid grid-cols-4 gap-2">
-            {availableSlots.map((slot) => (
-              <button
-                key={slot}
-                type="button"
-                onClick={() => setSelectedSlot(slot)}
-                style={{ minHeight: '46px' }}
-                className={`rounded-xl text-sm font-black border-2 transition ${
-                  selectedSlot === slot
-                    ? 'bg-[#4F46E5] text-white border-[#4338CA]'
-                    : isDark
-                      ? 'bg-slate-800 text-slate-200 border-slate-700'
-                      : 'bg-white text-slate-800 border-slate-300'
-                }`}
-              >
-                {slot}
-              </button>
-            ))}
-          </div>
+          {isSelectedDayClosed || availableSlots.length === 0 ? (
+            <div
+              className="rounded-xl border-2 border-amber-300 bg-amber-50 p-3 text-xs font-bold text-amber-900"
+              data-testid="booking-day-closed-notice"
+            >
+              İşletme seçili günde ({selectedDaySchedule?.label || selectedChipInfo.top}) kapalı veya uygun seans bulunmuyor. Lütfen farklı bir gün seçin.
+            </div>
+          ) : (
+            <div className="grid grid-cols-4 gap-2">
+              {availableSlots.map((slot) => (
+                <button
+                  key={slot}
+                  type="button"
+                  onClick={() => setSelectedSlot(slot)}
+                  style={{ minHeight: '46px' }}
+                  className={`rounded-xl text-sm font-black border-2 transition ${
+                    selectedSlot === slot
+                      ? 'bg-[#4F46E5] text-white border-[#4338CA]'
+                      : isDark
+                        ? 'bg-slate-800 text-slate-200 border-slate-700'
+                        : 'bg-white text-slate-800 border-slate-300'
+                  }`}
+                >
+                  {slot}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* Active Specialist Selector */}
+        {specialistChoices.length > 1 && (
+          <div className="space-y-1.5" data-testid="booking-specialist-selector">
+            <span className="text-xs font-black uppercase text-slate-500 block">
+              Uzman Tercihi
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {specialistChoices.map((specialist) => (
+                <button
+                  key={specialist}
+                  type="button"
+                  onClick={() => setSelectedSpecialist(specialist)}
+                  className={`rounded-xl border-2 px-2.5 py-1.5 text-[11px] font-bold transition ${
+                    selectedSpecialist === specialist
+                      ? 'bg-[#4F46E5] text-white border-[#4338CA]'
+                      : isDark
+                        ? 'bg-slate-800 text-slate-200 border-slate-700'
+                        : 'bg-white text-slate-800 border-slate-300'
+                  }`}
+                  data-testid={`booking-specialist-chip-${specialist}`}
+                >
+                  {specialist}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Optional Hospitality & Quiet Session Toggle (Collapsed by default for 3s speed!) */}
         <div className="rounded-2xl border-2 border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -523,13 +635,22 @@ export const MobileBookingBottomSheet: React.FC<
         <div className="space-y-2 pt-1">
           <button
             type="button"
-            disabled={confirmed || isSubmitting || liveConflict.conflict}
+            disabled={
+              confirmed ||
+              isSubmitting ||
+              liveConflict.conflict ||
+              isSelectedDayClosed ||
+              !availableSlots.includes(selectedSlot)
+            }
             onClick={handleFastConfirm}
             style={{ minHeight: '52px' }}
             className={`w-full rounded-2xl text-white text-sm font-black flex items-center justify-center gap-2 shadow-md transition ${
               confirmed
                 ? 'bg-emerald-600 cursor-not-allowed opacity-90'
-                : isSubmitting || liveConflict.conflict
+                : isSubmitting ||
+                    liveConflict.conflict ||
+                    isSelectedDayClosed ||
+                    !availableSlots.includes(selectedSlot)
                   ? 'bg-slate-400 cursor-not-allowed'
                   : 'bg-[#4F46E5] hover:bg-[#4338CA]'
             }`}
@@ -539,7 +660,11 @@ export const MobileBookingBottomSheet: React.FC<
               ? 'Randevunuz Onaylandı ✓'
               : liveConflict.conflict
                 ? 'Aynı Gün Aynı Kategoride Randevu Mevcut'
-                : `Hemen Randevu Al (${displayedPriceMajor.toLocaleString('tr-TR')} ${selectedCurrency})`}
+                : isSelectedDayClosed || availableSlots.length === 0
+                  ? 'Seçili Gün Kapalı / Uygun Saat Yok'
+                  : !availableSlots.includes(selectedSlot)
+                    ? 'Lütfen Müsait Bir Saat Seçin'
+                    : `Hemen Randevu Al (${displayedPriceMajor.toLocaleString('tr-TR')} ${selectedCurrency})`}
           </button>
 
           <button
