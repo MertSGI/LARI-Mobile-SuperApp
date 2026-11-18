@@ -22,6 +22,7 @@ import MobileBookingBottomSheet from '../../components/mobile/b2c/MobileBookingB
 import MobileQuickBookCarouselSheet from '../../components/mobile/b2c/MobileQuickBookCarouselSheet';
 import { StorefrontSpecialistProfile } from '../../components/mobile/b2c/MobileStorefrontDetailDrawer';
 import MobilePartnerOnboardingFunnel from '../../components/mobile/partner/MobilePartnerOnboardingFunnel';
+import MobileAuthModal from '../../components/mobile/MobileAuthModal';
 import MobileCustomerWalletPage from './b2c/MobileCustomerWalletPage';
 import MobileSocialFeedPage from './b2c/MobileSocialFeedPage';
 import MobileAIStyleVisualizerPage from './b2c/MobileAIStyleVisualizerPage';
@@ -37,9 +38,20 @@ import { resolvePartnerFeatureEntitlements } from '../../services/mobile/mobileP
 export const MobileSuperAppContent: React.FC = () => {
   const [searchParams] = useSearchParams();
   const location = useLocation();
-  const { currentUser } = useAuth();
-  const { activeBooking, toastMessage, partnerSubscription, showToast } =
-    useMobileAppSession();
+  const { currentUser, logout: authLogout } = useAuth();
+  const {
+    activeBooking,
+    toastMessage,
+    partnerSubscription,
+    showToast,
+    mobileAuthUser,
+    isExplicitlySignedOut,
+    authModalOpen,
+    authModalInitialTab,
+    openAuthModal,
+    closeAuthModal,
+    logoutMobileSession,
+  } = useMobileAppSession();
 
   const windowSearchParams =
     typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -53,29 +65,39 @@ export const MobileSuperAppContent: React.FC = () => {
 
   const isLocalOrNativePreviewHost =
     typeof window !== 'undefined' &&
-    (['localhost', '127.0.0.1', 'app.randevulari.com', 'app.lari.app'].includes(
-      window.location.hostname
-    ) ||
+    (['localhost', '127.0.0.1'].includes(window.location.hostname) ||
       Boolean((window as any).Capacitor?.isNativePlatform?.()));
 
+  const isGuestSession =
+    (explicitRoleParam === 'guest' && !partnerSubscription && !mobileAuthUser) ||
+    (isExplicitlySignedOut && !mobileAuthUser && !partnerSubscription);
+
   const effectiveRole: Role | 'guest' =
-    explicitRoleParam === 'guest' && !partnerSubscription
+    isGuestSession
       ? 'guest'
       : partnerSubscription
         ? 'tenant_owner'
-      : currentUser?.role
-        ? currentUser.role
-        : isLocalOrNativePreviewHost
-          ? 'tenant_owner'
-          : 'guest';
+        : mobileAuthUser
+          ? mobileAuthUser.role
+          : currentUser?.role
+            ? currentUser.role
+            : isLocalOrNativePreviewHost
+              ? 'tenant_owner'
+              : 'guest';
 
+  const signedInRole = mobileAuthUser?.role || currentUser?.role;
   const isSignedInPartnerAccount =
-    currentUser?.role === 'tenant_owner' ||
-    currentUser?.role === 'staff' ||
-    currentUser?.role === 'super_admin';
+    signedInRole === 'tenant_owner' ||
+    signedInRole === 'staff' ||
+    signedInRole === 'super_admin';
+
+  const hasPartnerEntitlement =
+    effectiveRole === 'tenant_owner' ||
+    effectiveRole === 'staff' ||
+    effectiveRole === 'super_admin';
 
   const defaultStartupMode: MobileShellMode =
-    effectiveRole !== 'guest' &&
+    hasPartnerEntitlement &&
     (initialModeParam === 'partner' ||
       (!initialModeParam && !initialSlugParam && isSignedInPartnerAccount))
       ? 'b2b_partner'
@@ -87,8 +109,11 @@ export const MobileSuperAppContent: React.FC = () => {
   const [requestedPersona, setRequestedPersona] = useState<
     MobilePersonaType | undefined
   >(
-    initialPersonaParam ||
-      (defaultStartupMode === 'b2b_partner' ? 'salon_partner' : 'salon_customer')
+    hasPartnerEntitlement && initialPersonaParam
+      ? initialPersonaParam
+      : defaultStartupMode === 'b2b_partner'
+        ? 'salon_partner'
+        : 'salon_customer'
   );
   const [activeTabId, setActiveTabId] = useState<string>(
     defaultStartupMode === 'b2b_partner'
@@ -119,19 +144,27 @@ export const MobileSuperAppContent: React.FC = () => {
       ? location.pathname.split('/')[3]
       : null);
 
+  const effectivePersonaResolved = hasPartnerEntitlement
+    ? requestedPersona
+    : requestedPersona === 'ht_patient'
+      ? 'ht_patient'
+      : 'salon_customer';
+
   const partnerEntitlements = useMemo(
     () =>
       resolvePartnerFeatureEntitlements({
         partnerSubscription,
-        effectivePersona: requestedPersona,
+        effectivePersona: hasPartnerEntitlement ? effectivePersonaResolved : undefined,
       }),
-    [partnerSubscription, requestedPersona]
+    [effectivePersonaResolved, hasPartnerEntitlement, partnerSubscription]
   );
   const b2cAiAvailable =
-    partnerEntitlements.aiVisualizerEnabled ||
-    requestedPersona === 'ht_patient' ||
-    requestedPersona === 'clinic_practitioner' ||
-    requestedPersona === 'ht_coordinator';
+    hasPartnerEntitlement &&
+    (partnerEntitlements.aiVisualizerEnabled ||
+      (partnerEntitlements.clinicPersonaAllowed &&
+        effectivePersonaResolved === 'clinic_practitioner') ||
+      (partnerEntitlements.htPersonaAllowed &&
+        effectivePersonaResolved === 'ht_coordinator'));
 
   useEffect(() => {
     if (tenantSlug) {
@@ -140,6 +173,25 @@ export const MobileSuperAppContent: React.FC = () => {
       setActiveTabId('storefront');
     }
   }, [tenantSlug]);
+
+  useEffect(() => {
+    const authParam = getParam('auth');
+    if (authParam === 'login' || location.pathname === '/m/login') {
+      openAuthModal('login');
+    } else if (authParam === 'register' || location.pathname === '/m/register') {
+      openAuthModal('register');
+    }
+  }, [location.pathname, openAuthModal]);
+
+  const handleLogout = async () => {
+    if (currentUser) {
+      authLogout();
+    }
+    setRequestedMode('b2c_customer');
+    setRequestedPersona('salon_customer');
+    setActiveTabId(tenantSlug ? 'storefront' : 'explore');
+    await logoutMobileSession();
+  };
 
   const shellState = useMemo(
     () =>
@@ -301,9 +353,11 @@ export const MobileSuperAppContent: React.FC = () => {
         return (
           <MobileProfileSettingsPage
             tenantId={tenantId}
-            userId={currentUser?.id || 'usr-mobile-demo'}
+            userId={mobileAuthUser?.userId || currentUser?.id || 'usr-mobile-demo'}
             userRole={effectiveRole === 'guest' ? 'customer' : effectiveRole}
             shellState={shellState}
+            isGuestSession={isGuestSession}
+            onLogout={handleLogout}
             onToggleMode={handleToggleMode}
             onSwitchPersona={handleSwitchPersona}
             onOpenPartnerOnboarding={() => setPartnerOnboardingOpen(true)}
@@ -364,6 +418,7 @@ export const MobileSuperAppContent: React.FC = () => {
       <MobileAppShell
         shellState={shellState}
         activeTabId={activeTabId}
+        isGuestSession={isGuestSession}
         onSelectTab={handleSelectTab}
         onSwitchPersona={handleSwitchPersona}
         onToggleMode={handleToggleMode}
@@ -468,6 +523,27 @@ export const MobileSuperAppContent: React.FC = () => {
           }}
         />
       ) : null}
+
+      <MobileAuthModal
+        open={authModalOpen}
+        initialTab={authModalInitialTab}
+        onClose={closeAuthModal}
+        onAuthenticated={({ role, isNewPartnerSignup }) => {
+          if (isNewPartnerSignup) {
+            setPartnerOnboardingOpen(true);
+            return;
+          }
+          if (role === 'tenant_owner') {
+            setRequestedMode('b2b_partner');
+            setRequestedPersona('salon_partner');
+            setActiveTabId('partner_agenda');
+          } else {
+            setRequestedMode('b2c_customer');
+            setRequestedPersona('salon_customer');
+            setActiveTabId(tenantSlug ? 'storefront' : 'explore');
+          }
+        }}
+      />
     </>
   );
 };

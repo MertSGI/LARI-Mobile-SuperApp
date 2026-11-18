@@ -17,7 +17,7 @@ import {
   Sparkles,
   Stethoscope,
   Store,
-  Users,
+  User, Users,
   WifiOff,
 } from 'lucide-react';
 import {
@@ -40,7 +40,7 @@ export interface MobileAppShellProps {
   onBrandHeaderClick?: () => void;
   businessDisplayName?: string;
   branchDisplayName?: string;
-  isOffline?: boolean;
+  isOffline?: boolean; isGuestSession?: boolean;
   language?: 'tr' | 'en';
   children: React.ReactNode;
 }
@@ -113,12 +113,12 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
   onQuickPlusAction,
   onNotificationBellClick,
   onBrandHeaderClick,
-  isOffline = false,
+  isOffline = false, isGuestSession = false,
   language = 'tr',
   children,
 }) => {
-  const { themeMode, showToast, activeBooking, completedBreakdown } =
-    useMobileAppSession();
+  const { themeMode, showToast, activeBooking, completedBreakdown, userProfile, mobileAuthUser, isExplicitlySignedOut } = useMobileAppSession(); const showGuestAvatar = isGuestSession || (isExplicitlySignedOut && !mobileAuthUser); const avatarInitials = (mobileAuthUser?.fullName || userProfile.fullName || 'LARİ').split(/\s+/).filter(Boolean).map((p) => p[0]).join('').slice(0, 2).toLocaleUpperCase('tr-TR');
+
   const isDark = themeMode === 'dark';
   const activeTab =
     shellState.tabs.find((t) => t.id === activeTabId) || shellState.tabs[0];
@@ -354,9 +354,9 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
                             : 'border-slate-800 bg-[#EEF2FF] text-[#4338CA]'
                       }`}
                     >
-                      MÖ
+                      {showGuestAvatar ? <User className="w-4 h-4" /> : avatarInitials || 'LÜ'}
                     </div>
-                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 border-2 border-white dark:border-slate-900 -bottom-0.5 -right-0.5 absolute" />
+                    <span className={`w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-900 -bottom-0.5 -right-0.5 absolute ${showGuestAvatar ? 'bg-amber-400' : 'bg-rose-500'}`} />
                   </div>
                 ) : (
                   <div className="relative flex items-center justify-center">

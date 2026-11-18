@@ -763,6 +763,12 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   };
 
   const handleAddCampaign = () => {
+    if (storefrontLockStatus.locked) {
+      showToast(
+        `24 saatlik vitrin düzenleme kilidi aktif (${storefrontLockStatus.countdownText} kaldı).`
+      );
+      return;
+    }
     const code = newCampaignCode.trim().toLocaleUpperCase('tr-TR');
     const discountPercent = Number(newCampaignDiscount);
     if (
@@ -2058,15 +2064,22 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                 <button
                   key={campaign.id}
                   type="button"
+                  disabled={storefrontLockStatus.locked}
                   aria-pressed={campaign.active}
-                  onClick={() =>
+                  onClick={() => {
+                    if (storefrontLockStatus.locked) {
+                      showToast(
+                        `24 saatlik vitrin düzenleme kilidi aktif (${storefrontLockStatus.countdownText} kaldı).`
+                      );
+                      return;
+                    }
                     setCampaigns((current) =>
                       current.map((item) =>
                         item.id === campaign.id ? { ...item, active: !item.active } : item
                       )
-                    )
-                  }
-                  className={`flex min-h-11 w-full items-center justify-between rounded-xl border px-3 text-xs font-black ${
+                    );
+                  }}
+                  className={`flex min-h-11 w-full items-center justify-between rounded-xl border px-3 text-xs font-black disabled:cursor-not-allowed disabled:opacity-50 ${
                     campaign.active
                       ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
                       : 'border-slate-300 bg-white text-slate-500'
@@ -2083,27 +2096,30 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
             <div className="mt-3 grid grid-cols-[1fr_80px] gap-2">
               <input
                 type="text"
+                disabled={storefrontLockStatus.locked}
                 value={newCampaignCode}
                 onChange={(event) => setNewCampaignCode(event.target.value)}
                 placeholder="Kampanya kodu"
                 aria-label="Yeni kampanya kodu"
-                className="min-h-10 min-w-0 rounded-xl border border-amber-300 bg-white px-3 text-xs text-slate-900"
+                className="min-h-10 min-w-0 rounded-xl border border-amber-300 bg-white px-3 text-xs text-slate-900 disabled:cursor-not-allowed disabled:opacity-55"
                 data-testid="partner-campaign-code-input"
               />
               <input
                 type="number"
                 min="1"
                 max="100"
+                disabled={storefrontLockStatus.locked}
                 value={newCampaignDiscount}
                 onChange={(event) => setNewCampaignDiscount(event.target.value)}
                 aria-label="İndirim yüzdesi"
-                className="min-h-10 rounded-xl border border-amber-300 bg-white px-2 text-xs text-slate-900"
+                className="min-h-10 rounded-xl border border-amber-300 bg-white px-2 text-xs text-slate-900 disabled:cursor-not-allowed disabled:opacity-55"
                 data-testid="partner-campaign-discount-input"
               />
               <button
                 type="button"
+                disabled={storefrontLockStatus.locked}
                 onClick={handleAddCampaign}
-                className="col-span-2 min-h-11 rounded-xl bg-amber-600 text-xs font-black text-white"
+                className="col-span-2 min-h-11 rounded-xl bg-amber-600 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-45"
                 data-testid="partner-campaign-add-btn"
               >
                 Yeni Kampanyayı Etkinleştir

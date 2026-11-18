@@ -44,7 +44,10 @@ import {
 } from '../../../services/mobile/voiceCatalogMatcherService';
 import LariQrCodeSvg from '../../../components/mobile/LariQrCodeSvg';
 import { sanitizeUserMessage } from '../../../services/mobile/mobileUiSanitizer';
-import { convertFromTryMajor } from '../../../services/mobile/mobileRegionCurrencyService';
+import {
+  convertFromTryMajor,
+  convertToTryMajor,
+} from '../../../services/mobile/mobileRegionCurrencyService';
 import { resolvePartnerFeatureEntitlements } from '../../../services/mobile/mobilePackageEntitlementService';
 import { MobilePersonaType } from '../../../services/mobile/mobileShellPolicyService';
 
@@ -535,15 +538,19 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
   };
 
   const handlePublishBreakdownAndPaymentQr = () => {
+    const displayGrand = convertFromTryMajor(
+      liveBreakdown.grandTotalMajor,
+      selectedCurrency
+    );
     const paymentQr = createMobileQrArtifact({
       kind: 'payment_checkout',
       titleTr: 'Randevu Sonu Fiyat Dökümü & Ödeme QR',
-      subtitleTr: `${liveBreakdown.customerName} • ${liveBreakdown.grandTotalMajor} ${liveBreakdown.currency}`,
+      subtitleTr: `${liveBreakdown.customerName} • ${displayGrand.toLocaleString('tr-TR')} ${selectedCurrency}`,
       tenantId,
       customerName: liveBreakdown.customerName,
       appointmentId: liveBreakdown.appointmentId,
-      payableAmountMajor: liveBreakdown.grandTotalMajor,
-      currency: liveBreakdown.currency,
+      payableAmountMajor: displayGrand,
+      currency: selectedCurrency,
     });
     setGeneratedPaymentQr(paymentQr);
     publishCheckoutBreakdown(liveBreakdown, paymentQr);
@@ -552,6 +559,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
   const handleCreateCustomCatalogItem = () => {
     if (!newItemName.trim()) return;
     const parsedPrice = Math.max(10, parseInt(newItemPrice, 10) || 1000);
+    const baseTryPrice = convertToTryMajor(parsedPrice, selectedCurrency);
     const kws = newItemKeywords
       .split(',')
       .map((s) => s.trim())
@@ -560,7 +568,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
       tenantId,
       name: newItemName.trim(),
       category: 'beauty',
-      unitPriceMajor: parsedPrice,
+      unitPriceMajor: baseTryPrice,
       currency: 'TRY',
       taxRateBps: 2000,
       commissionRateBps: 2500,
@@ -589,7 +597,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
       tenantId,
       name,
       category: 'product',
-      unitPriceMajor: Math.round(price),
+      unitPriceMajor: convertToTryMajor(price, selectedCurrency),
       durationMinutes: 0,
       currency: 'TRY',
       taxRateBps: 2000,
@@ -647,27 +655,33 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
     const folioSig = folioLines
       .map((fl) => `${fl.catalogItem.id}:${fl.quantity}:${fl.coveredByPackage ? 1 : 0}`)
       .join('|');
+    const convertedTipMajor =
+      liveBreakdown.optionalTipMajor > 0
+        ? convertFromTryMajor(liveBreakdown.optionalTipMajor, selectedCurrency)
+        : 0;
     const res = uiPosEngine.checkoutMixedCart({
       userRole,
       actorTenantId: tenantId,
       orderTenantId: tenantId,
-      orderCurrency: 'TRY',
+      orderCurrency: selectedCurrency,
       paymentMethod: 'cash',
-      idempotencyKey: `ui-pos-${tenantId}-${folioSig}-${liveBreakdown.optionalTipMajor}`,
+      idempotencyKey: `ui-pos-${tenantId}-${selectedCurrency}-${folioSig}-${convertedTipMajor}`,
       items: folioLines.map((fl) => ({
         itemType: fl.catalogItem.category === 'product' ? 'product' : 'service',
         name: fl.catalogItem.name,
-        productCurrency: 'TRY',
-        unitPriceMinor: fl.coveredByPackage ? 0 : fl.catalogItem.unitPriceMajor * 100,
+        productCurrency: selectedCurrency,
+        unitPriceMinor: fl.coveredByPackage
+          ? 0
+          : convertFromTryMajor(fl.catalogItem.unitPriceMajor, selectedCurrency) * 100,
         quantity: fl.quantity,
         taxRateBps: fl.catalogItem.taxRateBps,
         commissionRateBps: fl.catalogItem.commissionRateBps,
       })),
-      tipMinorUnits: liveBreakdown.optionalTipMajor * 100,
+      tipMinorUnits: convertedTipMajor * 100,
     });
-    const totalDisp = convertFromTryMajor(res.totalMinorUnits / 100, selectedCurrency);
-    const tipDisp = convertFromTryMajor(res.tipMinorUnits / 100, selectedCurrency);
-    const commDisp = convertFromTryMajor(res.staffCommissionMinor / 100, selectedCurrency);
+    const totalDisp = Math.round(res.totalMinorUnits / 100);
+    const tipDisp = Math.round(res.tipMinorUnits / 100);
+    const commDisp = Math.round(res.staffCommissionMinor / 100);
     setCheckoutStatus(
       `${sanitizeUserMessage(res.reasonCode, 'Tahsilat durumu güncellendi.')} • Tahsilat: ${totalDisp.toLocaleString('tr-TR')} ${selectedCurrency} • Bahşiş: ${tipDisp.toLocaleString('tr-TR')} ${selectedCurrency} • Prim: ${commDisp.toLocaleString('tr-TR')} ${selectedCurrency}`
     );
@@ -1104,7 +1118,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
             type="number"
             value={newItemPrice}
             onChange={(e) => setNewItemPrice(e.target.value)}
-            placeholder="TRY"
+            placeholder={selectedCurrency}
             className={`rounded-xl px-3 py-2 text-xs font-bold ${innerSurface}`}
           />
         </div>
@@ -1150,7 +1164,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
               min="1"
               value={newInventoryPrice}
               onChange={(event) => setNewInventoryPrice(event.target.value)}
-              placeholder="Fiyat (TRY)"
+              placeholder={`Fiyat (${selectedCurrency})`}
               aria-label="Yeni stok ürünü fiyatı"
               className={`min-h-10 rounded-xl px-3 text-xs font-medium ${innerSurface}`}
               data-testid="partner-inventory-price-input"
@@ -1188,7 +1202,10 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[11px] font-black">{item.name}</p>
                     <p className="text-[10px] text-slate-500">
-                      {item.unitPriceMajor.toLocaleString('tr-TR')} TRY • Stok: {stock}
+                      {convertFromTryMajor(item.unitPriceMajor, selectedCurrency).toLocaleString(
+                        'tr-TR'
+                      )}{' '}
+                      {selectedCurrency} • Stok: {stock}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">

@@ -25,26 +25,80 @@ import {
   resolveDefaultCurrencyForLocation,
   SupportedCurrency,
 } from '../services/mobile/mobileRegionCurrencyService';
+import {
+  continueMobileWithSocialProvider,
+  getActiveMobileAuthUser,
+  isMobileExplicitlySignedOut,
+  loginMobileWithEmail,
+  logoutMobileAccount,
+  MobileAuthActionResult,
+  MobileAuthUser,
+  MobileRegistrationPayload,
+  registerMobileAccount,
+  updateMobileAuthUserRole,
+} from '../services/mobile/mobileAuthService';
 
 const VALID_CURRENCIES: readonly SupportedCurrency[] = ['TRY', 'USD', 'EUR', 'GBP'];
 
-function parseStoredArray<T extends object>(key: string, fallback: T[]): T[] {
+function isValidStaffMember(item: unknown): item is PartnerStaffMember {
+  if (typeof item !== 'object' || item === null || Array.isArray(item)) return false;
+  const s = item as Partial<PartnerStaffMember>;
+  return (
+    typeof s.id === 'string' &&
+    s.id.length > 0 &&
+    typeof s.name === 'string' &&
+    typeof s.specialty === 'string' &&
+    typeof s.active === 'boolean' &&
+    typeof s.available === 'boolean' &&
+    typeof s.commissionRate === 'number' &&
+    Number.isFinite(s.commissionRate) &&
+    typeof s.shiftHours === 'string'
+  );
+}
+
+function isValidPartnerCampaign(item: unknown): item is PartnerCampaign {
+  if (typeof item !== 'object' || item === null || Array.isArray(item)) return false;
+  const c = item as Partial<PartnerCampaign>;
+  return (
+    typeof c.id === 'string' &&
+    c.id.length > 0 &&
+    typeof c.code === 'string' &&
+    typeof c.discountPercent === 'number' &&
+    Number.isFinite(c.discountPercent) &&
+    typeof c.active === 'boolean'
+  );
+}
+
+function parseStoredArray<T extends object>(
+  key: string,
+  fallback: T[],
+  guard?: (item: unknown) => item is T
+): T[] {
   try {
     if (typeof window === 'undefined') return fallback;
     const raw = window.localStorage.getItem(key);
     if (!raw) return fallback;
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return fallback;
-    const clean = parsed.filter(
-      (item): item is T => typeof item === 'object' && item !== null && !Array.isArray(item)
+    const clean = parsed.filter((item): item is T =>
+      guard
+        ? guard(item)
+        : typeof item === 'object' && item !== null && !Array.isArray(item)
     );
+    if (parsed.length > 0 && clean.length !== parsed.length) {
+      return clean.length > 0 ? clean : fallback;
+    }
     return clean;
   } catch {
     return fallback;
   }
 }
 
-function parseStoredObject<T extends object>(key: string, fallback: T): T {
+function parseStoredObject<T extends object>(
+  key: string,
+  fallback: T,
+  fieldValidators?: Partial<Record<keyof T, (v: unknown) => boolean>>
+): T {
   try {
     if (typeof window === 'undefined') return fallback;
     const raw = window.localStorage.getItem(key);
@@ -53,7 +107,19 @@ function parseStoredObject<T extends object>(key: string, fallback: T): T {
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
       return fallback;
     }
-    return { ...fallback, ...(parsed as Partial<T>) };
+    const obj = parsed as Record<string, unknown>;
+    const next = { ...fallback };
+    (Object.keys(fallback) as Array<keyof T>).forEach((prop) => {
+      const val = obj[prop as string];
+      if (val === undefined) return;
+      const validator = fieldValidators?.[prop];
+      if (validator) {
+        if (validator(val)) next[prop] = val as T[keyof T];
+      } else if (typeof val === typeof fallback[prop]) {
+        next[prop] = val as T[keyof T];
+      }
+    });
+    return next;
   } catch {
     return fallback;
   }
@@ -362,6 +428,20 @@ export interface MobileAppSessionValue {
   setPartnerCampaigns: React.Dispatch<React.SetStateAction<PartnerCampaign[]>>;
   userProfile: MobileUserProfile;
   selectedCurrency: SupportedCurrency;
+  mobileAuthUser: MobileAuthUser | null;
+  isExplicitlySignedOut: boolean;
+  authModalOpen: boolean;
+  authModalInitialTab: 'login' | 'register';
+  openAuthModal: (tab?: 'login' | 'register') => void;
+  closeAuthModal: () => void;
+  loginWithEmail: (email: string, password: string) => Promise<MobileAuthActionResult>;
+  registerAccount: (payload: MobileRegistrationPayload) => Promise<MobileAuthActionResult>;
+  continueWithSocial: (input: {
+    provider: 'google' | 'apple';
+    email: string;
+    fullName?: string;
+  }) => Promise<MobileAuthActionResult>;
+  logoutMobileSession: () => Promise<void>;
   storefrontCustomization: PartnerStorefrontCustomization;
   storefrontLastEditedAtIso: string | null;
   saveStorefrontCustomization: (
@@ -601,6 +681,16 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   setPartnerCampaigns: noop as any,
   userProfile: DEFAULT_USER_PROFILE,
   selectedCurrency: 'TRY',
+  mobileAuthUser: null,
+  isExplicitlySignedOut: false,
+  authModalOpen: false,
+  authModalInitialTab: 'login',
+  openAuthModal: noop,
+  closeAuthModal: noop,
+  loginWithEmail: async () => ({ success: false }),
+  registerAccount: async () => ({ success: false }),
+  continueWithSocial: async () => ({ success: false }),
+  logoutMobileSession: async () => undefined,
   storefrontCustomization: DEFAULT_STOREFRONT_CUSTOMIZATION,
   storefrontLastEditedAtIso: null,
   saveStorefrontCustomization: () => ({ accepted: true }),
@@ -676,7 +766,11 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     Record<string, 1 | 2 | 3 | 4>
   >({});
   const [partnerStaffMembers, setPartnerStaffMembers] = useState<PartnerStaffMember[]>(() =>
-    parseStoredArray<PartnerStaffMember>('lari_partner_staff_v1', INITIAL_PARTNER_STAFF)
+    parseStoredArray<PartnerStaffMember>(
+      'lari_partner_staff_v1',
+      INITIAL_PARTNER_STAFF,
+      isValidStaffMember
+    )
   );
   const [partnerGroupedHours, setPartnerGroupedHours] = useState<
     Record<BusinessHoursKey, BusinessHoursSchedule>
@@ -705,7 +799,11 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     }
   });
   const [partnerCampaigns, setPartnerCampaigns] = useState<PartnerCampaign[]>(() =>
-    parseStoredArray<PartnerCampaign>('lari_partner_campaigns_v1', INITIAL_PARTNER_CAMPAIGNS)
+    parseStoredArray<PartnerCampaign>(
+      'lari_partner_campaigns_v1',
+      INITIAL_PARTNER_CAMPAIGNS,
+      isValidPartnerCampaign
+    )
   );
 
   useEffect(() => {
@@ -777,7 +875,14 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     useState<PartnerStorefrontCustomization>(() =>
       parseStoredObject<PartnerStorefrontCustomization>(
         'lari_storefront_customization_v1',
-        DEFAULT_STOREFRONT_CUSTOMIZATION
+        DEFAULT_STOREFRONT_CUSTOMIZATION,
+        {
+          businessName: (v) => typeof v === 'string',
+          tagline: (v) => typeof v === 'string',
+          whatsappNumber: (v) => typeof v === 'string',
+          accentColor: (v) => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v),
+          coverPhotoUrl: (v) => typeof v === 'string',
+        }
       )
     );
   const [storefrontLastEditedAtIso, setStorefrontLastEditedAtIso] = useState<string | null>(() => {
@@ -792,9 +897,21 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
   const [userProfile, setUserProfile] = useState<MobileUserProfile>(() =>
     parseStoredObject<MobileUserProfile>(
       'lari_mobile_user_profile_v1',
-      DEFAULT_USER_PROFILE
+      DEFAULT_USER_PROFILE,
+      {
+        interestedSectors: (v) =>
+          Array.isArray(v) && v.every((s) => typeof s === 'string'),
+      }
     )
   );
+  const [mobileAuthUser, setMobileAuthUser] = useState<MobileAuthUser | null>(() =>
+    getActiveMobileAuthUser()
+  );
+  const [isExplicitlySignedOut, setIsExplicitlySignedOut] = useState<boolean>(() =>
+    isMobileExplicitlySignedOut()
+  );
+  const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
+  const [authModalInitialTab, setAuthModalInitialTab] = useState<'login' | 'register'>('login');
   const [selectedCurrency, setSelectedCurrency] = useState<SupportedCurrency>(() => {
     try {
       const saved =
@@ -917,6 +1034,67 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     }
   }, []);
 
+  const openAuthModal = useCallback((tab: 'login' | 'register' = 'login') => {
+    setAuthModalInitialTab(tab);
+    setAuthModalOpen(true);
+  }, []);
+
+  const closeAuthModal = useCallback(() => {
+    setAuthModalOpen(false);
+  }, []);
+
+  const applyAuthenticatedSession = useCallback(
+    (result: MobileAuthActionResult, welcomeVerb: string) => {
+      if (!result.success || !result.user) return;
+      setMobileAuthUser(result.user);
+      setIsExplicitlySignedOut(false);
+      if (result.profile) {
+        updateUserProfile(result.profile);
+      }
+      setAuthModalOpen(false);
+      showToast(`${welcomeVerb}, ${result.user.fullName}!`);
+    },
+    [showToast, updateUserProfile]
+  );
+
+  const loginWithEmail = useCallback(
+    async (email: string, password: string) => {
+      const result = await loginMobileWithEmail({ email, password });
+      applyAuthenticatedSession(result, 'Tekrar hoş geldiniz');
+      return result;
+    },
+    [applyAuthenticatedSession]
+  );
+
+  const registerAccount = useCallback(
+    async (payload: MobileRegistrationPayload) => {
+      const result = await registerMobileAccount(payload);
+      applyAuthenticatedSession(result, 'LARİ hesabınız hazır');
+      return result;
+    },
+    [applyAuthenticatedSession]
+  );
+
+  const continueWithSocial = useCallback(
+    async (input: { provider: 'google' | 'apple'; email: string; fullName?: string }) => {
+      const result = await continueMobileWithSocialProvider(input);
+      applyAuthenticatedSession(result, 'Hoş geldiniz');
+      return result;
+    },
+    [applyAuthenticatedSession]
+  );
+
+  const logoutMobileSession = useCallback(async () => {
+    await logoutMobileAccount();
+    setMobileAuthUser(null);
+    setIsExplicitlySignedOut(true);
+    setPartnerSubscription(null);
+    setAdmittedPatientSession(null);
+    setAuthModalInitialTab('login');
+    setAuthModalOpen(true);
+    showToast('Oturumunuz güvenle kapatıldı.');
+  }, [showToast]);
+
   const rescheduleActiveBooking = useCallback(
     (newDate: string, newTime: string) => {
       const targetBooking = activeBooking;
@@ -1015,12 +1193,13 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     (code: string) => {
       if (code.trim().toUpperCase() === 'LARI500') {
         setWalletBalanceMinor((balance) => balance + 50000);
-        showToast(`LARI500 ile ${(500).toLocaleString('tr-TR')} TRY cüzdanınıza eklendi.`);
+        const giftDisp = convertFromTryMajor(500, selectedCurrency);
+        showToast(`LARI500 ile ${giftDisp.toLocaleString('tr-TR')} ${selectedCurrency} cüzdanınıza eklendi.`);
         return;
       }
       showToast('Hediye kodu geçersiz.');
     },
-    [showToast]
+    [selectedCurrency, showToast]
   );
 
   const toggleThemeMode = useCallback(() => {
@@ -1297,6 +1476,11 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
           ...current,
         ]);
       }
+      const promotedAuth = updateMobileAuthUserRole('tenant_owner');
+      if (promotedAuth) {
+        setMobileAuthUser(promotedAuth);
+      }
+      setIsExplicitlySignedOut(false);
       showToast(
         `${input.businessName} için ${input.planName} Partner hesabı aktif edildi!`
       );
@@ -1371,6 +1555,16 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       setPartnerCampaigns,
       userProfile,
       selectedCurrency,
+      mobileAuthUser,
+      isExplicitlySignedOut,
+      authModalOpen,
+      authModalInitialTab,
+      openAuthModal,
+      closeAuthModal,
+      loginWithEmail,
+      registerAccount,
+      continueWithSocial,
+      logoutMobileSession,
       storefrontCustomization,
       storefrontLastEditedAtIso,
       saveStorefrontCustomization,
@@ -1436,6 +1630,16 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       setPartnerCampaigns,
       userProfile,
       selectedCurrency,
+      mobileAuthUser,
+      isExplicitlySignedOut,
+      authModalOpen,
+      authModalInitialTab,
+      openAuthModal,
+      closeAuthModal,
+      loginWithEmail,
+      registerAccount,
+      continueWithSocial,
+      logoutMobileSession,
       storefrontCustomization,
       storefrontLastEditedAtIso,
       saveStorefrontCustomization,

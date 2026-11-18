@@ -10,12 +10,15 @@ import {
   Fingerprint,
   Globe,
   Lock,
+  LogIn,
+  LogOut,
   Moon,
   ShieldCheck,
   Sparkles,
   Sun,
   Trash2,
   User,
+  UserPlus,
 } from 'lucide-react';
 import {
   AccountDeletionResult,
@@ -62,6 +65,8 @@ export interface MobileProfileSettingsPageProps {
   onSwitchPersona?: (persona: MobilePersonaType) => void;
   onAccountDeleted?: (result: AccountDeletionResult) => void;
   onOpenPartnerOnboarding?: () => void;
+  isGuestSession?: boolean;
+  onLogout?: () => void;
 }
 
 export const MobileProfileSettingsPage: React.FC<
@@ -77,6 +82,8 @@ export const MobileProfileSettingsPage: React.FC<
   onSwitchPersona,
   onAccountDeleted,
   onOpenPartnerOnboarding,
+  isGuestSession = false,
+  onLogout,
 }) => {
   const {
     showToast,
@@ -89,8 +96,15 @@ export const MobileProfileSettingsPage: React.FC<
     updateUserProfile,
     selectedCurrency,
     setSelectedCurrency,
+    mobileAuthUser,
+    isExplicitlySignedOut,
+    openAuthModal,
+    logoutMobileSession,
   } = useMobileAppSession();
   const isDark = themeMode === 'dark';
+  const effectiveGuestSession = Boolean(
+    isGuestSession || (isExplicitlySignedOut && !mobileAuthUser)
+  );
 
   const [profileDraft, setProfileDraft] = useState<MobileUserProfile>(() => ({
     ...userProfile,
@@ -118,6 +132,22 @@ export const MobileProfileSettingsPage: React.FC<
     },
     []
   );
+
+  useEffect(() => {
+    setProfileDraft({
+      ...userProfile,
+      interestedSectors: [...userProfile.interestedSectors],
+    });
+    setProfileErrors({});
+  }, [userProfile]);
+
+  const handleLogoutClick = async () => {
+    if (onLogout) {
+      await onLogout();
+      return;
+    }
+    await logoutMobileSession();
+  };
 
   const isPartner = shellState?.effectiveMode === 'b2b_partner';
   const hasPartnerAccess = Boolean(
@@ -231,21 +261,71 @@ export const MobileProfileSettingsPage: React.FC<
         <div className="bg-gradient-to-br from-[#1D1352] via-[#2C1A88] to-[#3B23C4] px-5 pt-5 pb-4 text-white">
           <div className="flex items-center gap-3.5">
             <div className="h-14 w-14 shrink-0 rounded-2xl bg-white/15 backdrop-blur-md border-2 border-white/35 flex items-center justify-center font-black text-lg text-white shadow-sm">
-              {initials}
+              {effectiveGuestSession ? <User className="w-6 h-6" /> : initials}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-black truncate">{profileDraft.fullName}</h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base font-black truncate" data-testid="profile-hero-name">
+                  {effectiveGuestSession ? 'Misafir Kullanıcı' : profileDraft.fullName}
+                </h2>
                 <span className="shrink-0 rounded-full bg-[#15B89B]/25 border border-[#16CFD1]/50 px-2 py-0.5 text-[10px] font-black text-[#A7F3D0]">
-                  {isPartner ? 'Partner' : 'Üye'}
+                  {effectiveGuestSession ? 'Misafir' : isPartner ? 'Partner' : 'Üye'}
                 </span>
+                {!effectiveGuestSession && mobileAuthUser?.provider && (
+                  <span className="shrink-0 rounded-full bg-white/15 border border-white/25 px-2 py-0.5 text-[10px] font-bold text-indigo-100">
+                    {mobileAuthUser.provider === 'google'
+                      ? 'Google'
+                      : mobileAuthUser.provider === 'apple'
+                        ? 'Apple'
+                        : 'E-posta'}
+                  </span>
+                )}
               </div>
               <p className="text-xs text-indigo-100/85 truncate mt-0.5">
-                {profileDraft.district}, {profileDraft.city} •{' '}
-                {formatPhoneDisplay(profileDraft.countryCode, profileDraft.phoneDigits)}
+                {effectiveGuestSession
+                  ? 'Randevularınızı senkronize etmek için giriş yapın veya üye olun'
+                  : `${profileDraft.district}, ${profileDraft.city} • ${formatPhoneDisplay(
+                      profileDraft.countryCode,
+                      profileDraft.phoneDigits
+                    )}`}
               </p>
             </div>
+            {!effectiveGuestSession && (
+              <button
+                type="button"
+                onClick={() => void handleLogoutClick()}
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/30 px-3 py-2 text-xs font-black text-white transition active:scale-95"
+                data-testid="profile-logout-header-btn"
+                aria-label="Çıkış Yap"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Çıkış</span>
+              </button>
+            )}
           </div>
+
+          {effectiveGuestSession && (
+            <div className="mt-3.5 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => openAuthModal('login')}
+                className="min-h-11 rounded-2xl bg-white text-[#1D1352] text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition active:scale-95"
+                data-testid="profile-open-login-btn"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>Giriş Yap</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => openAuthModal('register')}
+                className="min-h-11 rounded-2xl bg-[#15B89B] hover:bg-[#129e85] text-white text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition active:scale-95"
+                data-testid="profile-open-register-btn"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Üye Ol</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* 3-Column Bento Stats Row */}
@@ -1094,6 +1174,74 @@ export const MobileProfileSettingsPage: React.FC<
             </div>
           )}
         </div>
+      </div>
+
+      {/* Prominent Session Auth / Logout Card */}
+      <div
+        className={`rounded-3xl p-4 space-y-3 shadow-sm ${cardSurface}`}
+        data-testid="profile-session-auth-card"
+      >
+        {effectiveGuestSession ? (
+          <>
+            <div className="space-y-1">
+              <p className="text-sm font-black">LARİ Hesabına Giriş Yap veya Üye Ol</p>
+              <p className="text-xs text-slate-500">
+                Google (Gmail), Apple veya e-posta hesabınızla giriş yaparak randevularınızı, QR passlarınızı ve favorilerinizi kaydedin.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => openAuthModal('login')}
+                style={{ minHeight: '46px' }}
+                className="rounded-2xl bg-[#4F46E5] hover:bg-[#4338CA] text-white text-xs font-black flex items-center justify-center gap-1.5"
+                data-testid="profile-card-login-btn"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>Giriş Yap (Gmail / E-posta)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => openAuthModal('register')}
+                style={{ minHeight: '46px' }}
+                className={`rounded-2xl border-2 text-xs font-black flex items-center justify-center gap-1.5 ${inputSurface}`}
+                data-testid="profile-card-register-btn"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Üye Ol</span>
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase tracking-wider text-slate-500">
+                  Aktif Oturum
+                </p>
+                <p className="text-sm font-black truncate">{profileDraft.email}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => openAuthModal('login')}
+                className="shrink-0 rounded-xl border-2 border-indigo-200 bg-[#EEF2FF] px-3 py-1.5 text-xs font-black text-[#4338CA]"
+                data-testid="profile-switch-account-btn"
+              >
+                Hesap Değiştir
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleLogoutClick()}
+              style={{ minHeight: '48px' }}
+              className="w-full rounded-2xl border-2 border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:border-rose-800 dark:text-rose-300 text-sm font-black flex items-center justify-center gap-2 transition active:scale-[0.99]"
+              data-testid="profile-logout-btn"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Oturumu Kapat (Çıkış Yap)</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

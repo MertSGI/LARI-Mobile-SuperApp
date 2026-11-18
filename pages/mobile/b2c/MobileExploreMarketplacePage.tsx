@@ -315,7 +315,11 @@ export const MobileExploreMarketplacePage: React.FC<
     themeMode,
     selectedCurrency,
     userProfile,
+    mobileAuthUser,
+    isExplicitlySignedOut,
+    openAuthModal,
   } = useMobileAppSession();
+  const showGuestAuthBanner = isExplicitlySignedOut && !mobileAuthUser;
   const isProfileIncomplete = !validateMobileUserProfile(userProfile).valid;
   const isDark = themeMode === 'dark';
 
@@ -471,6 +475,41 @@ export const MobileExploreMarketplacePage: React.FC<
 
   return (
     <div className="space-y-5 pb-28" data-testid="mobile-explore-marketplace-page">
+      {showGuestAuthBanner && (
+        <div
+          className={`flex items-center justify-between gap-3 rounded-2xl border-2 px-3.5 py-2.5 ${
+            isDark
+              ? 'border-indigo-500/40 bg-slate-900 text-indigo-100'
+              : 'border-indigo-200 bg-[#EEF2FF] text-[#312E81]'
+          }`}
+          data-testid="explore-auth-cta-card"
+        >
+          <div className="min-w-0">
+            <p className="text-xs font-black">Misafir Modundasınız</p>
+            <p className="text-[11px] opacity-85 truncate">
+              Gmail, Apple veya e-posta ile giriş yapıp üye olabilirsiniz.
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => openAuthModal('login')}
+              className="rounded-xl bg-[#4F46E5] px-3 py-1.5 text-[11px] font-black text-white"
+              data-testid="explore-auth-login-btn"
+            >
+              Giriş Yap
+            </button>
+            <button
+              type="button"
+              onClick={() => openAuthModal('register')}
+              className="rounded-xl border-2 border-[#4F46E5] bg-white px-2.5 py-1 text-[11px] font-black text-[#4338CA]"
+              data-testid="explore-auth-register-btn"
+            >
+              Üye Ol
+            </button>
+          </div>
+        </div>
+      )}
       {isProfileIncomplete && onOpenProfile && (
         <div
           className={`flex items-center justify-between gap-3 rounded-2xl border-2 px-3.5 py-2.5 ${

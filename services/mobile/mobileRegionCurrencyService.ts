@@ -242,6 +242,15 @@ export function convertFromTryMajor(
   return Math.max(1, Math.round(converted));
 }
 
+export function convertToTryMajor(
+  amountMajor: number,
+  sourceCurrency: SupportedCurrency
+): number {
+  if (sourceCurrency === 'TRY') return Math.round(amountMajor);
+  const rate = APPROX_RATES_FROM_TRY[sourceCurrency] || 1;
+  return Math.max(1, Math.round(amountMajor / rate));
+}
+
 export function formatCurrencyLabel(
   amountMajor: number,
   currency: SupportedCurrency = 'TRY'

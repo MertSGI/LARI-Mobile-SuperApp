@@ -573,6 +573,11 @@ async function run() {
         true,
         `Storefront lock must disable gallery URL additions on ${vp.name}`
       );
+      assert.equal(
+        await page.locator('[data-testid="partner-campaign-add-btn"]').isDisabled(),
+        true,
+        `Storefront lock must disable campaign additions on ${vp.name}`
+      );
 
       // [SEV-0] Baslangic subscriber must NOT escalate persona to ht_coordinator or clinic_practitioner
       await page.click('[data-testid="mobile-tab-partner_switch"]');
@@ -611,6 +616,110 @@ async function run() {
       await page.waitForSelector('[data-testid="white-label-storefront-banner"]');
       const cardCount = await page.locator('[data-testid^="marketplace-card-"]').count();
       assert.equal(cardCount, 1, `White-label lock on ${vp.name} must show exactly 1 tenant`);
+
+      // H) Auth Lifecycle: Logout -> Guest Browsing -> Google (Gmail) Onboarding -> Email Register & Login
+      await page.goto(`${url}/?app=1#/`, { waitUntil: 'networkidle' });
+      await page.click('[data-testid="mobile-tab-profile"]');
+      await page.waitForSelector('[data-testid="profile-logout-btn"]');
+      await page.click('[data-testid="profile-logout-btn"]');
+      await page.waitForSelector('[data-testid="mobile-auth-modal"]');
+
+      // Guest escape hatch (Apple 5.1.1)
+      await page.click('[data-testid="auth-continue-guest-btn"]');
+      await page.waitForSelector('[data-testid="mobile-auth-modal"]', { state: 'detached' });
+      await page.waitForSelector('[data-testid="explore-auth-cta-card"]');
+      await page.click('[data-testid="mobile-tab-profile"]');
+      await page.waitForSelector('[data-testid="profile-open-login-btn"]');
+      assert.equal(await page.locator('[data-testid="profile-logout-btn"]').count(), 0);
+
+      // Google (Gmail) sign-in -> requires completing mandatory LARİ profile fields
+      await page.click('[data-testid="profile-open-login-btn"]');
+      await page.waitForSelector('[data-testid="mobile-auth-modal"]');
+      await page.click('[data-testid="auth-google-btn"]');
+      await page.fill('[data-testid="auth-social-name-input"]', 'Zeynep Kaya');
+      await page.fill('[data-testid="auth-social-email-input"]', 'zeynep.kaya@gmail.com');
+      await page.click('[data-testid="auth-social-continue-btn"]');
+      await page.waitForSelector('[data-testid="auth-register-form"]');
+
+      // Missing mandatory fields must block completion
+      await page.click('[data-testid="auth-register-submit-btn"]');
+      await page.waitForSelector('[data-testid="mobile-auth-modal"]');
+
+      await page.fill('[data-testid="auth-reg-phone-input"]', '5321112233');
+      await page.fill('[data-testid="auth-reg-age-input"]', '29');
+      await page.selectOption('[data-testid="auth-reg-gender-select"]', 'female');
+      await page.check('[data-testid="auth-reg-kvkk-checkbox"]');
+      await page.click('[data-testid="auth-register-submit-btn"]');
+      await page.waitForSelector('[data-testid="mobile-auth-modal"]', { state: 'detached' });
+
+      assert.match(
+        await page.locator('[data-testid="mobile-tab-profile"]').innerText(),
+        /ZK/
+      );
+      await page.click('[data-testid="mobile-tab-profile"]');
+      assert.equal(
+        await page.locator('[data-testid="profile-hero-name"]').innerText(),
+        'Zeynep Kaya'
+      );
+
+      // Logout -> Email + Password registration -> Logout -> Email + Password login
+      await page.click('[data-testid="profile-logout-btn"]');
+      await page.waitForSelector('[data-testid="mobile-auth-modal"]');
+      await page.click('[data-testid="auth-tab-register-btn"]');
+      await page.fill('[data-testid="auth-reg-fullname-input"]', 'Selin Demir');
+      await page.fill('[data-testid="auth-reg-email-input"]', 'selin.demir@gmail.com');
+      await page.fill('[data-testid="auth-reg-password-input"]', 'lari2026');
+      await page.fill('[data-testid="auth-reg-password-confirm-input"]', 'lari2026');
+      await page.fill('[data-testid="auth-reg-phone-input"]', '5339998877');
+      await page.fill('[data-testid="auth-reg-age-input"]', '27');
+      await page.selectOption('[data-testid="auth-reg-gender-select"]', 'female');
+      await page.check('[data-testid="auth-reg-kvkk-checkbox"]');
+      await page.click('[data-testid="auth-register-submit-btn"]');
+      await page.waitForSelector('[data-testid="mobile-auth-modal"]', { state: 'detached' });
+
+      await page.click('[data-testid="mobile-tab-profile"]');
+      assert.equal(
+        await page.locator('[data-testid="profile-hero-name"]').innerText(),
+        'Selin Demir'
+      );
+      await page.click('[data-testid="profile-logout-btn"]');
+      await page.waitForSelector('[data-testid="mobile-auth-modal"]');
+      await page.fill('[data-testid="auth-login-email-input"]', 'selin.demir@gmail.com');
+      await page.fill('[data-testid="auth-login-password-input"]', 'lari2026');
+      await page.click('[data-testid="auth-login-submit-btn"]');
+      await page.waitForSelector('[data-testid="mobile-auth-modal"]', { state: 'detached' });
+      await page.click('[data-testid="mobile-tab-profile"]');
+      assert.equal(
+        await page.locator('[data-testid="profile-hero-name"]').innerText(),
+        'Selin Demir'
+      );
+
+      // I) Hardening checks: Customer 360 PIN rejection & malformed localStorage resilience
+      await page.evaluate(() => {
+        localStorage.setItem('lari_partner_campaigns_v1', '[{}]');
+        localStorage.removeItem('lari_mobile_signed_out_v1');
+        localStorage.removeItem('lari_mobile_auth_user_v1');
+      });
+      await page.goto(`${url}/?app=1&mode=partner#/`, { waitUntil: 'networkidle' });
+      await page.click('[data-testid="partner-management-tab-storefront"]');
+      await page.waitForSelector('[data-testid="partner-management-storefront-panel"]');
+      assert.equal(
+        await page.locator('text=Bir şeyler ters gitti').count(),
+        0,
+        `Malformed campaign localStorage must not crash app on ${vp.name}`
+      );
+      await page.click('[data-testid="mobile-tab-customer_360"]');
+      await page.waitForSelector('[data-testid="customer360-pin-input"]');
+      await page.fill('[data-testid="customer360-pin-input"]', '1234');
+      await page.click('button:has-text("PIN Aç")');
+      assert.equal(
+        await page.locator('[data-testid="mobile-customer-360"] >> text=VIP Segment').count(),
+        0,
+        `Wrong PIN 1234 must not unlock Customer360 on ${vp.name}`
+      );
+      await page.fill('[data-testid="customer360-pin-input"]', '2026');
+      await page.click('button:has-text("PIN Aç")');
+      await page.waitForSelector('[data-testid="mobile-customer-360"] >> text=VIP Segment');
 
       assert.equal(pageErrors.length, 0, `Page errors on ${vp.name}: ${pageErrors.join('; ')}`);
       await context.close();
