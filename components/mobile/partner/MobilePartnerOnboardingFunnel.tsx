@@ -68,6 +68,14 @@ const COVER_PRESETS = [
   },
 ];
 
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/svg+xml',
+]);
+const MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024;
+
 const VALUE_PROPOSITIONS = [
   {
     title: '7/24 Randevu ile Boş Saatleri Doldurun',
@@ -109,22 +117,14 @@ const getPlanFeatures = (plan: PricingPlan) => [
 export const MobilePartnerOnboardingFunnel: React.FC<
   MobilePartnerOnboardingFunnelProps
 > = ({ onClose, onCompleted }) => {
-  const { themeMode, selectedCurrency, upgradeToPartnerAccount } = useMobileAppSession();
+  const { themeMode, selectedCurrency, showToast, upgradeToPartnerAccount } =
+    useMobileAppSession();
   const isDark = themeMode === 'dark';
   const plans = useMemo(
-    () =>
-      planService.getActivePlans().map((plan) =>
-        plan.id === 'baslangic'
-          ? {
-              ...plan,
-              monthlyPrice: 999,
-              annualPrice: Math.round(999 * 12 * 0.8),
-              trialDays: 90,
-            }
-          : { ...plan, trialDays: 0 }
-      ),
+    () => planService.getActivePlans(),
     []
   );
+  const starterPlan = plans.find((plan) => plan.id === 'baslangic') ?? plans[0];
   const [step, setStep] = useState<FunnelStep>(1);
   const [previewTab, setPreviewTab] = useState<PreviewTab>('storefront');
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
@@ -152,6 +152,7 @@ export const MobilePartnerOnboardingFunnel: React.FC<
   const [staffName, setStaffName] = useState('Ayşe Yılmaz');
   const [openingTime, setOpeningTime] = useState('09:00');
   const [closingTime, setClosingTime] = useState('20:00');
+  const [activationPending, setActivationPending] = useState(false);
 
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) ?? null;
   const locationParts = location.split('/').map((part) => part.trim()).filter(Boolean);
@@ -175,6 +176,16 @@ export const MobilePartnerOnboardingFunnel: React.FC<
   const handleCoverFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (!ALLOWED_IMAGE_MIME_TYPES.has(file.type)) {
+      showToast('Yalnızca JPEG, PNG, WebP veya SVG görseller yüklenebilir.');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+      showToast('Görsel boyutu en fazla 5 MB olabilir.');
+      event.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {
@@ -182,6 +193,7 @@ export const MobilePartnerOnboardingFunnel: React.FC<
         setCoverPhotoFailed(false);
       }
     };
+    reader.onerror = () => showToast('Görsel okunamadı. Lütfen yeniden deneyin.');
     reader.readAsDataURL(file);
     event.target.value = '';
   };
@@ -194,7 +206,7 @@ export const MobilePartnerOnboardingFunnel: React.FC<
     setStep((current) => Math.max(1, current - 1) as FunnelStep);
   };
 
-  const completeOnboarding = (switchToPartnerMode: boolean) => {
+  const completeOnboarding = async (switchToPartnerMode: boolean) => {
     if (!selectedPlan) return;
     const upgradeInput: UpgradePartnerInput = {
       planId: selectedPlan.id,
@@ -205,6 +217,8 @@ export const MobilePartnerOnboardingFunnel: React.FC<
       city,
       district,
       ownerName: ownerName.trim(),
+      ownerEmail: email.trim(),
+      ownerPhone: phone,
       staffName: staffName.trim() || undefined,
       vkn,
       accentColor: signatureColor,
@@ -216,7 +230,15 @@ export const MobilePartnerOnboardingFunnel: React.FC<
       initialServicePrice: Number(servicePrice) || undefined,
       initialServiceDuration: Number(serviceDuration) || undefined,
     };
-    upgradeToPartnerAccount(upgradeInput);
+    setActivationPending(true);
+    const result = await upgradeToPartnerAccount(upgradeInput);
+    setActivationPending(false);
+    if (!result.success) {
+      if (result.requiresCheckout && result.checkoutUrl) {
+        window.location.assign(result.checkoutUrl);
+      }
+      return;
+    }
     onCompleted({ switchToPartnerMode });
   };
 
@@ -286,13 +308,13 @@ export const MobilePartnerOnboardingFunnel: React.FC<
             <div className={`overflow-hidden rounded-3xl border-2 shadow-sm ${cardSurface}`}>
               <div className="bg-gradient-to-br from-[#312E81] via-[#4F46E5] to-[#8B5CF6] p-5 text-white">
                 <span className="inline-flex rounded-full border border-white/30 bg-white/15 px-3 py-1 text-[10px] font-black tracking-wider">
-                  BAŞLANGIÇ PAKETİNDE 90 GÜN ÜCRETSİZ DENEME
+                  BAŞLANGIÇ PAKETİNDE {starterPlan?.trialDays || 0} GÜN ÜCRETSİZ DENEME
                 </span>
                 <h1 className="mt-3 text-2xl font-black leading-tight">
                   İşletmenizi 2 dakikada LARİ’ye taşıyın, daha çok randevuya ulaşın.
                 </h1>
                 <p className="mt-2 text-sm leading-relaxed text-indigo-100">
-                  Başlangıç paketini 90 gün ücretsiz deneyin; canlı vitrininizi, ajandanızı ve
+                  Başlangıç paketini {starterPlan?.trialDays || 0} gün ücretsiz deneyin; canlı vitrininizi, ajandanızı ve
                   tahsilatınızı tek uygulamadan yönetin.
                 </p>
               </div>
@@ -395,7 +417,7 @@ export const MobilePartnerOnboardingFunnel: React.FC<
                     <ImagePlus className="h-3.5 w-3.5" /> Cihazdan Yükle
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/jpeg,image/png,image/webp,image/svg+xml"
                       className="sr-only"
                       onChange={handleCoverFileChange}
                       data-testid="partner-funnel-cover-file-input"
@@ -590,7 +612,7 @@ export const MobilePartnerOnboardingFunnel: React.FC<
               <h1 className="mt-1 text-xl font-black">İşletmene uygun paketi seç.</h1>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">Tüm planlarda %0 mağaza komisyonu ve hızlı kurulum dahildir.</p>
               <p className="mt-2 rounded-2xl border-2 border-amber-300 bg-amber-50 p-3 text-xs font-black text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
-                90 gün ücretsiz deneme fırsatı yalnızca Başlangıç (999 TRY/ay) paketinde geçerlidir.
+                {starterPlan?.trialDays || 0} gün deneme bilgisi ve {formatTry(starterPlan?.monthlyPrice || 0)} TRY/ay fiyatı planService tarafından yönetilir.
               </p>
             </div>
 
@@ -623,7 +645,7 @@ export const MobilePartnerOnboardingFunnel: React.FC<
                     {plan.isRecommended ? <span className="absolute -top-2.5 right-4 rounded-full bg-gradient-to-r from-[#4F46E5] to-[#8B5CF6] px-3 py-1 text-[10px] font-black text-white">ÖNERİLEN</span> : null}
                     {plan.id === 'baslangic' ? (
                       <span className="mb-3 inline-flex rounded-full bg-amber-400 px-3 py-1 text-[10px] font-black text-amber-950">
-                        90 Gün Ücretsiz Deneme • Sadece Başlangıç Paketinde
+                        {plan.trialDays} Gün Ücretsiz Deneme • Sadece Başlangıç Paketinde
                       </span>
                     ) : null}
                     <div className="flex items-start justify-between gap-3">
@@ -781,11 +803,11 @@ export const MobilePartnerOnboardingFunnel: React.FC<
               </div>
             </div>
 
-            <button type="button" onClick={() => completeOnboarding(true)} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] px-4 py-3 text-sm font-black text-white shadow-lg" data-testid="partner-funnel-activate-btn">
-              Partner Hesabımı Aktif Et & Panele Geç
+            <button type="button" disabled={activationPending} onClick={() => void completeOnboarding(true)} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] px-4 py-3 text-sm font-black text-white shadow-lg disabled:cursor-wait disabled:opacity-60" data-testid="partner-funnel-activate-btn">
+              {activationPending ? 'Abonelik Doğrulanıyor…' : 'Partner Hesabımı Aktif Et & Panele Geç'}
               <LayoutDashboard className="h-4 w-4" />
             </button>
-            <button type="button" onClick={() => completeOnboarding(false)} className="min-h-11 w-full text-sm font-black text-slate-500 dark:text-slate-300" data-testid="partner-funnel-stay-customer-btn">Şimdilik Müşteri Modunda Kal</button>
+            <button type="button" disabled={activationPending} onClick={() => void completeOnboarding(false)} className="min-h-11 w-full text-sm font-black text-slate-500 disabled:cursor-wait disabled:opacity-60 dark:text-slate-300" data-testid="partner-funnel-stay-customer-btn">Şimdilik Müşteri Modunda Kal</button>
           </section>
         ) : null}
       </main>

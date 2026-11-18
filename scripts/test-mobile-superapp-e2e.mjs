@@ -499,7 +499,7 @@ async function run() {
       const showcaseText = await page
         .locator('[data-testid="partner-funnel-step-showcase"]')
         .innerText();
-      assert.match(showcaseText, /90 GÜN ÜCRETSİZ DENEME/);
+      assert.match(showcaseText, /14 GÜN ÜCRETSİZ DENEME/);
       assert.doesNotMatch(showcaseText, /Müşteri ve Partner Dünyaları Ayrı/i);
       await page.click('[data-testid="partner-funnel-open-preview-btn"]');
       await page.waitForSelector('[data-testid="partner-funnel-step-preview"]');
@@ -512,8 +512,8 @@ async function run() {
       await page.click('[data-testid="partner-funnel-preview-continue-btn"]');
       await page.waitForSelector('[data-testid="partner-funnel-step-pricing"]');
       const starterPlan = page.locator('[data-testid="partner-funnel-plan-baslangic"]');
-      assert.match(await starterPlan.innerText(), /999 TRY/);
-      assert.match(await starterPlan.innerText(), /90 Gün Ücretsiz Deneme/);
+      assert.match(await starterPlan.innerText(), /1\.490 TRY/);
+      assert.match(await starterPlan.innerText(), /14 Gün Ücretsiz Deneme/);
       await starterPlan.click();
       await page.fill('[data-testid="partner-funnel-owner-name-input"]', 'E2E İşletme Sahibi');
       await page.fill('[data-testid="partner-funnel-phone-input"]', '5321234567');

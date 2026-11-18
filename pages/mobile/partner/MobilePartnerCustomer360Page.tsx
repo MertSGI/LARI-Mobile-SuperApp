@@ -18,7 +18,8 @@ function verifyStaffPinInput(pin: string): boolean {
 }
 
 export const MobilePartnerCustomer360Page: React.FC = () => {
-  const { showToast, selectedCurrency } = useMobileAppSession();
+  const { showToast, selectedCurrency, themeMode } = useMobileAppSession();
+  const isDark = themeMode === 'dark';
   const [unlocked, setUnlocked] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
@@ -66,10 +67,17 @@ export const MobilePartnerCustomer360Page: React.FC = () => {
   };
 
   return (
-    <main className="space-y-4 text-[#111827]" data-testid="mobile-customer-360">
-      <div className="rounded-3xl bg-white border border-slate-200 p-4 space-y-3 shadow-sm">
+    <main
+      className={`space-y-4 pb-28 ${isDark ? 'text-slate-100' : 'text-[#111827]'}`}
+      data-testid="mobile-customer-360"
+    >
+      <div
+        className={`rounded-3xl border-2 p-4 space-y-3 shadow-sm ${
+          isDark ? 'border-slate-700 bg-slate-900' : 'border-slate-300 bg-white'
+        }`}
+      >
         <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
+          <span className="text-xs font-bold flex items-center gap-1.5">
             <Users className="w-4 h-4 text-[#5B5FEF]" />
             Müşteri 360 CRM & Geri Kazanım
           </span>
@@ -88,19 +96,29 @@ export const MobilePartnerCustomer360Page: React.FC = () => {
                 value={pinInput}
                 onChange={(e) => setPinInput(e.target.value.replace(/\D+/g, ''))}
                 placeholder="4-6 Haneli Yetkili İşletme PIN"
-                className="flex-1 rounded-xl border border-slate-300 bg-[#F8F9FB] px-3 py-2 text-xs text-slate-900"
+                className={`min-h-11 flex-1 rounded-xl border-2 px-3 py-2 text-xs ${
+                  isDark
+                    ? 'border-slate-700 bg-slate-800 text-slate-100 placeholder-slate-400'
+                    : 'border-slate-300 bg-[#F8F9FB] text-slate-900'
+                }`}
                 data-testid="customer360-pin-input"
               />
               <button
                 type="button"
                 onClick={() => void handleUnlock(false)}
-                className="px-3.5 rounded-xl border border-[#5B5FEF] text-[#4338CA] text-xs font-bold"
+                className={`min-h-11 px-3.5 rounded-xl border-2 border-[#5B5FEF] text-xs font-bold ${
+                  isDark ? 'bg-slate-800 text-indigo-200' : 'text-[#4338CA]'
+                }`}
               >
                 PIN Aç
               </button>
             </div>
             {authError && (
-              <p className="text-[11px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
+              <p className={`text-[11px] font-bold border-2 rounded-xl px-3 py-2 ${
+                isDark
+                  ? 'border-rose-800 bg-rose-950/40 text-rose-200'
+                  : 'border-rose-200 bg-rose-50 text-rose-700'
+              }`}>
                 {authError}
               </p>
             )}
@@ -116,13 +134,19 @@ export const MobilePartnerCustomer360Page: React.FC = () => {
           </div>
         ) : (
           <div className="space-y-2.5 text-xs">
-            <div className="rounded-2xl bg-[#F8F9FB] border border-amber-200 p-3 flex items-center justify-between">
+            <div
+              className={`rounded-2xl border-2 p-3 flex items-center justify-between ${
+                isDark
+                  ? 'border-amber-800 bg-slate-800'
+                  : 'border-amber-200 bg-[#F8F9FB]'
+              }`}
+            >
               <div>
-                <p className="font-bold text-[#111827] flex items-center gap-1">
+                <p className="font-bold flex items-center gap-1">
                   <Crown className="w-3.5 h-3.5 text-amber-500" />
                   Selin Demir (VIP Segment)
                 </p>
-                <p className="text-slate-500 text-[11px]">
+                <p className={`text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-500'}`}>
                   Toplam Harcama:{' '}
                   {convertFromTryMajor(18450, selectedCurrency).toLocaleString('tr-TR')}{' '}
                   {selectedCurrency} • 14 Ziyaret
@@ -136,8 +160,12 @@ export const MobilePartnerCustomer360Page: React.FC = () => {
                 setReactivationQueued(true);
                 showToast('60 günlük geri kazanım kampanyası Outbox’a eklendi!');
               }}
-              style={{ minHeight: '42px' }}
-              className="w-full rounded-xl bg-[#F8F9FB] hover:bg-slate-100 border border-slate-200 text-[#111827] font-semibold flex items-center justify-center gap-1.5"
+              style={{ minHeight: '44px' }}
+              className={`w-full rounded-xl border-2 font-semibold flex items-center justify-center gap-1.5 ${
+                isDark
+                  ? 'border-slate-700 bg-slate-800 text-slate-100 hover:bg-slate-700'
+                  : 'border-slate-200 bg-[#F8F9FB] text-[#111827] hover:bg-slate-100'
+              }`}
             >
               <RefreshCw className="w-3.5 h-3.5 text-[#5B5FEF]" />
               {reactivationQueued ? '60 Günlük Kayıp Müşteri Kampanyası Kuyruğa Alındı (Outbox)' : '60 Günlük Kayıp Müşterileri Tara & Kampanya Gönder'}
@@ -148,11 +176,13 @@ export const MobilePartnerCustomer360Page: React.FC = () => {
                 setPackageGranted(true);
                 showToast('Selin Demir hesabına 5 Seanslık Bakım Paketi tanımlandı!');
               }}
-              style={{ minHeight: '42px' }}
+              style={{ minHeight: '44px' }}
               className={`w-full rounded-xl font-bold flex items-center justify-center gap-1.5 transition ${
                 packageGranted
                   ? 'bg-emerald-600 text-white'
-                  : 'bg-[#EEF0FF] hover:bg-indigo-100 text-[#4338CA]'
+                  : isDark
+                    ? 'border-2 border-indigo-700 bg-indigo-950/50 text-indigo-200 hover:bg-indigo-900/60'
+                    : 'bg-[#EEF0FF] hover:bg-indigo-100 text-[#4338CA]'
               }`}
             >
               <Gift className="w-3.5 h-3.5" />

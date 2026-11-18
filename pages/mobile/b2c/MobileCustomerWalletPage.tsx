@@ -691,8 +691,8 @@ export const MobileCustomerWalletPage: React.FC<
                           <button
                             key={slot}
                             type="button"
-                            onClick={() => {
-                              const res = rescheduleActiveBooking('2026-11-19', slot);
+                            onClick={async () => {
+                              const res = await rescheduleActiveBooking('2026-11-19', slot);
                               if (res.accepted) {
                                 setShowRescheduleSlots(false);
                               }
@@ -1267,10 +1267,12 @@ export const MobileCustomerWalletPage: React.FC<
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  cancelActiveBooking(cancelReason);
-                  setCancelledEmpty(true);
-                  setCancelModalOpen(false);
+                onClick={async () => {
+                  const result = await cancelActiveBooking(cancelReason);
+                  if (result.accepted) {
+                    setCancelledEmpty(true);
+                    setCancelModalOpen(false);
+                  }
                 }}
                 style={{ minHeight: '46px' }}
                 className="rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black"

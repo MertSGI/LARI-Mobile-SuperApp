@@ -1,60 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { Suspense } from 'react';
 import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 // Target Turkey market domain: randevulari.com / brand: LARİ / lari
 
-// Layouts
-import MarketingLayout from './components/layouts/MarketingLayout';
-import SalonBookingLayout from './components/layouts/SalonBookingLayout';
-import AdminLayout from './components/layouts/AdminLayout';
-import SuperAdminLayout from './components/layouts/SuperAdminLayout';
-
-// Pages
-import MarketingHomePage from './pages/MarketingHomePage';
-import FeaturesPage from './pages/FeaturesPage';
-import PricingPage from './pages/PricingPage';
-import ContactPage from './pages/ContactPage';
-import RegistrationPage from './pages/RegistrationPage';
-import PrivacyPage from './pages/PrivacyPage';
-import TermsPage from './pages/TermsPage';
-import SupportPage from './pages/SupportPage';
-
-import BookingPage from './pages/BookingPage';
-import AdminPage from './pages/AdminPage';
-import LoginPage from './pages/LoginPage';
-import PilotDemoEntryPage from './pages/PilotDemoEntryPage';
-import { PilotAdminPreviewPage } from './pages/PilotAdminPreviewPage';
-import AIVisualizerPage from './pages/AIVisualizerPage';
-import DemoLandingPage from './pages/DemoLandingPage';
-import SuperAdminDashboard from './pages/SuperAdminDashboard';
-import SuperAdminTenantsPage from './pages/super-admin/SuperAdminTenantsPage';
-import SuperAdminSubscriptionsPage from './pages/super-admin/SuperAdminSubscriptionsPage';
-import SuperAdminPaymentsPage from './pages/super-admin/SuperAdminPaymentsPage';
-import SuperAdminOnboardingPage from './pages/super-admin/SuperAdminOnboardingPage';
-import SuperAdminReportsPage from './pages/super-admin/SuperAdminReportsPage';
-import SuperAdminSettingsPage from './pages/super-admin/SuperAdminSettingsPage';
-import SuperAdminPaymentTestPage from './pages/super-admin/SuperAdminPaymentTestPage';
-import SuperAdminAISettingsPage from './pages/super-admin/SuperAdminAISettingsPage';
-import SuperAdminPlansPage from './pages/super-admin/SuperAdminPlansPage';
-import SuperAdminReferralsPage from './pages/super-admin/SuperAdminReferralsPage';
-import SuperAdminTenantPreviewPage from './pages/super-admin/SuperAdminTenantPreviewPage';
-import SuperAdminGoLivePage from './pages/super-admin/SuperAdminGoLivePage';
-import SuperAdminPilotTrackerPage from './pages/super-admin/SuperAdminPilotTrackerPage';
-import SuperAdminManualProvisioningPage from './pages/super-admin/SuperAdminManualProvisioningPage';
-import SuperAdminSchedulerPage from './pages/super-admin/SuperAdminSchedulerPage';
-import SuperAdminObservabilityPage from './pages/super-admin/SuperAdminObservabilityPage';
-import SuperAdminLegalPage from './pages/super-admin/SuperAdminLegalPage';
-import SuperAdminCommercialManagementPage from './pages/super-admin/SuperAdminCommercialManagementPage';
-import SitePreviewPage from './pages/admin/SitePreviewPage';
-
-import CustomerLoginPage from './pages/customer/CustomerLoginPage';
-import CustomerPortalPage from './pages/customer/CustomerPortalPage';
-import AppointmentSelfServicePage from './pages/AppointmentSelfServicePage';
-
-import MobileAppPage from './pages/MobileAppPage';
 import MobileSuperAppPage from './pages/mobile/MobileSuperAppPage';
-
-// Diagnostic tools
-import { MockDiagnosticTool } from './components/MockDiagnosticTool';
 
 // Contexts
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -65,6 +13,60 @@ import { DialogProvider } from './contexts/DialogContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppErrorBoundary from './components/AppErrorBoundary';
 import SafeErrorBoundary from './components/SafeErrorBoundary';
+
+// Web, admin and super-admin surfaces stay outside the native mobile entry chunk.
+const MarketingLayout = React.lazy(() => import('./components/layouts/MarketingLayout'));
+const SalonBookingLayout = React.lazy(() => import('./components/layouts/SalonBookingLayout'));
+const AdminLayout = React.lazy(() => import('./components/layouts/AdminLayout'));
+const SuperAdminLayout = React.lazy(() => import('./components/layouts/SuperAdminLayout'));
+const MarketingHomePage = React.lazy(() => import('./pages/MarketingHomePage'));
+const FeaturesPage = React.lazy(() => import('./pages/FeaturesPage'));
+const PricingPage = React.lazy(() => import('./pages/PricingPage'));
+const ContactPage = React.lazy(() => import('./pages/ContactPage'));
+const RegistrationPage = React.lazy(() => import('./pages/RegistrationPage'));
+const PrivacyPage = React.lazy(() => import('./pages/PrivacyPage'));
+const TermsPage = React.lazy(() => import('./pages/TermsPage'));
+const SupportPage = React.lazy(() => import('./pages/SupportPage'));
+const BookingPage = React.lazy(() => import('./pages/BookingPage'));
+const AdminPage = React.lazy(() => import('./pages/AdminPage'));
+const LoginPage = React.lazy(() => import('./pages/LoginPage'));
+const PilotDemoEntryPage = React.lazy(() => import('./pages/PilotDemoEntryPage'));
+const PilotAdminPreviewPage = React.lazy(() =>
+  import('./pages/PilotAdminPreviewPage').then((module) => ({
+    default: module.PilotAdminPreviewPage,
+  }))
+);
+const AIVisualizerPage = React.lazy(() => import('./pages/AIVisualizerPage'));
+const DemoLandingPage = React.lazy(() => import('./pages/DemoLandingPage'));
+const SuperAdminDashboard = React.lazy(() => import('./pages/SuperAdminDashboard'));
+const SuperAdminTenantsPage = React.lazy(() => import('./pages/super-admin/SuperAdminTenantsPage'));
+const SuperAdminSubscriptionsPage = React.lazy(() => import('./pages/super-admin/SuperAdminSubscriptionsPage'));
+const SuperAdminPaymentsPage = React.lazy(() => import('./pages/super-admin/SuperAdminPaymentsPage'));
+const SuperAdminOnboardingPage = React.lazy(() => import('./pages/super-admin/SuperAdminOnboardingPage'));
+const SuperAdminReportsPage = React.lazy(() => import('./pages/super-admin/SuperAdminReportsPage'));
+const SuperAdminSettingsPage = React.lazy(() => import('./pages/super-admin/SuperAdminSettingsPage'));
+const SuperAdminPaymentTestPage = React.lazy(() => import('./pages/super-admin/SuperAdminPaymentTestPage'));
+const SuperAdminAISettingsPage = React.lazy(() => import('./pages/super-admin/SuperAdminAISettingsPage'));
+const SuperAdminPlansPage = React.lazy(() => import('./pages/super-admin/SuperAdminPlansPage'));
+const SuperAdminReferralsPage = React.lazy(() => import('./pages/super-admin/SuperAdminReferralsPage'));
+const SuperAdminTenantPreviewPage = React.lazy(() => import('./pages/super-admin/SuperAdminTenantPreviewPage'));
+const SuperAdminGoLivePage = React.lazy(() => import('./pages/super-admin/SuperAdminGoLivePage'));
+const SuperAdminPilotTrackerPage = React.lazy(() => import('./pages/super-admin/SuperAdminPilotTrackerPage'));
+const SuperAdminManualProvisioningPage = React.lazy(() => import('./pages/super-admin/SuperAdminManualProvisioningPage'));
+const SuperAdminSchedulerPage = React.lazy(() => import('./pages/super-admin/SuperAdminSchedulerPage'));
+const SuperAdminObservabilityPage = React.lazy(() => import('./pages/super-admin/SuperAdminObservabilityPage'));
+const SuperAdminLegalPage = React.lazy(() => import('./pages/super-admin/SuperAdminLegalPage'));
+const SuperAdminCommercialManagementPage = React.lazy(() => import('./pages/super-admin/SuperAdminCommercialManagementPage'));
+const SitePreviewPage = React.lazy(() => import('./pages/admin/SitePreviewPage'));
+const CustomerLoginPage = React.lazy(() => import('./pages/customer/CustomerLoginPage'));
+const CustomerPortalPage = React.lazy(() => import('./pages/customer/CustomerPortalPage'));
+const AppointmentSelfServicePage = React.lazy(() => import('./pages/AppointmentSelfServicePage'));
+const MobileAppPage = React.lazy(() => import('./pages/MobileAppPage'));
+const MockDiagnosticTool = React.lazy(() =>
+  import('./components/MockDiagnosticTool').then((module) => ({
+    default: module.MockDiagnosticTool,
+  }))
+);
 
 // Use hash routing for embedded previews and browser routing for production
 const Router = (import.meta as any).env.VITE_ROUTER_MODE === 'browser' 
@@ -223,8 +225,18 @@ const App: React.FC = () => {
             <TenantProvider>
               <AuthProvider>
                 <Router>
-                  <AppFlowSwitcher />
-                  {showWebDiagnostic && <MockDiagnosticTool />}
+                  <Suspense
+                    fallback={
+                      <div
+                        className="min-h-screen bg-[#F5F7FA]"
+                        role="status"
+                        aria-label="Sayfa yükleniyor"
+                      />
+                    }
+                  >
+                    <AppFlowSwitcher />
+                    {showWebDiagnostic && <MockDiagnosticTool />}
+                  </Suspense>
                 </Router>
               </AuthProvider>
             </TenantProvider>

@@ -37,6 +37,15 @@ function run() {
   const tampered = htQr.rawPayload.replace('HT-IST-2026-42', 'HT-FAKE-999');
   assert.equal(verifyMobileQrTokenOrPayload(tampered, 'ten-atelier-nisantasi').valid, false);
 
+  const rawTokenInjected = JSON.stringify({
+    ...JSON.parse(htQr.rawPayload),
+    selfServiceToken: 'must-never-enter-a-qr-payload',
+  });
+  assert.equal(
+    verifyMobileQrTokenOrPayload(rawTokenInjected, 'ten-atelier-nisantasi').valid,
+    false
+  );
+
   const qrMatrix = buildQrMatrix25(htQr.rawPayload);
   assert.equal(qrMatrix.length, 25);
   assert.equal(qrMatrix[0][0], true);

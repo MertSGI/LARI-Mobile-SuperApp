@@ -25,6 +25,8 @@ function run() {
   const offlinePasses = getOfflineAppointmentPasses('ten-salon-a');
   assert.equal(offlinePasses.length >= 1, true);
   assert.equal(getOfflineAppointmentPasses('ten-salon-b').length, 0);
+  assert.equal(rawQrPayload.includes('tok-501'), false);
+  assert.equal(JSON.stringify(offlinePasses).includes('tok-501'), false);
 
   // 2. Cross-tenant QR scan rejected
   const crossTenant = registry.verifyQrCheckinPass(

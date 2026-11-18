@@ -34,9 +34,14 @@ import {
   MobileAuthActionResult,
   MobileAuthUser,
   MobileRegistrationPayload,
+  refreshMobileAuthUserFromTrustedSource,
   registerMobileAccount,
   updateMobileAuthUserRole,
 } from '../services/mobile/mobileAuthService';
+import {
+  mobileCoreBridgeService,
+  MobilePartnerUpgradeResult,
+} from '../services/mobile/mobileCoreBridgeService';
 
 const VALID_CURRENCIES: readonly SupportedCurrency[] = ['TRY', 'USD', 'EUR', 'GBP'];
 
@@ -248,6 +253,8 @@ export interface UpgradePartnerInput {
   city: string;
   district: string;
   ownerName: string;
+  ownerEmail: string;
+  ownerPhone: string;
   staffName?: string;
   vkn?: string;
   accentColor?: string;
@@ -447,15 +454,15 @@ export interface MobileAppSessionValue {
   storefrontLastEditedAtIso: string | null;
   saveStorefrontCustomization: (
     patch: Partial<PartnerStorefrontCustomization>
-  ) => { accepted: boolean; reasonCode?: string; countdownText?: string };
+  ) => Promise<{ accepted: boolean; reasonCode?: string; countdownText?: string }>;
   setThemeMode: (mode: 'light' | 'dark') => void;
   toggleThemeMode: () => void;
   showToast: (message: string) => void;
-  confirmBooking: (input: ConfirmBookingInput) => {
+  confirmBooking: (input: ConfirmBookingInput) => Promise<{
     accepted: boolean;
-    reasonCode?: 'SAME_CATEGORY_DAILY_CONFLICT';
+    reasonCode?: 'SAME_CATEGORY_DAILY_CONFLICT' | 'CORE_PERSISTENCE_FAILED';
     message?: string;
-  };
+  }>;
   checkSameDayCategoryConflict: (
     scheduledDate: string,
     serviceName: string,
@@ -466,23 +473,25 @@ export interface MobileAppSessionValue {
   rescheduleActiveBooking: (
     newDate: string,
     newTime: string
-  ) => {
+  ) => Promise<{
     accepted: boolean;
-    reasonCode?: 'SAME_CATEGORY_DAILY_CONFLICT';
+    reasonCode?: 'SAME_CATEGORY_DAILY_CONFLICT' | 'CORE_PERSISTENCE_FAILED';
     message?: string;
-  };
-  cancelActiveBooking: (reason?: string) => void;
+  }>;
+  cancelActiveBooking: (
+    reason?: string
+  ) => Promise<{ accepted: boolean; reasonCode?: 'CORE_PERSISTENCE_FAILED' }>;
   setHospitalityPreferences: (drink: string, quiet: boolean) => void;
   appendPassportFormula: (entry: MobilePassportEntry) => void;
   addLoyaltyPoints: (delta: number) => void;
   incrementStamp: () => void;
   redeemGiftCode: (code: string) => void;
-  addCatalogItem: (item: Omit<PartnerCatalogItem, 'id'>) => void;
+  addCatalogItem: (item: Omit<PartnerCatalogItem, 'id'>) => Promise<void>;
   updateCatalogItem: (
     id: string,
     patch: Partial<Omit<PartnerCatalogItem, 'id'>>
-  ) => void;
-  removeCatalogItem: (id: string) => void;
+  ) => Promise<void>;
+  removeCatalogItem: (id: string) => Promise<void>;
   admitCustomerByQr: (rawPayload: string, expectedTenantId?: string) => DecodedQrAdmissionResult;
   publishCheckoutBreakdown: (breakdown: CompletedAppointmentBreakdown, paymentQr: MobileQrArtifact) => void;
   completeQrPayment: (optionalTipMajor: number) => void;
@@ -491,7 +500,9 @@ export interface MobileAppSessionValue {
   addVenuePhoto: (tenantSlug: string, photoUrl: string) => void;
   removeVenuePhoto: (tenantSlug: string, photoUrl: string) => void;
   publishSocialPost: (post: PublishSocialPostInput) => void;
-  upgradeToPartnerAccount: (input: UpgradePartnerInput) => void;
+  upgradeToPartnerAccount: (
+    input: UpgradePartnerInput
+  ) => Promise<MobilePartnerUpgradeResult>;
   updateLiveAppointmentStage: (
     stage: 1 | 2 | 3 | 4,
     actorRole: string,
@@ -684,6 +695,38 @@ function saveUserVaultForScope(scopeKey: string, vault: UserSessionVault): void 
   }
 }
 
+function mergeGuestBookingsIntoVault(
+  targetVault: UserSessionVault,
+  guestActiveBooking: MobileActiveBooking | null,
+  guestBookingHistory: MobileActiveBooking[]
+): UserSessionVault {
+  const mergedHistory = [...guestBookingHistory, ...targetVault.bookingHistory].filter(
+    (booking, index, all) =>
+      all.findIndex((candidate) => candidate.appointmentId === booking.appointmentId) === index
+  );
+  return {
+    ...targetVault,
+    activeBooking: guestActiveBooking ?? targetVault.activeBooking,
+    bookingHistory: mergedHistory,
+  };
+}
+
+function clearPartnerAndProfileStorage(): void {
+  try {
+    if (typeof window === 'undefined') return;
+    Object.keys(window.localStorage)
+      .filter(
+        (key) =>
+          key.startsWith('lari_partner_') ||
+          key.startsWith('lari_storefront_') ||
+          key === 'lari_mobile_user_profile_v1'
+      )
+      .forEach((key) => window.localStorage.removeItem(key));
+  } catch {
+    // ignore storage errors while still resetting in-memory session state
+  }
+}
+
 const INITIAL_BOOKING_HISTORY: MobileActiveBooking[] = [
   {
     appointmentId: 'apt-hist-1',
@@ -736,7 +779,8 @@ const INITIAL_BOOKING_HISTORY: MobileActiveBooking[] = [
 ];
 
 const noop = () => undefined;
-const noopBooking = () => ({ accepted: true });
+const noopAsync = async () => undefined;
+const noopBooking = async () => ({ accepted: true });
 const noopConflict = () => ({ conflict: false });
 
 export function inferFineBookingCategory(
@@ -856,7 +900,7 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   logoutMobileSession: async () => undefined,
   storefrontCustomization: DEFAULT_STOREFRONT_CUSTOMIZATION,
   storefrontLastEditedAtIso: null,
-  saveStorefrontCustomization: () => ({ accepted: true }),
+  saveStorefrontCustomization: async () => ({ accepted: true }),
   setThemeMode: noop,
   toggleThemeMode: noop,
   showToast: noop,
@@ -865,15 +909,15 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   updateUserProfile: noop,
   setSelectedCurrency: noop,
   rescheduleActiveBooking: noopBooking,
-  cancelActiveBooking: noop,
+  cancelActiveBooking: noopBooking,
   setHospitalityPreferences: noop,
   appendPassportFormula: noop,
   addLoyaltyPoints: noop,
   incrementStamp: noop,
   redeemGiftCode: noop,
-  addCatalogItem: noop,
-  updateCatalogItem: noop,
-  removeCatalogItem: noop,
+  addCatalogItem: noopAsync,
+  updateCatalogItem: noopAsync,
+  removeCatalogItem: noopAsync,
   admitCustomerByQr: () => ({ valid: false, reasonCode: 'MALFORMED_QR' }),
   publishCheckoutBreakdown: noop,
   completeQrPayment: noop,
@@ -882,7 +926,7 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   addVenuePhoto: noop,
   removeVenuePhoto: noop,
   publishSocialPost: noop,
-  upgradeToPartnerAccount: noop,
+  upgradeToPartnerAccount: async () => ({ success: false }),
   updateLiveAppointmentStage: noop,
 };
 
@@ -894,6 +938,19 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
   const [mobileAuthUser, setMobileAuthUser] = useState<MobileAuthUser | null>(() =>
     getActiveMobileAuthUser()
   );
+  useEffect(() => {
+    let active = true;
+    void refreshMobileAuthUserFromTrustedSource()
+      .then((trustedUser) => {
+        if (active && trustedUser) setMobileAuthUser(trustedUser);
+      })
+      .catch(() => {
+        // Supabase role resolution is fail-closed by getActiveMobileAuthUser.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   const [isExplicitlySignedOut, setIsExplicitlySignedOut] = useState<boolean>(() =>
     isMobileExplicitlySignedOut()
   );
@@ -991,10 +1048,11 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       isValidPartnerCampaign
     )
   );
+  const partnerStorageEnabledRef = useRef(true);
 
   useEffect(() => {
     try {
-      if (typeof window !== 'undefined') {
+      if (partnerStorageEnabledRef.current && typeof window !== 'undefined') {
         window.localStorage.setItem(
           'lari_partner_staff_v1',
           JSON.stringify(partnerStaffMembers)
@@ -1007,7 +1065,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
 
   useEffect(() => {
     try {
-      if (typeof window !== 'undefined') {
+      if (partnerStorageEnabledRef.current && typeof window !== 'undefined') {
         window.localStorage.setItem(
           'lari_partner_grouped_hours_v1',
           JSON.stringify(partnerGroupedHours)
@@ -1020,7 +1078,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
 
   useEffect(() => {
     try {
-      if (typeof window !== 'undefined') {
+      if (partnerStorageEnabledRef.current && typeof window !== 'undefined') {
         window.localStorage.setItem(
           'lari_partner_daily_hours_v1',
           JSON.stringify(partnerDailyHours)
@@ -1033,7 +1091,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
 
   useEffect(() => {
     try {
-      if (typeof window !== 'undefined') {
+      if (partnerStorageEnabledRef.current && typeof window !== 'undefined') {
         window.localStorage.setItem(
           'lari_partner_daily_hours_mode_v1',
           partnerDailyHoursMode ? 'true' : 'false'
@@ -1046,7 +1104,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
 
   useEffect(() => {
     try {
-      if (typeof window !== 'undefined') {
+      if (partnerStorageEnabledRef.current && typeof window !== 'undefined') {
         window.localStorage.setItem(
           'lari_partner_campaigns_v1',
           JSON.stringify(partnerCampaigns)
@@ -1175,7 +1233,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
   );
 
   const confirmBooking = useCallback(
-    (input: ConfirmBookingInput) => {
+    async (input: ConfirmBookingInput) => {
       const conflict = findSameDayCategoryConflict(
         bookingHistory,
         input.scheduledDate,
@@ -1194,24 +1252,42 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
         };
       }
 
-      const confirmedItem: MobileActiveBooking = {
-        ...input,
-        serviceCategory: inferFineBookingCategory(
-          input.serviceName,
-          input.serviceCategory
-        ),
-        status: 'confirmed',
-      };
-      setActiveBooking(confirmedItem);
-      setBookingHistory((prev) => [
-        confirmedItem,
-        ...prev.filter((item) => item.appointmentId !== confirmedItem.appointmentId),
-      ]);
-      setLoyaltyPoints((points) => points + 50);
-      showToast('Randevunuz onaylandı • +50 LARİ Puan');
-      return { accepted: true };
+      try {
+        const persisted = await mobileCoreBridgeService.confirmBooking({
+          ...input,
+          userId: mobileAuthUser?.userId,
+          customerName: userProfile.fullName,
+          customerEmail: userProfile.email,
+          customerPhone: userProfile.phoneDigits,
+        });
+        const confirmedItem: MobileActiveBooking = {
+          ...input,
+          appointmentId: persisted.appointmentId,
+          serviceCategory: inferFineBookingCategory(
+            input.serviceName,
+            input.serviceCategory
+          ),
+          status: 'confirmed',
+        };
+        setActiveBooking(confirmedItem);
+        setBookingHistory((prev) => [
+          confirmedItem,
+          ...prev.filter((item) => item.appointmentId !== confirmedItem.appointmentId),
+        ]);
+        setLoyaltyPoints((points) => points + 50);
+        showToast('Randevunuz onaylandı • +50 LARİ Puan');
+        return { accepted: true };
+      } catch {
+        const message = 'Randevu çekirdek sisteme kaydedilemedi. Lütfen yeniden deneyin.';
+        showToast(message);
+        return {
+          accepted: false,
+          reasonCode: 'CORE_PERSISTENCE_FAILED' as const,
+          message,
+        };
+      }
     },
-    [bookingHistory, showToast]
+    [bookingHistory, mobileAuthUser?.userId, showToast, userProfile]
   );
 
   const updateUserProfile = useCallback((nextProfile: MobileUserProfile) => {
@@ -1268,7 +1344,14 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     (result: MobileAuthActionResult, welcomeVerb: string) => {
       if (!result.success || !result.user) return;
       const nextScope = resolveSessionScopeKey(result.user, false);
-      hydrateSessionVault(loadUserVaultForScope(nextScope));
+      const targetVault = loadUserVaultForScope(nextScope);
+      const nextVault =
+        sessionScopeKey === 'guest'
+          ? mergeGuestBookingsIntoVault(targetVault, activeBooking, bookingHistory)
+          : targetVault;
+      partnerStorageEnabledRef.current = true;
+      saveUserVaultForScope(nextScope, nextVault);
+      hydrateSessionVault(nextVault);
       setMobileAuthUser(result.user);
       setIsExplicitlySignedOut(false);
       if (result.profile) {
@@ -1277,7 +1360,14 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       setAuthModalOpen(false);
       showToast(`${welcomeVerb}, ${result.user.fullName}!`);
     },
-    [hydrateSessionVault, showToast, updateUserProfile]
+    [
+      activeBooking,
+      bookingHistory,
+      hydrateSessionVault,
+      sessionScopeKey,
+      showToast,
+      updateUserProfile,
+    ]
   );
 
   const loginWithEmail = useCallback(
@@ -1309,17 +1399,41 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
 
   const logoutMobileSession = useCallback(async () => {
     await logoutMobileAccount();
+    partnerStorageEnabledRef.current = false;
+    clearPartnerAndProfileStorage();
     setMobileAuthUser(null);
     setIsExplicitlySignedOut(true);
     setPartnerSubscription(null);
     hydrateSessionVault(createEmptyUserVault());
+    setPartnerCatalog(INITIAL_PARTNER_CATALOG.map((item) => ({ ...item })));
+    setPartnerStaffMembers(INITIAL_PARTNER_STAFF.map((item) => ({ ...item })));
+    setPartnerGroupedHours({ ...INITIAL_GROUPED_HOURS });
+    setPartnerDailyHours({ ...INITIAL_DAILY_HOURS });
+    setPartnerDailyHoursMode(false);
+    setPartnerCampaigns(INITIAL_PARTNER_CAMPAIGNS.map((item) => ({ ...item })));
+    setStorefrontCustomization({ ...DEFAULT_STOREFRONT_CUSTOMIZATION });
+    setStorefrontLastEditedAtIso(null);
+    setCustomVenuePhotos({});
+    setCustomSocialPosts([]);
+    setUserProfile({
+      ...DEFAULT_USER_PROFILE,
+      interestedSectors: [...DEFAULT_USER_PROFILE.interestedSectors],
+    });
+    setSelectedCurrency(
+      resolveDefaultCurrencyForLocation(
+        DEFAULT_USER_PROFILE.countryCode,
+        DEFAULT_USER_PROFILE.city,
+        DEFAULT_USER_PROFILE.district
+      )
+    );
+    setThemeMode('light');
     setAuthModalInitialTab('login');
     setAuthModalOpen(true);
     showToast('Oturumunuz güvenle kapatıldı.');
   }, [hydrateSessionVault, showToast]);
 
   const rescheduleActiveBooking = useCallback(
-    (newDate: string, newTime: string) => {
+    async (newDate: string, newTime: string) => {
       const targetBooking = activeBooking;
       if (targetBooking) {
         const conflict = findSameDayCategoryConflict(
@@ -1343,48 +1457,73 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
         }
       }
 
-      setActiveBooking((booking) => {
-        if (!booking) return null;
+      if (!targetBooking) {
+        return { accepted: false, reasonCode: 'CORE_PERSISTENCE_FAILED' as const };
+      }
+      try {
+        await mobileCoreBridgeService.rescheduleBooking({
+          tenantId: targetBooking.tenantId,
+          appointmentId: targetBooking.appointmentId,
+          scheduledDate: newDate,
+          scheduledTime: newTime,
+        });
         const updated: MobileActiveBooking = {
-          ...booking,
+          ...targetBooking,
           scheduledDate: newDate,
           scheduledTime: newTime,
           status: 'rescheduled',
         };
+        setActiveBooking(updated);
         setBookingHistory((prev) =>
           prev.map((item) =>
             item.appointmentId === updated.appointmentId ? updated : item
           )
         );
-        return updated;
-      });
-      showToast('Randevu tarihi güncellendi.');
-      return { accepted: true };
+        showToast('Randevu tarihi güncellendi.');
+        return { accepted: true };
+      } catch {
+        const message = 'Randevu tarihi çekirdek sistemde güncellenemedi.';
+        showToast(message);
+        return {
+          accepted: false,
+          reasonCode: 'CORE_PERSISTENCE_FAILED' as const,
+          message,
+        };
+      }
     },
     [activeBooking, bookingHistory, showToast]
   );
 
   const cancelActiveBooking = useCallback(
-    (reason?: string) => {
-      setActiveBooking((booking) => {
-        if (booking) {
-          setBookingHistory((prev) =>
-            prev.map((item) =>
-              item.appointmentId === booking.appointmentId
-                ? { ...item, status: 'cancelled' }
-                : item
-            )
-          );
-        }
-        return null;
-      });
-      showToast(
-        reason
-          ? `Randevu iptal edildi (${reason}).`
-          : 'Randevu iptal edildi. Yeni bir deneyim keşfedebilirsiniz.'
-      );
+    async (reason?: string) => {
+      const targetBooking = activeBooking;
+      if (!targetBooking) return { accepted: true };
+      try {
+        await mobileCoreBridgeService.cancelBooking({
+          tenantId: targetBooking.tenantId,
+          appointmentId: targetBooking.appointmentId,
+          reason,
+        });
+        setBookingHistory((prev) =>
+          prev.map((item) =>
+            item.appointmentId === targetBooking.appointmentId
+              ? { ...item, status: 'cancelled' }
+              : item
+          )
+        );
+        setActiveBooking(null);
+        showToast(
+          reason
+            ? `Randevu iptal edildi (${reason}).`
+            : 'Randevu iptal edildi. Yeni bir deneyim keşfedebilirsiniz.'
+        );
+        return { accepted: true };
+      } catch {
+        showToast('Randevu çekirdek sistemde iptal edilemedi.');
+        return { accepted: false, reasonCode: 'CORE_PERSISTENCE_FAILED' as const };
+      }
     },
-    [showToast]
+    [activeBooking, showToast]
   );
 
   const setHospitalityPreferences = useCallback(
@@ -1430,33 +1569,48 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
   }, []);
 
   const addCatalogItem = useCallback(
-    (item: Omit<PartnerCatalogItem, 'id'>) => {
-      const created: PartnerCatalogItem = {
-        ...item,
-        id: `cat-custom-${Date.now().toString(36)}`,
-      };
-      setPartnerCatalog((prev) => [created, ...prev]);
-      showToast(`"${item.name}" işletme kataloğuna eklendi.`);
+    async (item: Omit<PartnerCatalogItem, 'id'>) => {
+      try {
+        const created = await mobileCoreBridgeService.addCatalogItem(item);
+        setPartnerCatalog((prev) => [created, ...prev]);
+        showToast(`"${item.name}" işletme kataloğuna eklendi.`);
+      } catch {
+        showToast('Katalog kalemi çekirdek sisteme eklenemedi.');
+      }
     },
     [showToast]
   );
 
   const updateCatalogItem = useCallback(
-    (id: string, patch: Partial<Omit<PartnerCatalogItem, 'id'>>) => {
-      setPartnerCatalog((prev) =>
-        prev.map((item) => (item.id === id ? { ...item, ...patch } : item))
-      );
-      showToast('Katalog kalemi güncellendi.');
+    async (id: string, patch: Partial<Omit<PartnerCatalogItem, 'id'>>) => {
+      const existing = partnerCatalog.find((item) => item.id === id);
+      if (!existing) return;
+      setPartnerCatalog((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+      try {
+        await mobileCoreBridgeService.updateCatalogItem(existing.tenantId, id, patch);
+        showToast('Katalog kalemi güncellendi.');
+      } catch {
+        setPartnerCatalog((prev) => prev.map((item) => (item.id === id ? existing : item)));
+        showToast('Katalog kalemi çekirdek sistemde güncellenemedi.');
+      }
     },
-    [showToast]
+    [partnerCatalog, showToast]
   );
 
   const removeCatalogItem = useCallback(
-    (id: string) => {
+    async (id: string) => {
+      const existing = partnerCatalog.find((item) => item.id === id);
+      if (!existing) return;
       setPartnerCatalog((prev) => prev.filter((item) => item.id !== id));
-      showToast('Katalog kalemi silindi.');
+      try {
+        await mobileCoreBridgeService.removeCatalogItem(existing.tenantId, id);
+        showToast('Katalog kalemi silindi.');
+      } catch {
+        setPartnerCatalog((prev) => [existing, ...prev]);
+        showToast('Katalog kalemi çekirdek sistemden kaldırılamadı.');
+      }
     },
-    [showToast]
+    [partnerCatalog, showToast]
   );
 
   const admitCustomerByQr = useCallback(
@@ -1605,7 +1759,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
   }, []);
 
   const saveStorefrontCustomization = useCallback(
-    (patch: Partial<PartnerStorefrontCustomization>) => {
+    async (patch: Partial<PartnerStorefrontCustomization>) => {
       const lockStatus = getStorefrontEditLockStatus(storefrontLastEditedAtIso);
       if (lockStatus.locked) {
         const msg = `Vitrin güvenliği için değişiklik kilidi aktif (${lockStatus.countdownText} kaldı). 24 saat dolmadan yeniden güncellenemez.`;
@@ -1620,6 +1774,12 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
         ...storefrontCustomization,
         ...patch,
       };
+      try {
+        await mobileCoreBridgeService.saveStorefrontCustomization(next);
+      } catch {
+        showToast('Vitrin özelleştirmeleri çekirdek sisteme kaydedilemedi.');
+        return { accepted: false, reasonCode: 'CORE_PERSISTENCE_FAILED' };
+      }
       const nowIso = new Date().toISOString();
       setStorefrontCustomization(next);
       setStorefrontLastEditedAtIso(nowIso);
@@ -1641,10 +1801,44 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
   );
 
   const upgradeToPartnerAccount = useCallback(
-    (input: UpgradePartnerInput) => {
+    async (input: UpgradePartnerInput): Promise<MobilePartnerUpgradeResult> => {
+      const result = await mobileCoreBridgeService.upgradePartnerAccount({
+        ...input,
+        ownerEmail: input.ownerEmail,
+        ownerPhone: input.ownerPhone,
+        actorUserId: mobileAuthUser?.userId,
+      });
+      if (!result.success || !result.tenantId || !result.plan) {
+        showToast(
+          result.message ||
+            'Ödeme ve abonelik onayı tamamlanmadan Partner yetkisi açılamaz.'
+        );
+        return result;
+      }
+
+      let promotedAuth = updateMobileAuthUserRole('tenant_owner');
+      if (!promotedAuth && result.requiresTrustedOwnerRole) {
+        promotedAuth = await refreshMobileAuthUserFromTrustedSource();
+      }
+      if (
+        result.requiresTrustedOwnerRole &&
+        (!promotedAuth || promotedAuth.role !== 'tenant_owner')
+      ) {
+        const blocked: MobilePartnerUpgradeResult = {
+          ...result,
+          success: false,
+          requiresCheckout: false,
+          reasonCode: 'PAYMENT_OR_SUBSCRIPTION_APPROVAL_REQUIRED',
+          message: 'Güvenilir kullanıcı profili tenant_owner yetkisini henüz doğrulamadı.',
+        };
+        showToast(blocked.message!);
+        return blocked;
+      }
+
+      partnerStorageEnabledRef.current = true;
       setPartnerSubscription({
-        planId: input.planId,
-        planName: input.planName,
+        planId: result.plan.id,
+        planName: result.plan.name,
         billingPeriod: input.billingPeriod,
         businessName: input.businessName,
         category: input.category,
@@ -1657,7 +1851,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
         coverPhotoUrl: input.coverPhotoUrl,
         tagline: input.tagline,
         whatsappNumber: input.whatsappNumber,
-        trialDays: input.trialDays,
+        trialDays: result.plan.trialDays,
         activatedAtIso: new Date().toISOString(),
       });
       const nextCustom: PartnerStorefrontCustomization = {
@@ -1678,37 +1872,20 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       } catch {
         // ignore storage failure
       }
-      if (input.initialServiceName && input.initialServicePrice) {
+      if (result.initialCatalogItem) {
         setPartnerCatalog((current) => [
-          {
-            id: `cat-onboard-${Date.now().toString(36)}`,
-            tenantId: 'ten-atelier-nisantasi',
-            name: input.initialServiceName!,
-            category: 'beauty',
-            unitPriceMajor: input.initialServicePrice!,
-            durationMinutes: input.initialServiceDuration || 60,
-            currency: 'TRY',
-            taxRateBps: 2000,
-            commissionRateBps: 2500,
-            packageEligible: true,
-            keywords: input.initialServiceName!
-              .toLocaleLowerCase('tr-TR')
-              .split(/\s+/)
-              .filter(Boolean),
-          },
+          result.initialCatalogItem!,
           ...current,
         ]);
       }
-      const promotedAuth = updateMobileAuthUserRole('tenant_owner');
-      if (promotedAuth) {
-        setMobileAuthUser(promotedAuth);
-      }
+      if (promotedAuth) setMobileAuthUser(promotedAuth);
       setIsExplicitlySignedOut(false);
       showToast(
-        `${input.businessName} için ${input.planName} Partner hesabı aktif edildi!`
+        `${input.businessName} için ${result.plan.name} Partner hesabı aktif edildi!`
       );
+      return result;
     },
-    [showToast]
+    [mobileAuthUser?.userId, showToast]
   );
 
   const getLiveStageForAppointment = useCallback(

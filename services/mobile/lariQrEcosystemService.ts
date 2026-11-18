@@ -181,6 +181,13 @@ export function verifyMobileQrTokenOrPayload(
     return { valid: false, reasonCode: 'MALFORMED_QR' };
   }
 
+  if (
+    Object.prototype.hasOwnProperty.call(parsed, 'selfServiceToken') ||
+    Object.prototype.hasOwnProperty.call(parsed, 'self_service_token')
+  ) {
+    return { valid: false, reasonCode: 'MALFORMED_QR' };
+  }
+
   if (expectedTenantId && parsed.tenantId !== expectedTenantId) {
     return { valid: false, reasonCode: 'TENANT_MISMATCH' };
   }
@@ -209,6 +216,24 @@ export function verifyMobileQrTokenOrPayload(
     return { valid: false, reasonCode: 'EXPIRED' };
   }
 
+  const safeRawPayload = JSON.stringify({
+    v: parsed.v,
+    qrId: parsed.qrId,
+    kind: parsed.kind,
+    tenantId: parsed.tenantId,
+    customerId: parsed.customerId,
+    customerName: parsed.customerName,
+    appointmentId: parsed.appointmentId,
+    packageName: parsed.packageName,
+    remainingCredits: parsed.remainingCredits,
+    htJourneyCode: parsed.htJourneyCode,
+    payableAmountMajor: parsed.payableAmountMajor,
+    currency: parsed.currency || 'TRY',
+    issuedAtIso: parsed.issuedAtIso,
+    expiresAtIso: parsed.expiresAtIso,
+    sig: parsed.sig,
+  });
+
   return {
     valid: true,
     reasonCode: 'ADMITTED_OK',
@@ -232,7 +257,7 @@ export function verifyMobileQrTokenOrPayload(
       payableAmountMajor: parsed.payableAmountMajor,
       currency: parsed.currency || 'TRY',
       deepLinkUrl: `https://app.randevulari.com/#/m?qr=${encodeURIComponent(parsed.qrId)}`,
-      rawPayload: trimmed,
+      rawPayload: safeRawPayload,
       signature: parsed.sig,
       issuedAtIso: parsed.issuedAtIso,
       expiresAtIso: parsed.expiresAtIso,

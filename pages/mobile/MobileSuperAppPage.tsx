@@ -34,6 +34,7 @@ import MobilePartnerClinicWorkspacePage from './partner/MobilePartnerClinicWorks
 import MobilePartnerHtLeadOpsPage from './partner/MobilePartnerHtLeadOpsPage';
 import MobilePartnerCustomer360Page from './partner/MobilePartnerCustomer360Page';
 import { resolvePartnerFeatureEntitlements } from '../../services/mobile/mobilePackageEntitlementService';
+import { resolveMobileDeepLink } from '../../services/mobile/deepLinkRouterService';
 
 export const MobileSuperAppContent: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -187,6 +188,42 @@ export const MobileSuperAppContent: React.FC = () => {
       setActiveTabId('storefront');
     }
   }, [tenantSlug]);
+
+  useEffect(() => {
+    const appPlugin = (window as any)?.Capacitor?.Plugins?.App;
+    if (!appPlugin?.addListener) return;
+    let listenerHandle: { remove?: () => Promise<void> | void } | undefined;
+    Promise.resolve(
+      appPlugin.addListener('appUrlOpen', (event: { url?: string }) => {
+        if (!event?.url) return;
+        const resolved = resolveMobileDeepLink(event.url);
+        if (!resolved.valid) return;
+        if (resolved.targetMode === 'b2b_partner' && hasPartnerEntitlement) {
+          setRequestedMode('b2b_partner');
+          setRequestedPersona('salon_partner');
+          setActiveTabId('partner_agenda');
+        } else if (resolved.selfServiceToken) {
+          setRequestedMode('b2c_customer');
+          setActiveTabId('wallet');
+        } else if (resolved.htJourneyId) {
+          setRequestedMode('b2c_customer');
+          setRequestedPersona('ht_patient');
+          setActiveTabId('ht_concierge');
+        } else if (resolved.tenantSlug) {
+          setRequestedMode('b2c_customer');
+          setRequestedPersona('salon_customer');
+          setActiveTabId('storefront');
+        }
+      })
+    )
+      .then((handle) => {
+        listenerHandle = handle;
+      })
+      .catch(() => undefined);
+    return () => {
+      void listenerHandle?.remove?.();
+    };
+  }, [hasPartnerEntitlement]);
 
   useEffect(() => {
     const authParam = getParam('auth');

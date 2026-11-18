@@ -494,7 +494,7 @@ export const MobileExploreMarketplacePage: React.FC<
             <button
               type="button"
               onClick={() => openAuthModal('login')}
-              className="rounded-xl bg-[#4F46E5] px-3 py-1.5 text-[11px] font-black text-white"
+              className="min-h-[44px] rounded-xl bg-[#4F46E5] px-3 py-1.5 text-[11px] font-black text-white"
               data-testid="explore-auth-login-btn"
             >
               Giriş Yap
@@ -502,7 +502,7 @@ export const MobileExploreMarketplacePage: React.FC<
             <button
               type="button"
               onClick={() => openAuthModal('register')}
-              className="rounded-xl border-2 border-[#4F46E5] bg-white px-2.5 py-1 text-[11px] font-black text-[#4338CA]"
+              className="min-h-[44px] rounded-xl border-2 border-[#4F46E5] bg-white px-2.5 py-1 text-[11px] font-black text-[#4338CA]"
               data-testid="explore-auth-register-btn"
             >
               Üye Ol
@@ -530,7 +530,7 @@ export const MobileExploreMarketplacePage: React.FC<
           <button
             type="button"
             onClick={onOpenProfile}
-            className="shrink-0 rounded-xl bg-[#4F46E5] px-3 py-1.5 text-[11px] font-black text-white"
+            className="min-h-[44px] shrink-0 rounded-xl bg-[#4F46E5] px-3 py-1.5 text-[11px] font-black text-white"
             data-testid="explore-complete-profile-btn"
           >
             Tamamla
@@ -585,7 +585,7 @@ export const MobileExploreMarketplacePage: React.FC<
                   type="button"
                   onClick={() => setQueryText('')}
                   aria-label="Aramayı temizle"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
+                  className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
                   data-testid="explore-search-clear-btn"
                 >
                   <X className="h-4 w-4" />
@@ -596,7 +596,7 @@ export const MobileExploreMarketplacePage: React.FC<
                 aria-label={isListening ? 'Sesli aramayı durdur' : 'Sesli aramayı başlat'}
                 aria-pressed={isListening}
                 onClick={() => void handleVoiceSearch()}
-                className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition ${
+                className={`relative flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-xl transition ${
                   isListening
                     ? 'animate-pulse bg-rose-500 text-white ring-4 ring-rose-200 dark:ring-rose-900'
                     : 'bg-[#EEF2FF] text-[#4F46E5] hover:bg-indigo-100'
@@ -661,7 +661,7 @@ export const MobileExploreMarketplacePage: React.FC<
                   type="button"
                   onClick={() => setVoiceFallbackOpen(false)}
                   aria-label="Sesli arama yardımcısını kapat"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"
+                  className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -676,7 +676,7 @@ export const MobileExploreMarketplacePage: React.FC<
                       setVoiceFallbackOpen(false);
                       showToast(`Sesli arama: "${voiceQuery}"`);
                     }}
-                    className="rounded-full border-2 border-indigo-200 bg-white px-3 py-1.5 text-xs font-black text-[#4338CA] dark:border-indigo-700 dark:bg-slate-900 dark:text-indigo-200"
+                    className="min-h-[44px] rounded-full border-2 border-indigo-200 bg-white px-3 py-1.5 text-xs font-black text-[#4338CA] dark:border-indigo-700 dark:bg-slate-900 dark:text-indigo-200"
                   >
                     {voiceQuery}
                   </button>
@@ -684,7 +684,7 @@ export const MobileExploreMarketplacePage: React.FC<
                 <button
                   type="button"
                   onClick={() => void handleVoiceSearch()}
-                  className="flex items-center gap-1 rounded-full bg-[#4F46E5] px-3 py-1.5 text-xs font-black text-white"
+                  className="flex min-h-[44px] items-center gap-1 rounded-full bg-[#4F46E5] px-3 py-1.5 text-xs font-black text-white"
                 >
                   <Mic className="h-3.5 w-3.5" /> Mikrofonu Yeniden Dene
                 </button>
@@ -706,7 +706,7 @@ export const MobileExploreMarketplacePage: React.FC<
                       setSelectedCategoryId(null);
                       setVertical('all');
                     }}
-                    className="text-xs font-bold text-slate-500 underline"
+                    className="min-h-[44px] text-xs font-bold text-slate-500 underline"
                   >
                     Filtreyi Temizle
                   </button>
@@ -714,7 +714,7 @@ export const MobileExploreMarketplacePage: React.FC<
                 <button
                   type="button"
                   onClick={() => setShowAllCategories((current) => !current)}
-                  className="text-xs font-black text-[#4F46E5]"
+                  className="min-h-[44px] text-xs font-black text-[#4F46E5]"
                   data-testid="category-visibility-toggle"
                 >
                   {showAllCategories ? 'Daha Az Gör' : 'Tümünü Gör'}
@@ -781,7 +781,7 @@ export const MobileExploreMarketplacePage: React.FC<
                         key={pin.slug}
                         type="button"
                         onClick={() => setSelectedMapPinSlug(pin.slug)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border-2 whitespace-nowrap transition flex items-center gap-1 ${
+                        className={`min-h-[44px] px-3 py-1.5 rounded-xl text-xs font-bold border-2 whitespace-nowrap transition flex items-center gap-1 ${
                           isSelectedPin
                             ? 'bg-[#4F46E5] text-white border-[#4338CA]'
                             : isDark
@@ -803,7 +803,7 @@ export const MobileExploreMarketplacePage: React.FC<
                   <button
                     type="button"
                     onClick={() => setGpsEnabled((prev) => !prev)}
-                    className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border-2 flex items-center gap-1 shrink-0 ${
+                    className={`min-h-[44px] px-2.5 py-1.5 rounded-xl text-xs font-bold border-2 flex items-center gap-1 shrink-0 ${
                       gpsEnabled
                         ? 'bg-[#4F46E5] text-white border-[#4338CA]'
                         : isDark
@@ -836,7 +836,7 @@ export const MobileExploreMarketplacePage: React.FC<
                 <button
                   type="button"
                   onClick={() => setExpandedMapOpen(true)}
-                  className="absolute right-2.5 top-2.5 flex items-center gap-1 rounded-xl border-2 border-indigo-200 bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#4338CA] shadow-sm"
+                  className="absolute right-2.5 top-2.5 flex min-h-[44px] items-center gap-1 rounded-xl border-2 border-indigo-200 bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#4338CA] shadow-sm"
                   data-testid="explore-expand-map-btn"
                 >
                   <Maximize2 className="h-3.5 w-3.5" />
@@ -865,7 +865,7 @@ export const MobileExploreMarketplacePage: React.FC<
                     }
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-2.5 py-2 rounded-xl border-2 border-slate-300 bg-white text-slate-800 text-xs font-bold flex items-center gap-1"
+                    className="min-h-[44px] px-2.5 py-2 rounded-xl border-2 border-slate-300 bg-white text-slate-800 text-xs font-bold flex items-center gap-1"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                     Yol Tarifi
@@ -873,7 +873,7 @@ export const MobileExploreMarketplacePage: React.FC<
                   <button
                     type="button"
                     onClick={() => setStorefrontDrawerListing(pinnedItem)}
-                    className="px-3 py-2 rounded-xl bg-[#4F46E5] hover:bg-[#4338CA] text-white text-xs font-bold"
+                    className="min-h-[44px] px-3 py-2 rounded-xl bg-[#4F46E5] hover:bg-[#4338CA] text-white text-xs font-bold"
                     data-testid="radar-open-storefront-btn"
                   >
                     Vitrine Gir
@@ -1110,7 +1110,7 @@ export const MobileExploreMarketplacePage: React.FC<
               type="button"
               onClick={() => setExpandedMapOpen(false)}
               aria-label="Büyük haritayı kapat"
-              className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-slate-300 bg-white text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border-2 border-slate-300 bg-white text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
               data-testid="explore-expanded-map-close-btn"
             >
               <X className="h-5 w-5" />
@@ -1123,7 +1123,7 @@ export const MobileExploreMarketplacePage: React.FC<
                 key={pin.slug}
                 type="button"
                 onClick={() => setSelectedMapPinSlug(pin.slug)}
-                className={`flex shrink-0 items-center gap-1.5 rounded-full border-2 px-3 py-2 text-xs font-black ${
+                className={`flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-full border-2 px-3 py-2 text-xs font-black ${
                   pinnedItem.slug === pin.slug
                     ? 'border-[#4338CA] bg-[#4F46E5] text-white'
                     : isDark
@@ -1229,7 +1229,7 @@ export const MobileExploreMarketplacePage: React.FC<
               <button
                 type="button"
                 onClick={() => setFilterDrawerOpen(false)}
-                className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center"
+                className="min-h-[44px] min-w-[44px] rounded-full bg-slate-100 text-slate-700 flex items-center justify-center"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1253,7 +1253,7 @@ export const MobileExploreMarketplacePage: React.FC<
                     key={vId}
                     type="button"
                     onClick={() => setVertical(vId)}
-                    className={`px-3 py-2.5 rounded-xl text-xs font-bold border-2 text-left ${
+                    className={`min-h-[44px] px-3 py-2.5 rounded-xl text-xs font-bold border-2 text-left ${
                       vertical === vId
                         ? 'bg-[#4F46E5] text-white border-[#4338CA]'
                         : isDark
@@ -1296,7 +1296,7 @@ export const MobileExploreMarketplacePage: React.FC<
                     key={r}
                     type="button"
                     onClick={() => setMinRating(r)}
-                    className={`py-2 rounded-xl text-xs font-bold border-2 ${
+                    className={`min-h-[44px] py-2 rounded-xl text-xs font-bold border-2 ${
                       minRating === r
                         ? 'bg-[#4F46E5] text-white border-[#4338CA]'
                         : 'bg-[#F8FAFC] border-slate-300 text-slate-800'

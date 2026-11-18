@@ -37,6 +37,8 @@ interface MobileAuthModalProps {
 
 type AuthViewMode = 'login' | 'register' | 'complete_social' | 'forgot_password';
 
+const IS_LOCAL_DATA_MODE = (import.meta as any).env.VITE_DATA_MODE === 'local';
+
 function createEmptyRegistrationProfile(): MobileUserProfile {
   return {
     fullName: '',
@@ -1072,6 +1074,15 @@ export const MobileAuthModal: React.FC<MobileAuthModalProps> = ({
 
           {viewMode === 'forgot_password' && (
             <div className="space-y-4">
+              {IS_LOCAL_DATA_MODE && (
+                <div
+                  className="rounded-2xl border-2 border-amber-300 bg-amber-50 px-3.5 py-3 text-xs font-semibold leading-relaxed text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+                  data-testid="auth-forgot-password-local-preview-note"
+                >
+                  Yerel önizleme: Bu modda gerçek e-posta gönderilmez; şifre sıfırlama
+                  akışı yalnızca arayüz demosudur.
+                </div>
+              )}
               {resetEmailSent ? (
                 <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-4 text-center space-y-2 text-emerald-900">
                   <CheckCircle2 className="h-8 w-8 text-emerald-600 mx-auto" />

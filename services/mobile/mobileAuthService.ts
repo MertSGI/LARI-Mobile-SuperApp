@@ -109,6 +109,53 @@ function normalizeEmail(email: string): string {
   return String(email || '').trim().toLocaleLowerCase('en-US');
 }
 
+interface TrustedSupabaseIdentity {
+  role: MobileAuthAccountRole;
+  fullName?: string;
+}
+
+async function resolveTrustedSupabaseIdentity(authUser: {
+  id: string;
+  app_metadata?: Record<string, unknown>;
+  user_metadata?: Record<string, unknown>;
+}): Promise<TrustedSupabaseIdentity> {
+  const appMetadata = (authUser.app_metadata || {}) as Record<string, unknown>;
+  const userMetadata = (authUser.user_metadata || {}) as Record<string, unknown>;
+  const { data: profile, error } = await supabase
+    .from('users_profile')
+    .select('id, tenant_id, name, role, active')
+    .eq('id', authUser.id)
+    .maybeSingle();
+
+  if (!error && profile) {
+    const isTrustedOwner =
+      profile.active === true &&
+      profile.role === 'tenant_owner' &&
+      typeof profile.tenant_id === 'string' &&
+      profile.tenant_id.trim().length > 0;
+    return {
+      role: isTrustedOwner ? 'tenant_owner' : 'customer',
+      fullName: typeof profile.name === 'string' ? profile.name : undefined,
+    };
+  }
+
+  const appRole = appMetadata.role;
+  const appTenantId = appMetadata.tenant_id;
+  const isTrustedAppOwner =
+    appRole === 'tenant_owner' &&
+    typeof appTenantId === 'string' &&
+    appTenantId.trim().length > 0;
+  return {
+    role: isTrustedAppOwner ? 'tenant_owner' : 'customer',
+    fullName:
+      typeof appMetadata.full_name === 'string'
+        ? appMetadata.full_name
+        : typeof userMetadata.full_name === 'string'
+          ? userMetadata.full_name
+          : undefined,
+  };
+}
+
 function deriveNameFromEmail(email: string): string {
   const local = normalizeEmail(email).split('@')[0] || 'lari.uye';
   const parts = local
@@ -210,7 +257,13 @@ export function getActiveMobileAuthUser(): MobileAuthUser | null {
   try {
     const parsed = JSON.parse(raw) as MobileAuthUser;
     if (parsed && typeof parsed.userId === 'string' && typeof parsed.email === 'string') {
-      return parsed;
+      try {
+        return getDataSourceMode() === 'supabase'
+          ? { ...parsed, role: 'customer' }
+          : parsed;
+      } catch {
+        return { ...parsed, role: 'customer' };
+      }
     }
     return null;
   } catch {
@@ -412,13 +465,15 @@ export async function loginMobileWithEmail(input: {
       };
     }
     const meta = (data.user.user_metadata || {}) as Record<string, string>;
+    const trustedIdentity = await resolveTrustedSupabaseIdentity(data.user);
     const nowIso = new Date().toISOString();
     const user: MobileAuthUser = {
       userId: data.user.id,
       email: normalizedEmail,
-      fullName: meta.full_name || deriveNameFromEmail(normalizedEmail),
+      fullName:
+        trustedIdentity.fullName || meta.full_name || deriveNameFromEmail(normalizedEmail),
       provider: 'email',
-      role: (meta.role as MobileAuthAccountRole) || 'customer',
+      role: trustedIdentity.role,
       kvkkAccepted: true,
       createdAtIso: nowIso,
       lastLoginAtIso: nowIso,
@@ -527,6 +582,10 @@ export async function continueMobileWithSocialProvider(input: {
         errorMessage: error.message || 'Sosyal giriş başlatılamadı.',
       };
     }
+    return {
+      success: false,
+      errorMessage: 'Güvenli sosyal giriş yönlendirmesi başlatıldı.',
+    };
   } else {
     const isLocalHost =
       typeof window !== 'undefined' &&
@@ -596,6 +655,13 @@ export async function logoutMobileAccount(): Promise<void> {
 }
 
 export function updateMobileAuthUserRole(role: MobileAuthAccountRole): MobileAuthUser | null {
+  try {
+    if (getDataSourceMode() === 'supabase' && role === 'tenant_owner') {
+      return null;
+    }
+  } catch {
+    return null;
+  }
   const current = getActiveMobileAuthUser();
   if (!current) return null;
   const updated: MobileAuthUser = { ...current, role };
@@ -612,4 +678,63 @@ export function updateMobileAuthUserRole(role: MobileAuthAccountRole): MobileAut
     );
   }
   return updated;
+}
+
+export async function refreshMobileAuthUserFromTrustedSource(): Promise<MobileAuthUser | null> {
+  if (getDataSourceMode() !== 'supabase') return getActiveMobileAuthUser();
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) return null;
+  const trustedIdentity = await resolveTrustedSupabaseIdentity(data.user);
+  const current = getActiveMobileAuthUser();
+  const email = normalizeEmail(data.user.email || current?.email || '');
+  const nowIso = new Date().toISOString();
+  const refreshed: MobileAuthUser = {
+    userId: data.user.id,
+    email,
+    fullName:
+      trustedIdentity.fullName || current?.fullName || deriveNameFromEmail(email),
+    provider: current?.provider || 'email',
+    role: trustedIdentity.role,
+    kvkkAccepted: current?.kvkkAccepted ?? true,
+    createdAtIso: current?.createdAtIso || nowIso,
+    lastLoginAtIso: nowIso,
+  };
+  safeWriteStorage(MOBILE_AUTH_STORAGE_KEYS.ACTIVE_USER, JSON.stringify(refreshed));
+  return refreshed;
+}
+
+export async function purgeDeletedMobileAccountStorage(userId: string): Promise<void> {
+  try {
+    if (getDataSourceMode() === 'supabase') {
+      await supabase.auth.signOut();
+    }
+  } catch {
+    // Local cleanup must still complete if remote sign-out fails.
+  }
+
+  const accounts = loadStoredAccounts().filter((account) => account.user.userId !== userId);
+  if (accounts.length > 0) {
+    saveStoredAccounts(accounts);
+  } else {
+    safeRemoveStorage(MOBILE_AUTH_STORAGE_KEYS.ACCOUNTS);
+  }
+
+  try {
+    if (typeof window === 'undefined') return;
+    const removablePrefixes = [
+      'lari_mobile_',
+      'lari_partner_',
+      'lari_storefront_',
+      'lari:pwa-offline-vault:',
+    ];
+    const keys = Array.from(
+      { length: window.localStorage.length },
+      (_, index) => window.localStorage.key(index)
+    ).filter((key): key is string => Boolean(key));
+    keys
+      .filter((key) => removablePrefixes.some((prefix) => key.startsWith(prefix)))
+      .forEach((key) => window.localStorage.removeItem(key));
+  } catch {
+    // Best-effort storage cleanup; in-memory session is reset by the context.
+  }
 }

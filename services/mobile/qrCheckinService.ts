@@ -23,7 +23,7 @@ export interface SignedQrCheckinPayload {
   branchId?: string;
   appointmentId: string;
   customerId: string;
-  selfServiceToken: string;
+  selfServiceTokenDigest: string;
   scheduledDate: string;
   scheduledTime: string;
   issuedAtIso: string;
@@ -82,6 +82,10 @@ function computeDeterministicSignature(canonicalBody: string): string {
   return `${h1.toString(16).padStart(8, '0')}${h2.toString(16).padStart(8, '0')}`;
 }
 
+function digestSelfServiceToken(token: string): string {
+  return computeDeterministicSignature(`self-service-token|${token.trim()}`);
+}
+
 function canonicalQrBody(p: Omit<SignedQrCheckinPayload, 'signature'>): string {
   return [
     p.v,
@@ -89,7 +93,7 @@ function canonicalQrBody(p: Omit<SignedQrCheckinPayload, 'signature'>): string {
     p.branchId || '',
     p.appointmentId,
     p.customerId,
-    p.selfServiceToken,
+    p.selfServiceTokenDigest,
     p.scheduledDate,
     p.scheduledTime,
     p.issuedAtIso,
@@ -113,7 +117,7 @@ export function generateSignedQrCheckinPass(
     branchId: input.branchId?.trim(),
     appointmentId: input.appointmentId.trim(),
     customerId: input.customerId.trim(),
-    selfServiceToken: input.selfServiceToken.trim(),
+    selfServiceTokenDigest: digestSelfServiceToken(input.selfServiceToken),
     scheduledDate: input.scheduledDate,
     scheduledTime: input.scheduledTime,
     issuedAtIso,
@@ -134,7 +138,6 @@ export function generateSignedQrCheckinPass(
     scheduledDate: payload.scheduledDate,
     scheduledTime: payload.scheduledTime,
     signedQrPayload: rawQrPayload,
-    selfServiceToken: payload.selfServiceToken,
     syncedAtIso: issuedAtIso,
   };
   pwaOfflineVaultService.saveAppointmentPass(vaultPass);
@@ -163,6 +166,8 @@ export class QrCheckinAndReviewRegistry {
       parsed.v !== 1 ||
       !parsed.tenantId ||
       !parsed.appointmentId ||
+      !parsed.selfServiceTokenDigest ||
+      Object.prototype.hasOwnProperty.call(parsed, 'selfServiceToken') ||
       !parsed.signature
     ) {
       return { valid: false, reasonCode: 'MALFORMED_QR_PAYLOAD' };
@@ -179,7 +184,7 @@ export class QrCheckinAndReviewRegistry {
         branchId: parsed.branchId,
         appointmentId: parsed.appointmentId,
         customerId: parsed.customerId,
-        selfServiceToken: parsed.selfServiceToken,
+        selfServiceTokenDigest: parsed.selfServiceTokenDigest,
         scheduledDate: parsed.scheduledDate,
         scheduledTime: parsed.scheduledTime,
         issuedAtIso: parsed.issuedAtIso,

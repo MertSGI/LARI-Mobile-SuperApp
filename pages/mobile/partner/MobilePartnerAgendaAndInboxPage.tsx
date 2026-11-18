@@ -103,6 +103,13 @@ const PARTNER_TENANT_SLUG = 'atelier-nisantasi';
 const PARTNER_BUSINESS_NAME = 'Atelier Nişantaşı Hair & Spa';
 const QUICK_GALLERY_PHOTO_URL =
   'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1200&q=85';
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/svg+xml',
+]);
+const MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024;
 
 const REVENUE_REPORTS: Record<
   RevenuePeriod,
@@ -409,9 +416,9 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     );
   };
 
-  const handleSaveStorefrontCustomization = () => {
+  const handleSaveStorefrontCustomization = async () => {
     if (!storefrontBusinessName.trim() || storefrontLockStatus.locked) return;
-    const result = saveStorefrontCustomization({
+    const result = await saveStorefrontCustomization({
       businessName: storefrontBusinessName.trim(),
       tagline: storefrontTagline.trim(),
       whatsappNumber: sanitizePhoneDigits(storefrontWhatsapp, 15),
@@ -707,6 +714,16 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     }
     const file = event.target.files?.[0];
     if (!file) return;
+    if (!ALLOWED_IMAGE_MIME_TYPES.has(file.type)) {
+      showToast('Yalnızca JPEG, PNG, WebP veya SVG görseller yüklenebilir.');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+      showToast('Görsel boyutu en fazla 5 MB olabilir.');
+      event.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result !== 'string') return;
@@ -1951,7 +1968,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
               Cihazdan Fotoğraf Yükle
               <input
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp,image/svg+xml"
                 disabled={storefrontLockStatus.locked}
                 onChange={handleGalleryFileChange}
                 className="sr-only"

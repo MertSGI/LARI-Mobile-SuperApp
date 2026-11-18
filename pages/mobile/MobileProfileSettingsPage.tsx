@@ -29,6 +29,8 @@ import {
   MobileShellMode,
   MobileShellResolutionResult,
 } from '../../services/mobile/mobileShellPolicyService';
+import { mobileCoreBridgeService } from '../../services/mobile/mobileCoreBridgeService';
+import { purgeDeletedMobileAccountStorage } from '../../services/mobile/mobileAuthService';
 import { useMobileAppSession } from '../../contexts/MobileAppSessionContext';
 import { sanitizeUserMessage } from '../../services/mobile/mobileUiSanitizer';
 import {
@@ -229,7 +231,7 @@ export const MobileProfileSettingsPage: React.FC<
         : 'focus:border-[#4F46E5]'
     }`;
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     const res = executeMobileAccountDeletion({
       tenantId,
       userId,
@@ -238,9 +240,31 @@ export const MobileProfileSettingsPage: React.FC<
       biometricVerified: biometricConfirmed,
       hasActiveMedicalRetentionLock,
     });
-    setDeletionResult(res);
-    if (res.success) {
+    if (!res.success) {
+      setDeletionResult(res);
+      return;
+    }
+    try {
+      await mobileCoreBridgeService.recordAccountDeletion({
+        tenantId,
+        userId,
+        outcome: res.outcome,
+        auditReceiptId: res.auditReceiptId,
+        medicalRecordsAnonymizedOnly: res.medicalRecordsAnonymizedOnly,
+      });
+      await logoutMobileSession();
+      await purgeDeletedMobileAccountStorage(userId);
+      setDeletionResult(res);
       onAccountDeleted?.(res);
+    } catch {
+      setDeletionResult({
+        success: false,
+        outcome: 'REJECTED',
+        reasonCode: 'INVALID_USER_OR_TENANT',
+        personalDataCleared: false,
+        medicalRecordsAnonymizedOnly: false,
+      });
+      showToast('Hesap silme denetim kaydı tamamlanamadı; oturum verileri korunarak işlem durduruldu.');
     }
   };
 
@@ -294,7 +318,7 @@ export const MobileProfileSettingsPage: React.FC<
               <button
                 type="button"
                 onClick={() => void handleLogoutClick()}
-                className="shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/30 px-3 py-2 text-xs font-black text-white transition active:scale-95"
+                className="min-h-[44px] shrink-0 inline-flex items-center gap-1.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/30 px-3 py-2 text-xs font-black text-white transition active:scale-95"
                 data-testid="profile-logout-header-btn"
                 aria-label="Çıkış Yap"
               >
@@ -369,7 +393,7 @@ export const MobileProfileSettingsPage: React.FC<
             <button
               type="button"
               onClick={() => setShowAllBookings((prev) => !prev)}
-              className="p-3 text-center transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
+              className="min-h-[44px] p-3 text-center transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
             >
               <span className="block text-[10px] font-black uppercase text-slate-500">
                 Randevularım
@@ -400,7 +424,7 @@ export const MobileProfileSettingsPage: React.FC<
           <button
             type="button"
             onClick={() => setShowPermissionDetail((v) => !v)}
-            className="inline-flex items-center gap-1 rounded-full bg-[#EEF2FF] dark:bg-slate-800 px-2.5 py-1 text-[11px] font-bold text-[#4338CA] dark:text-indigo-300"
+            className="inline-flex min-h-[44px] items-center gap-1 rounded-full bg-[#EEF2FF] dark:bg-slate-800 px-2.5 py-1 text-[11px] font-bold text-[#4338CA] dark:text-indigo-300"
           >
             <ShieldCheck className="w-3.5 h-3.5" />
             <span>{isPartner ? 'Partner Yetkisi' : 'Müşteri Sınırı'}</span>
@@ -414,7 +438,7 @@ export const MobileProfileSettingsPage: React.FC<
           <button
             type="button"
             onClick={() => setShowPermissionDetail((v) => !v)}
-            className="w-full flex items-center justify-between text-left font-bold text-[#4338CA] dark:text-indigo-300"
+            className="w-full min-h-[44px] flex items-center justify-between text-left font-bold text-[#4338CA] dark:text-indigo-300"
           >
             <span className="inline-flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
@@ -647,7 +671,7 @@ export const MobileProfileSettingsPage: React.FC<
               <button
                 type="button"
                 onClick={() => setShowAllBookings((v) => !v)}
-                className="text-xs font-black text-[#4F46E5] hover:underline"
+                className="min-h-[44px] text-xs font-black text-[#4F46E5] hover:underline"
                 data-testid="profile-toggle-all-bookings-btn"
               >
                 {showAllBookings
@@ -1025,7 +1049,7 @@ export const MobileProfileSettingsPage: React.FC<
                               : [...profileDraft.interestedSectors, sector.id]
                           )
                         }
-                        className={`min-h-10 rounded-full border-2 px-3 py-2 text-[11px] font-black transition ${
+                        className={`min-h-[44px] rounded-full border-2 px-3 py-2 text-[11px] font-black transition ${
                           selected
                             ? 'border-[#4338CA] bg-[#4F46E5] text-white'
                             : isDark
@@ -1261,7 +1285,7 @@ export const MobileProfileSettingsPage: React.FC<
               <button
                 type="button"
                 onClick={() => openAuthModal('login')}
-                className="shrink-0 rounded-xl border-2 border-indigo-200 bg-[#EEF2FF] px-3 py-1.5 text-xs font-black text-[#4338CA]"
+                className="min-h-[44px] shrink-0 rounded-xl border-2 border-indigo-200 bg-[#EEF2FF] px-3 py-1.5 text-xs font-black text-[#4338CA]"
                 data-testid="profile-switch-account-btn"
               >
                 Hesap Değiştir

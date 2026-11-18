@@ -243,7 +243,7 @@ export const MobileBookingBottomSheet: React.FC<
     }
     confirmLockRef.current = true;
     setIsSubmitting(true);
-    const res = confirmBooking({
+    const res = await confirmBooking({
       appointmentId: `apt-live-${Date.now()}`,
       tenantId: listing.tenantId,
       tenantSlug: listing.slug,

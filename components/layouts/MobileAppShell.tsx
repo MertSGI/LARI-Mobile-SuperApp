@@ -233,8 +233,8 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
               <button
                 type="button"
                 onClick={onQuickPlusAction}
-                style={{ minHeight: '42px', minWidth: '42px' }}
-                className={`w-10 h-10 rounded-full flex items-center justify-center transition active:scale-95 ${
+                style={{ minHeight: '44px', minWidth: '44px' }}
+                className={`w-11 h-11 rounded-full flex items-center justify-center transition active:scale-95 ${
                   isDark ? 'text-white hover:bg-slate-800' : 'text-slate-900 hover:bg-slate-100'
                 }`}
                 aria-label={
@@ -291,8 +291,8 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
               <button
                 type="button"
                 onClick={() => setNotificationDrawerOpen(true)}
-                style={{ minHeight: '40px', minWidth: '40px' }}
-                className={`relative w-10 h-10 rounded-full flex items-center justify-center transition active:scale-95 ${
+                style={{ minHeight: '44px', minWidth: '44px' }}
+                className={`relative w-11 h-11 rounded-full flex items-center justify-center transition active:scale-95 ${
                   isDark ? 'text-white hover:bg-slate-800' : 'text-slate-900 hover:bg-slate-100'
                 }`}
                 aria-label="Bildirimler"
