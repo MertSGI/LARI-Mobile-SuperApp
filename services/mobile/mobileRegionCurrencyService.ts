@@ -248,3 +248,105 @@ export function formatCurrencyLabel(
 ): string {
   return `${Math.round(amountMajor).toLocaleString('tr-TR')} ${currency}`;
 }
+
+/**
+ * Validates a 10-digit Turkish Tax ID (Vergi Kimlik Numarası - VKN) using the official Mod-11 algorithm.
+ * Rejects repeated-digit dummy patterns such as 0000000000 or 1111111111.
+ */
+export function validateTurkishVkn(rawVkn: string): {
+  valid: boolean;
+  normalized: string;
+  error?: string;
+} {
+  const digits = sanitizePhoneDigits(rawVkn, 10);
+  if (digits.length !== 10) {
+    return {
+      valid: false,
+      normalized: digits,
+      error: 'Vergi Kimlik Numarası (VKN) eksiksiz 10 rakam olmalıdır.',
+    };
+  }
+  if (/^(\d)\1{9}$/.test(digits)) {
+    return {
+      valid: false,
+      normalized: digits,
+      error: 'Lütfen geçerli bir Vergi Kimlik Numarası girin (tek tip rakam dizisi geçersizdir).',
+    };
+  }
+
+  let total = 0;
+  for (let i = 0; i < 9; i++) {
+    const d = Number(digits[i]);
+    const step = (d + (9 - i)) % 10;
+    const pow = Math.pow(2, 9 - i);
+    let mod9 = (step * pow) % 9;
+    if (step !== 0 && mod9 === 0) mod9 = 9;
+    total += mod9;
+  }
+  const expectedCheck = (10 - (total % 10)) % 10;
+  if (Number(digits[9]) !== expectedCheck) {
+    return {
+      valid: false,
+      normalized: digits,
+      error: 'Girilen Vergi Numarası (VKN) doğrulama hanesi geçersiz.',
+    };
+  }
+
+  return { valid: true, normalized: digits };
+}
+
+export function validatePartnerRegistrationContact(input: {
+  ownerName: string;
+  businessName: string;
+  phone: string;
+  email: string;
+  vkn: string;
+}): { valid: boolean; errors: Record<string, string> } {
+  const errors: Record<string, string> = {};
+  if (!input.ownerName.trim() || input.ownerName.trim().length < 2) {
+    errors.ownerName = 'Yetkili Ad Soyad en az 2 karakter olmalıdır.';
+  }
+  if (!input.businessName.trim() || input.businessName.trim().length < 2) {
+    errors.businessName = 'Vitrinde görünecek işletme adı zorunludur.';
+  }
+  const cleanPhone = sanitizePhoneDigits(input.phone, 12);
+  if (cleanPhone.length < 10) {
+    errors.phone = 'Geçerli en az 10 haneli telefon numarası girin (örn: 5321234567).';
+  }
+  if (!EMAIL_REGEX.test(input.email.trim())) {
+    errors.email = 'Geçerli bir iş e-posta adresi girin (örn: iletisim@isletme.com).';
+  }
+  const vknCheck = validateTurkishVkn(input.vkn);
+  if (!vknCheck.valid) {
+    errors.vkn = vknCheck.error || 'Geçersiz VKN.';
+  }
+  return { valid: Object.keys(errors).length === 0, errors };
+}
+
+export const STOREFRONT_EDIT_LOCK_MS = 24 * 60 * 60 * 1000;
+
+export function getStorefrontEditLockStatus(
+  lastEditedAtIso?: string | null,
+  nowMs = Date.now()
+): { locked: boolean; remainingMs: number; countdownText: string } {
+  if (!lastEditedAtIso) {
+    return { locked: false, remainingMs: 0, countdownText: '' };
+  }
+  const ts = new Date(lastEditedAtIso).getTime();
+  if (!Number.isFinite(ts)) {
+    return { locked: false, remainingMs: 0, countdownText: '' };
+  }
+  const remainingMs = Math.max(0, ts + STOREFRONT_EDIT_LOCK_MS - nowMs);
+  if (remainingMs <= 0) {
+    return { locked: false, remainingMs: 0, countdownText: '' };
+  }
+  const totalSec = Math.ceil(remainingMs / 1000);
+  const hours = String(Math.floor(totalSec / 3600)).padStart(2, '0');
+  const mins = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
+  const secs = String(totalSec % 60).padStart(2, '0');
+  return {
+    locked: true,
+    remainingMs,
+    countdownText: `${hours}:${mins}:${secs}`,
+  };
+}

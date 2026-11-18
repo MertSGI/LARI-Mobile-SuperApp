@@ -33,6 +33,8 @@ import { Role } from '../../../types';
 import { sanitizeUserMessage } from '../../../services/mobile/mobileUiSanitizer';
 import {
   convertFromTryMajor,
+  getStorefrontEditLockStatus,
+  sanitizePhoneDigits,
   SupportedCurrency,
 } from '../../../services/mobile/mobileRegionCurrencyService';
 import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
@@ -210,6 +212,9 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     updateCatalogItem,
     selectedCurrency,
     setSelectedCurrency,
+    storefrontCustomization,
+    storefrontLastEditedAtIso,
+    saveStorefrontCustomization,
   } = useMobileAppSession();
   const isDark = themeMode === 'dark';
   const access = verifyPartnerMobileAccess(userRole, tenantId, tenantId);
@@ -342,6 +347,16 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   ]);
   const [newCampaignCode, setNewCampaignCode] = useState('');
   const [newCampaignDiscount, setNewCampaignDiscount] = useState('10');
+  const [storefrontBusinessName, setStorefrontBusinessName] = useState(
+    storefrontCustomization.businessName
+  );
+  const [storefrontTagline, setStorefrontTagline] = useState(
+    storefrontCustomization.tagline
+  );
+  const [storefrontWhatsapp, setStorefrontWhatsapp] = useState(
+    storefrontCustomization.whatsappNumber
+  );
+  const [storefrontNowMs, setStorefrontNowMs] = useState(() => Date.now());
 
   useEffect(() => {
     setActiveManagementTab('agenda');
@@ -359,12 +374,27 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     setIsAgendaAddOpen(true);
   }, [partnerQuickAddTick]);
 
+  useEffect(() => {
+    setStorefrontBusinessName(storefrontCustomization.businessName);
+    setStorefrontTagline(storefrontCustomization.tagline);
+    setStorefrontWhatsapp(storefrontCustomization.whatsappNumber);
+  }, [storefrontCustomization]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setStorefrontNowMs(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
   const visiblePartnerCatalog = partnerCatalog.filter(
     (item) => item.tenantId === tenantId
   );
   const storefrontUrl = `https://app.randevulari.com/#/m?slug=atelier-nisantasi`;
   const venuePhotos = customVenuePhotos[PARTNER_TENANT_SLUG] ?? [];
   const selectedRevenue = REVENUE_REPORTS[selectedRevenuePeriod];
+  const storefrontLockStatus = getStorefrontEditLockStatus(
+    storefrontLastEditedAtIso,
+    storefrontNowMs
+  );
   const formatPartnerMoney = (amountTry: number) =>
     `${convertFromTryMajor(amountTry, selectedCurrency).toLocaleString('tr-TR')} ${selectedCurrency}`;
   const isInboxFocus = initialTabFocus === 'inbox';
@@ -387,6 +417,16 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     setInbox((prev) =>
       prev.map((r) => (r.requestId === reqId ? { ...r, status: decision } : r))
     );
+  };
+
+  const handleSaveStorefrontCustomization = () => {
+    if (!storefrontBusinessName.trim() || storefrontLockStatus.locked) return;
+    const result = saveStorefrontCustomization({
+      businessName: storefrontBusinessName.trim(),
+      tagline: storefrontTagline.trim(),
+      whatsappNumber: sanitizePhoneDigits(storefrontWhatsapp, 15),
+    });
+    if (result.accepted) setStorefrontNowMs(Date.now());
   };
 
   const handleClearInboxRequest = (reqId: string) => {
@@ -1512,6 +1552,91 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
           id="partner-management-panel-storefront"
           data-testid="partner-management-storefront-panel"
         >
+          <div
+            className={`rounded-3xl border-2 p-4 shadow-sm ${
+              isDark
+                ? 'border-slate-700 bg-slate-900 text-white'
+                : 'border-indigo-200 bg-white text-slate-900'
+            }`}
+          >
+            <div className="flex items-start gap-2">
+              <Store className="mt-0.5 h-5 w-5 shrink-0 text-[#5B5FEF]" />
+              <div>
+                <h3 className="text-sm font-black">Vitrin Kimliği & Özelleştirme (Canlı Mağaza)</h3>
+                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-300">
+                  Müşterilerinizin canlı vitrinde gördüğü işletme adını ve iletişim bilgilerini yönetin.
+                </p>
+              </div>
+            </div>
+
+            {storefrontLockStatus.locked ? (
+              <div
+                className="mt-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-3 text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100"
+                data-testid="partner-storefront-edit-lock-banner"
+              >
+                <p className="flex items-center gap-2 text-xs font-black">
+                  <ShieldAlert className="h-4 w-4 shrink-0" />
+                  24 saatlik vitrin düzenleme kilidi aktif
+                </p>
+                <p className="mt-1 text-[11px] font-semibold">
+                  Güvenlik kuralı gereği vitrin değişiklikleri 24 saatte bir yapılabilir.
+                  Yeni düzenleme için {storefrontLockStatus.countdownText} kaldı.
+                </p>
+              </div>
+            ) : (
+              <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-2.5 text-[10px] font-bold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+                Vitrininiz düzenlemeye açık. Kaydettiğiniz anda 24 saatlik güvenlik süresi başlar.
+              </p>
+            )}
+
+            <div className="mt-3 space-y-3">
+              <label className="block text-[11px] font-black">
+                Storefront İşletme Adı
+                <input
+                  value={storefrontBusinessName}
+                  onChange={(event) => setStorefrontBusinessName(event.target.value)}
+                  disabled={storefrontLockStatus.locked}
+                  className="mt-1 min-h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-[#4F46E5] disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  data-testid="partner-storefront-business-name-input"
+                />
+              </label>
+              <label className="block text-[11px] font-black">
+                Slogan
+                <textarea
+                  value={storefrontTagline}
+                  onChange={(event) => setStorefrontTagline(event.target.value)}
+                  disabled={storefrontLockStatus.locked}
+                  rows={3}
+                  maxLength={180}
+                  className="mt-1 w-full resize-none rounded-xl border-2 border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-[#4F46E5] disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  data-testid="partner-storefront-tagline-input"
+                />
+              </label>
+              <label className="block text-[11px] font-black">
+                WhatsApp Numarası
+                <input
+                  value={storefrontWhatsapp}
+                  onChange={(event) =>
+                    setStorefrontWhatsapp(sanitizePhoneDigits(event.target.value, 15))
+                  }
+                  disabled={storefrontLockStatus.locked}
+                  inputMode="numeric"
+                  className="mt-1 min-h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-[#4F46E5] disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  data-testid="partner-storefront-whatsapp-input"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={handleSaveStorefrontCustomization}
+                disabled={storefrontLockStatus.locked || !storefrontBusinessName.trim()}
+                className="min-h-12 w-full rounded-2xl bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] px-4 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-45"
+                data-testid="partner-storefront-save-btn"
+              >
+                Vitrin Değişikliklerini Kaydet
+              </button>
+            </div>
+          </div>
+
           <div className="rounded-3xl border-2 border-slate-300 bg-white p-4 shadow-sm">
             <span className="mb-3 flex items-center gap-1.5 text-xs font-black text-slate-900">
               <Clock className="h-4 w-4 text-[#5B5FEF]" />

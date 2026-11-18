@@ -6,15 +6,17 @@ import {
   ChevronRight,
   Clock3,
   CreditCard,
+  ImagePlus,
   LayoutDashboard,
   MapPin,
+  MessageCircle,
   Palette,
   QrCode,
   Rocket,
   ShieldCheck,
   Sparkles,
+  Star,
   Store,
-  Users,
   X,
 } from 'lucide-react';
 import {
@@ -26,6 +28,11 @@ import {
   planService,
   PricingPlan,
 } from '../../../services/planService';
+import {
+  convertFromTryMajor,
+  sanitizePhoneDigits,
+  validatePartnerRegistrationContact,
+} from '../../../services/mobile/mobileRegionCurrencyService';
 
 interface MobilePartnerOnboardingFunnelProps {
   onClose: () => void;
@@ -46,31 +53,41 @@ const SECTORS = [
 
 const SIGNATURE_COLORS = ['#4F46E5', '#7C3AED', '#DB2777', '#0F766E', '#EA580C'];
 
+const COVER_PRESETS = [
+  {
+    label: 'Modern Stüdyo',
+    url: 'https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&w=1200&q=85',
+  },
+  {
+    label: 'Premium Klinik',
+    url: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=1200&q=85',
+  },
+  {
+    label: 'Usta Atölyesi',
+    url: 'https://images.unsplash.com/photo-1487754180451-c456f719a1fc?auto=format&fit=crop&w=1200&q=85',
+  },
+];
+
 const VALUE_PROPOSITIONS = [
   {
-    title: 'WhatsApp / Telefon Karmaşasına Son',
-    description: '7/24 online randevu, canlı fiyat listesi ve uzman seçimi.',
+    title: '7/24 Randevu ile Boş Saatleri Doldurun',
+    description: 'Müşterileriniz siz uyurken bile hizmet, uzman ve uygun saat seçerek randevu alsın.',
     icon: Clock3,
   },
   {
-    title: '%0 Komisyon Mağaza & Google Haritalar',
-    description: 'Kendi müşterinizden komisyon kesilmez; QR linkiniz vitrininizi açar.',
+    title: '%0 Komisyon QR Mağaza',
+    description: 'Kendi müşterinizden komisyon kesilmez; QR bağlantınız doğrudan canlı web vitrininizi açar.',
     icon: MapPin,
   },
   {
-    title: 'QR Kabul, Sesli Katalog & Cep POS',
-    description: 'Sesli işlem ekleyin; fiyat dökümü ve bahşişli ödeme QR’ı üretin.',
+    title: 'Sesli Katalog + Cep POS',
+    description: 'İşlemleri sesle ekleyin, fiyat dökümünü oluşturun ve tahsilatı cebinizden tamamlayın.',
     icon: QrCode,
   },
   {
-    title: 'Ciro, Personel & Galeri Tek Ekranda',
-    description: 'Günlükten 3 aylığa raporlarla işletmenizi bilgisayarsız yönetin.',
+    title: 'Ciro ve Performans Raporları',
+    description: 'Günlükten 3 aylığa raporlarla kazancınızı, hizmetleri ve ekibinizi tek ekranda büyütün.',
     icon: BarChart3,
-  },
-  {
-    title: 'Müşteri ve Partner Dünyaları Ayrı',
-    description: 'Keşfet deneyiminizi kaybetmeden iki izole mod arasında geçin.',
-    icon: Users,
   },
 ];
 
@@ -92,9 +109,22 @@ const getPlanFeatures = (plan: PricingPlan) => [
 export const MobilePartnerOnboardingFunnel: React.FC<
   MobilePartnerOnboardingFunnelProps
 > = ({ onClose, onCompleted }) => {
-  const { themeMode, upgradeToPartnerAccount } = useMobileAppSession();
+  const { themeMode, selectedCurrency, upgradeToPartnerAccount } = useMobileAppSession();
   const isDark = themeMode === 'dark';
-  const plans = useMemo(() => planService.getActivePlans(), []);
+  const plans = useMemo(
+    () =>
+      planService.getActivePlans().map((plan) =>
+        plan.id === 'baslangic'
+          ? {
+              ...plan,
+              monthlyPrice: 999,
+              annualPrice: Math.round(999 * 12 * 0.8),
+              trialDays: 90,
+            }
+          : { ...plan, trialDays: 0 }
+      ),
+    []
+  );
   const [step, setStep] = useState<FunnelStep>(1);
   const [previewTab, setPreviewTab] = useState<PreviewTab>('storefront');
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
@@ -103,9 +133,18 @@ export const MobilePartnerOnboardingFunnel: React.FC<
   const [sector, setSector] = useState(SECTORS[0]);
   const [location, setLocation] = useState('İstanbul / Kadıköy');
   const [signatureColor, setSignatureColor] = useState(SIGNATURE_COLORS[0]);
+  const [coverPhotoUrl, setCoverPhotoUrl] = useState('');
+  const [coverPhotoFailed, setCoverPhotoFailed] = useState(false);
+  const [tagline, setTagline] = useState(
+    'Kendinizi iyi hissettiren dokunuşlar, size özel randevu deneyimi.'
+  );
+  const [whatsappNumber, setWhatsappNumber] = useState('905321234567');
   const [ownerName, setOwnerName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [vkn, setVkn] = useState('');
+  const [nameConfirmed, setNameConfirmed] = useState(true);
+  const [checkoutAttempted, setCheckoutAttempted] = useState(false);
   const [kvkkAccepted, setKvkkAccepted] = useState(false);
   const [serviceName, setServiceName] = useState('İmza Bakım');
   const [servicePrice, setServicePrice] = useState('1800');
@@ -118,9 +157,34 @@ export const MobilePartnerOnboardingFunnel: React.FC<
   const locationParts = location.split('/').map((part) => part.trim()).filter(Boolean);
   const city = locationParts[0] || 'İstanbul';
   const district = locationParts[1] || 'Kadıköy';
-  const canCheckout = Boolean(
-    selectedPlan && ownerName.trim() && phone.trim() && email.trim() && businessName.trim() && kvkkAccepted
+  const registrationValidation = useMemo(
+    () =>
+      validatePartnerRegistrationContact({
+        ownerName,
+        businessName,
+        phone,
+        email,
+        vkn,
+      }),
+    [businessName, email, ownerName, phone, vkn]
   );
+  const canCheckout = Boolean(
+    selectedPlan && registrationValidation.valid && nameConfirmed && kvkkAccepted
+  );
+
+  const handleCoverFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setCoverPhotoUrl(reader.result);
+        setCoverPhotoFailed(false);
+      }
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
+  };
 
   const handleBack = () => {
     if (step === 1) {
@@ -142,6 +206,12 @@ export const MobilePartnerOnboardingFunnel: React.FC<
       district,
       ownerName: ownerName.trim(),
       staffName: staffName.trim() || undefined,
+      vkn,
+      accentColor: signatureColor,
+      coverPhotoUrl: coverPhotoUrl.trim(),
+      tagline: tagline.trim(),
+      whatsappNumber,
+      trialDays: selectedPlan.trialDays,
       initialServiceName: serviceName.trim() || undefined,
       initialServicePrice: Number(servicePrice) || undefined,
       initialServiceDuration: Number(serviceDuration) || undefined,
@@ -216,11 +286,14 @@ export const MobilePartnerOnboardingFunnel: React.FC<
             <div className={`overflow-hidden rounded-3xl border-2 shadow-sm ${cardSurface}`}>
               <div className="bg-gradient-to-br from-[#312E81] via-[#4F46E5] to-[#8B5CF6] p-5 text-white">
                 <span className="inline-flex rounded-full border border-white/30 bg-white/15 px-3 py-1 text-[10px] font-black tracking-wider">
-                  MÜŞTERİ DENEYİMİN AYNI KALIR
+                  BAŞLANGIÇ PAKETİNDE 90 GÜN ÜCRETSİZ DENEME
                 </span>
-                <h1 className="mt-3 text-2xl font-black leading-tight">İşletmenizin dijital vitrini, ajandası ve kasası cebinizde.</h1>
+                <h1 className="mt-3 text-2xl font-black leading-tight">
+                  İşletmenizi 2 dakikada LARİ’ye taşıyın, daha çok randevuya ulaşın.
+                </h1>
                 <p className="mt-2 text-sm leading-relaxed text-indigo-100">
-                  LARİ’de keşfetmeye devam ederken Partner modunda işletmenizi uçtan uca yönetin.
+                  Başlangıç paketini 90 gün ücretsiz deneyin; canlı vitrininizi, ajandanızı ve
+                  tahsilatınızı tek uygulamadan yönetin.
                 </p>
               </div>
               <div className="space-y-2.5 p-4">
@@ -262,8 +335,10 @@ export const MobilePartnerOnboardingFunnel: React.FC<
           <section className="space-y-4" data-testid="partner-funnel-step-preview">
             <div>
               <span className="text-xs font-black text-[#4F46E5]">ADIM 2 • CANLI DEMO</span>
-              <h1 className="mt-1 text-xl font-black">Kendi işletmeni daha satın almadan gör.</h1>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">Bilgileri değiştir; iki ekran da anında işletmene dönüşsün.</p>
+              <h1 className="mt-1 text-xl font-black">Kendi İşletmeni Önizle & Demo Gör</h1>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">
+                Bilgileri değiştir; müşteri vitrinin ve yönetim ekranın anında işletmene dönüşsün.
+              </p>
             </div>
 
             <div className={`space-y-3 rounded-3xl border-2 p-4 ${cardSurface}`}>
@@ -288,6 +363,82 @@ export const MobilePartnerOnboardingFunnel: React.FC<
                   İl / İlçe
                   <input value={location} onChange={(event) => setLocation(event.target.value)} className={inputClass} data-testid="partner-funnel-location-input" />
                 </label>
+              </div>
+              <label className="block space-y-1 text-xs font-black">
+                Tanıtım Sloganı / Açıklaması
+                <textarea
+                  value={tagline}
+                  onChange={(event) => setTagline(event.target.value)}
+                  className={`${inputClass} min-h-20 resize-none`}
+                  maxLength={180}
+                  placeholder="Müşterilerinize işletmenizi kısaca anlatın"
+                  data-testid="partner-funnel-tagline-input"
+                />
+              </label>
+              <label className="block space-y-1 text-xs font-black">
+                WhatsApp Hattı
+                <input
+                  value={whatsappNumber}
+                  onChange={(event) =>
+                    setWhatsappNumber(sanitizePhoneDigits(event.target.value, 15))
+                  }
+                  className={inputClass}
+                  inputMode="numeric"
+                  placeholder="905321234567"
+                  data-testid="partner-funnel-whatsapp-input"
+                />
+              </label>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-black">Kapak Fotoğrafı</span>
+                  <label className="flex min-h-10 cursor-pointer items-center gap-1.5 rounded-xl border-2 border-indigo-200 px-3 text-[10px] font-black text-[#4338CA] dark:border-indigo-700 dark:text-indigo-300">
+                    <ImagePlus className="h-3.5 w-3.5" /> Cihazdan Yükle
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      onChange={handleCoverFileChange}
+                      data-testid="partner-funnel-cover-file-input"
+                    />
+                  </label>
+                </div>
+                <input
+                  type="url"
+                  value={coverPhotoUrl.startsWith('data:') ? '' : coverPhotoUrl}
+                  onChange={(event) => {
+                    setCoverPhotoUrl(event.target.value);
+                    setCoverPhotoFailed(false);
+                  }}
+                  className={inputClass}
+                  placeholder="Fotoğraf URL'si (isteğe bağlı)"
+                  data-testid="partner-funnel-cover-url-input"
+                />
+                <div className="grid grid-cols-3 gap-2" aria-label="Hazır kapak temaları">
+                  {COVER_PRESETS.map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => {
+                        setCoverPhotoUrl(preset.url);
+                        setCoverPhotoFailed(false);
+                      }}
+                      className={`relative h-16 overflow-hidden rounded-xl border-2 ${
+                        coverPhotoUrl === preset.url
+                          ? 'border-[#4F46E5]'
+                          : 'border-slate-200 dark:border-slate-700'
+                      }`}
+                      aria-pressed={coverPhotoUrl === preset.url}
+                    >
+                      <img src={preset.url} alt="" className="h-full w-full object-cover" />
+                      <span className="absolute inset-x-0 bottom-0 bg-slate-950/70 px-1 py-1 text-[8px] font-black text-white">
+                        {preset.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                  Boş bırakırsanız sektörünüze uygun kurumsal bir kapak otomatik gösterilir.
+                </p>
               </div>
               <fieldset>
                 <legend className="mb-2 text-xs font-black">İmza Rengi</legend>
@@ -316,19 +467,96 @@ export const MobilePartnerOnboardingFunnel: React.FC<
               </div>
 
               {previewTab === 'storefront' ? (
-                <div className="mt-3 overflow-hidden rounded-2xl border-2 border-slate-200 dark:border-slate-700" data-testid="partner-funnel-storefront-preview">
-                  <div className="h-24 p-4 text-white" style={{ background: `linear-gradient(135deg, ${signatureColor}, #111827)` }}>
-                    <p className="text-[10px] font-black tracking-wider opacity-80">DOĞRUDAN QR VİTRİNİ</p>
-                    <h2 className="mt-1 truncate text-lg font-black">{businessName || 'İşletmeniz'}</h2>
-                    <p className="text-xs">★ 4.9 • {sector} • {district}</p>
-                  </div>
-                  <div className="space-y-2 p-3">
-                    {['İmza Bakım', 'Premium Randevu', 'Hızlı Kontrol'].map((service, index) => (
-                      <div key={service} className={`flex items-center justify-between rounded-xl border p-2.5 ${softSurface}`}>
-                        <span className="text-xs font-bold">{service}</span>
-                        <span className="text-xs font-black">{formatTry(900 + index * 450)} TRY</span>
+                <div
+                  className="mt-3 max-h-[430px] overflow-y-auto rounded-2xl border-2 border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950"
+                  data-testid="partner-funnel-storefront-preview"
+                >
+                  <div className="relative h-44 overflow-hidden text-white">
+                    <div
+                      className="absolute inset-0"
+                      style={{ background: `linear-gradient(135deg, ${signatureColor}, #111827)` }}
+                    />
+                    {coverPhotoUrl && !coverPhotoFailed ? (
+                      <img
+                        src={coverPhotoUrl}
+                        alt={`${businessName || 'İşletme'} kapak`}
+                        className="absolute inset-0 h-full w-full object-cover"
+                        onError={() => setCoverPhotoFailed(true)}
+                      />
+                    ) : (
+                      <div className="absolute inset-0 opacity-50">
+                        <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full border-[18px] border-white/20" />
+                        <div className="absolute -bottom-10 left-4 h-28 w-28 rotate-12 rounded-3xl bg-white/10" />
                       </div>
-                    ))}
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/30 to-transparent" />
+                    <div className="absolute inset-x-0 bottom-0 p-4">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="rounded-full px-2 py-1 text-[9px] font-black text-white"
+                          style={{ backgroundColor: signatureColor }}
+                        >
+                          %0 KOMİSYON QR MAĞAZA
+                        </span>
+                        <span className="rounded-full bg-white/90 px-2 py-1 text-[9px] font-black text-slate-900">
+                          BUGÜN AÇIK
+                        </span>
+                      </div>
+                      <h2 className="mt-2 text-xl font-black">{businessName || 'İşletmeniz'}</h2>
+                      <p className="mt-1 flex items-center gap-1 text-[11px] font-bold text-white/90">
+                        <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" /> 4,9 (286) • {sector} • {district}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-3 p-3 text-slate-900 dark:text-white">
+                    <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                      {tagline.trim() || 'Kaliteli hizmet, kolay randevu ve size özel deneyim.'}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        className="min-h-10 rounded-xl text-[11px] font-black text-white"
+                        style={{ backgroundColor: signatureColor }}
+                      >
+                        Hemen Randevu Al
+                      </button>
+                      <button
+                        type="button"
+                        className="flex min-h-10 items-center justify-center gap-1 rounded-xl border-2 text-[11px] font-black"
+                        style={{ borderColor: signatureColor, color: signatureColor }}
+                      >
+                        <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+                      </button>
+                    </div>
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-2.5 text-[10px] font-bold text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+                      WhatsApp iletişim önizlemesi: +{whatsappNumber || '90 5XX XXX XX XX'}
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-black">Popüler Hizmetler</h3>
+                      <div className="mt-2 space-y-2">
+                        {['İmza Bakım', 'Premium Randevu', 'Hızlı Kontrol'].map((service, index) => (
+                          <div
+                            key={service}
+                            className="flex items-center justify-between rounded-xl border-2 bg-slate-50 p-2.5 dark:bg-slate-900"
+                            style={{ borderColor: `${signatureColor}66` }}
+                          >
+                            <div>
+                              <span className="block text-xs font-black">{service}</span>
+                              <span className="text-[9px] text-slate-500">45-60 dk • Bugün uygun</span>
+                            </div>
+                            <span className="text-xs font-black" style={{ color: signatureColor }}>
+                              {formatTry(convertFromTryMajor(900 + index * 450, selectedCurrency))} {selectedCurrency}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="rounded-xl bg-slate-100 p-3 dark:bg-slate-900">
+                      <p className="text-[10px] font-black" style={{ color: signatureColor }}>MÜŞTERİLER NE DİYOR?</p>
+                      <p className="mt-1 text-[10px] text-slate-600 dark:text-slate-300">
+                        “Randevumu saniyeler içinde aldım, hizmet ve fiyat bilgileri çok netti.”
+                      </p>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -349,7 +577,7 @@ export const MobilePartnerOnboardingFunnel: React.FC<
             </div>
 
             <button type="button" onClick={() => setStep(3)} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#4F46E5] px-4 py-3 text-sm font-black text-white" data-testid="partner-funnel-preview-continue-btn">
-              Abonelik Paketi Seç & Kuruluma Başla
+              Bu bilgiler ile devam et
               <ChevronRight className="h-4 w-4" />
             </button>
           </section>
@@ -361,6 +589,9 @@ export const MobilePartnerOnboardingFunnel: React.FC<
               <span className="text-xs font-black text-[#4F46E5]">ADIM 3 • ABONELİK</span>
               <h1 className="mt-1 text-xl font-black">İşletmene uygun paketi seç.</h1>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">Tüm planlarda %0 mağaza komisyonu ve hızlı kurulum dahildir.</p>
+              <p className="mt-2 rounded-2xl border-2 border-amber-300 bg-amber-50 p-3 text-xs font-black text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+                90 gün ücretsiz deneme fırsatı yalnızca Başlangıç (999 TRY/ay) paketinde geçerlidir.
+              </p>
             </div>
 
             <div className={`grid grid-cols-2 gap-1.5 rounded-2xl border-2 p-1.5 ${softSurface}`}>
@@ -371,7 +602,9 @@ export const MobilePartnerOnboardingFunnel: React.FC<
             <div className="space-y-3">
               {plans.map((plan) => {
                 const selected = selectedPlanId === plan.id;
-                const monthlyDisplay = billingPeriod === 'annual' ? plan.annualPrice / 12 : plan.monthlyPrice;
+                const monthlyDisplayTry = billingPeriod === 'annual' ? plan.annualPrice / 12 : plan.monthlyPrice;
+                const monthlyDisplay = convertFromTryMajor(monthlyDisplayTry, selectedCurrency);
+                const annualDisplay = convertFromTryMajor(plan.annualPrice, selectedCurrency);
                 return (
                   <button
                     key={plan.id}
@@ -388,11 +621,16 @@ export const MobilePartnerOnboardingFunnel: React.FC<
                     data-testid={`partner-funnel-plan-${plan.id}`}
                   >
                     {plan.isRecommended ? <span className="absolute -top-2.5 right-4 rounded-full bg-gradient-to-r from-[#4F46E5] to-[#8B5CF6] px-3 py-1 text-[10px] font-black text-white">ÖNERİLEN</span> : null}
+                    {plan.id === 'baslangic' ? (
+                      <span className="mb-3 inline-flex rounded-full bg-amber-400 px-3 py-1 text-[10px] font-black text-amber-950">
+                        90 Gün Ücretsiz Deneme • Sadece Başlangıç Paketinde
+                      </span>
+                    ) : null}
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h2 className="text-base font-black">{plan.name}</h2>
-                        <p className="mt-1 text-2xl font-black text-[#4338CA] dark:text-indigo-300">{formatTry(monthlyDisplay)} {plan.currency}<span className="text-xs text-slate-500">/ay</span></p>
-                        {billingPeriod === 'annual' ? <p className="text-[10px] font-bold text-emerald-600">Yıllık {formatTry(plan.annualPrice)} {plan.currency} faturalandırılır</p> : null}
+                        <p className="mt-1 text-2xl font-black text-[#4338CA] dark:text-indigo-300">{formatTry(monthlyDisplay)} {selectedCurrency}<span className="text-xs text-slate-500">/ay</span></p>
+                        {billingPeriod === 'annual' ? <p className="text-[10px] font-bold text-emerald-600">Yıllık {formatTry(annualDisplay)} {selectedCurrency} faturalandırılır</p> : null}
                       </div>
                       <span className={`flex h-7 w-7 items-center justify-center rounded-full border-2 ${selected ? 'border-[#4F46E5] bg-[#4F46E5] text-white' : 'border-slate-300'}`}>{selected ? <Check className="h-4 w-4" /> : null}</span>
                     </div>
@@ -409,20 +647,89 @@ export const MobilePartnerOnboardingFunnel: React.FC<
                 className={`space-y-3 rounded-3xl border-2 p-4 ${cardSurface}`}
                 onSubmit={(event) => {
                   event.preventDefault();
+                  setCheckoutAttempted(true);
                   if (canCheckout) setStep(4);
                 }}
+                noValidate
                 data-testid="partner-funnel-checkout-form"
               >
                 <div className="flex items-center gap-2">
                   <CreditCard className="h-5 w-5 text-[#4F46E5]" />
                   <div><h2 className="text-sm font-black">Güvenli kayıt & abonelik</h2><p className="text-[11px] text-slate-500">{selectedPlan.name} • {billingPeriod === 'annual' ? 'Yıllık' : 'Aylık'}</p></div>
                 </div>
-                <input value={ownerName} onChange={(event) => setOwnerName(event.target.value)} className={inputClass} placeholder="Ad Soyad" autoComplete="name" required data-testid="partner-funnel-owner-name-input" />
-                <div className="grid grid-cols-2 gap-2">
-                  <input value={phone} onChange={(event) => setPhone(event.target.value)} className={inputClass} placeholder="Telefon" type="tel" autoComplete="tel" required data-testid="partner-funnel-phone-input" />
-                  <input value={email} onChange={(event) => setEmail(event.target.value)} className={inputClass} placeholder="E-posta" type="email" autoComplete="email" required data-testid="partner-funnel-email-input" />
+                <div>
+                  <input value={ownerName} onChange={(event) => setOwnerName(event.target.value)} className={inputClass} placeholder="Yetkili Ad Soyad" autoComplete="name" data-testid="partner-funnel-owner-name-input" />
+                  {(checkoutAttempted || ownerName.length > 0) && registrationValidation.errors.ownerName ? (
+                    <p className="mt-1 text-[10px] font-bold text-rose-600">{registrationValidation.errors.ownerName}</p>
+                  ) : null}
                 </div>
-                <input value={businessName} onChange={(event) => setBusinessName(event.target.value)} className={inputClass} placeholder="İşletme Adı" required data-testid="partner-funnel-checkout-business-input" />
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <input
+                      value={phone}
+                      onChange={(event) => setPhone(sanitizePhoneDigits(event.target.value, 12))}
+                      className={inputClass}
+                      placeholder="Telefon"
+                      type="tel"
+                      inputMode="numeric"
+                      autoComplete="tel"
+                      data-testid="partner-funnel-phone-input"
+                    />
+                    {(checkoutAttempted || phone.length > 0) && registrationValidation.errors.phone ? (
+                      <p className="mt-1 text-[10px] font-bold text-rose-600">{registrationValidation.errors.phone}</p>
+                    ) : null}
+                  </div>
+                  <div>
+                    <input value={email} onChange={(event) => setEmail(event.target.value)} className={inputClass} placeholder="E-posta" type="email" autoComplete="email" data-testid="partner-funnel-email-input" />
+                    {(checkoutAttempted || email.length > 0) && registrationValidation.errors.email ? (
+                      <p className="mt-1 text-[10px] font-bold text-rose-600">{registrationValidation.errors.email}</p>
+                    ) : null}
+                  </div>
+                </div>
+                <div>
+                  <input
+                    value={vkn}
+                    onChange={(event) => setVkn(sanitizePhoneDigits(event.target.value, 10))}
+                    className={inputClass}
+                    placeholder="Vergi Kimlik Numarası (VKN - 10 Hane)"
+                    inputMode="numeric"
+                    maxLength={10}
+                    data-testid="partner-funnel-vkn-input"
+                  />
+                  {(checkoutAttempted || vkn.length > 0) && registrationValidation.errors.vkn ? (
+                    <p className="mt-1 text-[10px] font-bold text-rose-600">{registrationValidation.errors.vkn}</p>
+                  ) : (
+                    <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">VKN yalnızca rakamlardan oluşan 10 haneli numaradır.</p>
+                  )}
+                </div>
+                <div
+                  className={`space-y-2 rounded-2xl border-2 p-3 ${softSurface}`}
+                  data-testid="partner-funnel-name-confirm-box"
+                >
+                  <p className="text-xs font-black">
+                    Vitrinde müşterilerinize görünecek son işletme adı: “{businessName || '—'}”
+                  </p>
+                  <input
+                    value={businessName}
+                    onChange={(event) => setBusinessName(event.target.value)}
+                    className={inputClass}
+                    placeholder="Vitrin İşletme Adı"
+                    data-testid="partner-funnel-checkout-business-input"
+                  />
+                  {(checkoutAttempted || businessName.length > 0) && registrationValidation.errors.businessName ? (
+                    <p className="text-[10px] font-bold text-rose-600">{registrationValidation.errors.businessName}</p>
+                  ) : null}
+                  <label className="flex cursor-pointer items-start gap-2 text-[11px] font-bold">
+                    <input
+                      type="checkbox"
+                      checked={nameConfirmed}
+                      onChange={(event) => setNameConfirmed(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 accent-[#4F46E5]"
+                      data-testid="partner-funnel-name-confirm-checkbox"
+                    />
+                    Bu işletme adının müşteri vitrinimde yayınlanacağını onaylıyorum.
+                  </label>
+                </div>
                 <label className={`flex cursor-pointer items-start gap-2.5 rounded-2xl border-2 p-3 text-xs font-semibold ${softSurface}`}>
                   <input type="checkbox" checked={kvkkAccepted} onChange={(event) => setKvkkAccepted(event.target.checked)} className="mt-0.5 h-4 w-4 accent-[#4F46E5]" data-testid="partner-funnel-kvkk-checkbox" />
                   <span>KVKK Aydınlatma Metni’ni ve abonelik koşullarını okudum, onaylıyorum.</span>

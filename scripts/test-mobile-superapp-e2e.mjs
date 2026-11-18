@@ -438,6 +438,11 @@ async function run() {
       );
       await page.waitForSelector('[data-testid="mobile-partner-onboarding-funnel"]');
       await page.waitForSelector('[data-testid="partner-funnel-step-showcase"]');
+      const showcaseText = await page
+        .locator('[data-testid="partner-funnel-step-showcase"]')
+        .innerText();
+      assert.match(showcaseText, /90 GÜN ÜCRETSİZ DENEME/);
+      assert.doesNotMatch(showcaseText, /Müşteri ve Partner Dünyaları Ayrı/i);
       await page.click('[data-testid="partner-funnel-open-preview-btn"]');
       await page.waitForSelector('[data-testid="partner-funnel-step-preview"]');
       await page.fill(
@@ -448,11 +453,17 @@ async function run() {
       await page.waitForSelector('[data-testid="partner-funnel-management-preview"]');
       await page.click('[data-testid="partner-funnel-preview-continue-btn"]');
       await page.waitForSelector('[data-testid="partner-funnel-step-pricing"]');
-      await page.click('[data-testid="partner-funnel-billing-annual"]');
-      await page.click('[data-testid="partner-funnel-plan-professional"]');
+      const starterPlan = page.locator('[data-testid="partner-funnel-plan-baslangic"]');
+      assert.match(await starterPlan.innerText(), /999 TRY/);
+      assert.match(await starterPlan.innerText(), /90 Gün Ücretsiz Deneme/);
+      await starterPlan.click();
       await page.fill('[data-testid="partner-funnel-owner-name-input"]', 'E2E İşletme Sahibi');
-      await page.fill('[data-testid="partner-funnel-phone-input"]', '05321234567');
+      await page.fill('[data-testid="partner-funnel-phone-input"]', '5321234567');
       await page.fill('[data-testid="partner-funnel-email-input"]', 'partner-e2e@lari.app');
+      await page.fill('[data-testid="partner-funnel-vkn-input"]', '1234567890');
+      if (!(await page.isChecked('[data-testid="partner-funnel-name-confirm-checkbox"]'))) {
+        await page.check('[data-testid="partner-funnel-name-confirm-checkbox"]');
+      }
       await page.check('[data-testid="partner-funnel-kvkk-checkbox"]');
       await page.click('[data-testid="partner-funnel-checkout-btn"]');
       await page.waitForSelector('[data-testid="partner-funnel-step-setup"]');
@@ -468,6 +479,15 @@ async function run() {
         'b2b_partner',
         `Completed guest onboarding must activate partner mode on ${vp.name}`
       );
+      await page.click('[data-testid="partner-management-tab-storefront"]');
+      await page.waitForSelector('[data-testid="partner-management-storefront-panel"]');
+      await page.click('[data-testid="partner-storefront-save-btn"]');
+      const editLockBanner = page.locator(
+        '[data-testid="partner-storefront-edit-lock-banner"]'
+      );
+      await editLockBanner.waitFor();
+      assert.match(await editLockBanner.innerText(), /24 saatlik vitrin düzenleme kilidi/i);
+      assert.match(await editLockBanner.innerText(), /\d{2}:\d{2}:\d{2} kaldı/);
 
       // G) White-Label Storefront Lock (/m?slug=atelier-nisantasi)
       await page.goto(`${url}/#/m?slug=atelier-nisantasi`, { waitUntil: 'networkidle' });

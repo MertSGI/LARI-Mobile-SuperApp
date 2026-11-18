@@ -19,6 +19,7 @@ import {
 } from '../services/mobile/voiceCatalogMatcherService';
 import {
   DEFAULT_USER_PROFILE,
+  getStorefrontEditLockStatus,
   MobileUserProfile,
   resolveDefaultCurrencyForLocation,
   SupportedCurrency,
@@ -92,6 +93,12 @@ export interface PartnerSubscriptionSnapshot {
   district: string;
   ownerName: string;
   staffName?: string;
+  vkn?: string;
+  accentColor?: string;
+  coverPhotoUrl?: string;
+  tagline?: string;
+  whatsappNumber?: string;
+  trialDays?: number;
   activatedAtIso: string;
 }
 
@@ -105,10 +112,32 @@ export interface UpgradePartnerInput {
   district: string;
   ownerName: string;
   staffName?: string;
+  vkn?: string;
+  accentColor?: string;
+  coverPhotoUrl?: string;
+  tagline?: string;
+  whatsappNumber?: string;
+  trialDays?: number;
   initialServiceName?: string;
   initialServicePrice?: number;
   initialServiceDuration?: number;
 }
+
+export interface PartnerStorefrontCustomization {
+  businessName: string;
+  tagline: string;
+  accentColor: string;
+  coverPhotoUrl: string;
+  whatsappNumber: string;
+}
+
+export const DEFAULT_STOREFRONT_CUSTOMIZATION: PartnerStorefrontCustomization = {
+  businessName: 'Atelier Nişantaşı Hair & Spa',
+  tagline: 'Kişiye özel renk tasarımı, keratin ritüeli ve dijital pasaport takibi.',
+  accentColor: '#4F46E5',
+  coverPhotoUrl: '',
+  whatsappNumber: '905325550140',
+};
 
 export interface MobileAppSessionValue {
   themeMode: 'light' | 'dark';
@@ -132,6 +161,11 @@ export interface MobileAppSessionValue {
   liveAppointmentStage: 1 | 2 | 3 | 4;
   userProfile: MobileUserProfile;
   selectedCurrency: SupportedCurrency;
+  storefrontCustomization: PartnerStorefrontCustomization;
+  storefrontLastEditedAtIso: string | null;
+  saveStorefrontCustomization: (
+    patch: Partial<PartnerStorefrontCustomization>
+  ) => { accepted: boolean; reasonCode?: string; countdownText?: string };
   setThemeMode: (mode: 'light' | 'dark') => void;
   toggleThemeMode: () => void;
   showToast: (message: string) => void;
@@ -343,6 +377,9 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   liveAppointmentStage: 2,
   userProfile: DEFAULT_USER_PROFILE,
   selectedCurrency: 'TRY',
+  storefrontCustomization: DEFAULT_STOREFRONT_CUSTOMIZATION,
+  storefrontLastEditedAtIso: null,
+  saveStorefrontCustomization: () => ({ accepted: true }),
   setThemeMode: noop,
   toggleThemeMode: noop,
   showToast: noop,
@@ -412,6 +449,29 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
   const [partnerSubscription, setPartnerSubscription] =
     useState<PartnerSubscriptionSnapshot | null>(null);
   const [liveAppointmentStage, setLiveAppointmentStage] = useState<1 | 2 | 3 | 4>(2);
+  const [storefrontCustomization, setStorefrontCustomization] =
+    useState<PartnerStorefrontCustomization>(() => {
+      try {
+        const raw =
+          typeof window !== 'undefined'
+            ? window.localStorage.getItem('lari_storefront_customization_v1')
+            : null;
+        return raw
+          ? { ...DEFAULT_STOREFRONT_CUSTOMIZATION, ...JSON.parse(raw) }
+          : DEFAULT_STOREFRONT_CUSTOMIZATION;
+      } catch {
+        return DEFAULT_STOREFRONT_CUSTOMIZATION;
+      }
+    });
+  const [storefrontLastEditedAtIso, setStorefrontLastEditedAtIso] = useState<string | null>(() => {
+    try {
+      return typeof window !== 'undefined'
+        ? window.localStorage.getItem('lari_storefront_edit_lock_v1')
+        : null;
+    } catch {
+      return null;
+    }
+  });
   const [userProfile, setUserProfile] = useState<MobileUserProfile>(() => {
     try {
       const raw =
@@ -764,6 +824,42 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     ]);
   }, []);
 
+  const saveStorefrontCustomization = useCallback(
+    (patch: Partial<PartnerStorefrontCustomization>) => {
+      const lockStatus = getStorefrontEditLockStatus(storefrontLastEditedAtIso);
+      if (lockStatus.locked) {
+        const msg = `Vitrin güvenliği için değişiklik kilidi aktif (${lockStatus.countdownText} kaldı). 24 saat dolmadan yeniden güncellenemez.`;
+        showToast(msg);
+        return {
+          accepted: false,
+          reasonCode: 'STOREFRONT_24H_EDIT_LOCKED',
+          countdownText: lockStatus.countdownText,
+        };
+      }
+      const next: PartnerStorefrontCustomization = {
+        ...storefrontCustomization,
+        ...patch,
+      };
+      const nowIso = new Date().toISOString();
+      setStorefrontCustomization(next);
+      setStorefrontLastEditedAtIso(nowIso);
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(
+            'lari_storefront_customization_v1',
+            JSON.stringify(next)
+          );
+          window.localStorage.setItem('lari_storefront_edit_lock_v1', nowIso);
+        }
+      } catch {
+        // ignore storage error
+      }
+      showToast('Vitrin özelleştirmeleri kaydedildi. 24 saatlik güvenlik kilidi başlatıldı.');
+      return { accepted: true };
+    },
+    [storefrontCustomization, storefrontLastEditedAtIso, showToast]
+  );
+
   const upgradeToPartnerAccount = useCallback(
     (input: UpgradePartnerInput) => {
       setPartnerSubscription({
@@ -776,8 +872,32 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
         district: input.district,
         ownerName: input.ownerName,
         staffName: input.staffName,
+        vkn: input.vkn,
+        accentColor: input.accentColor,
+        coverPhotoUrl: input.coverPhotoUrl,
+        tagline: input.tagline,
+        whatsappNumber: input.whatsappNumber,
+        trialDays: input.trialDays,
         activatedAtIso: new Date().toISOString(),
       });
+      const nextCustom: PartnerStorefrontCustomization = {
+        businessName: input.businessName || DEFAULT_STOREFRONT_CUSTOMIZATION.businessName,
+        tagline: input.tagline || DEFAULT_STOREFRONT_CUSTOMIZATION.tagline,
+        accentColor: input.accentColor || DEFAULT_STOREFRONT_CUSTOMIZATION.accentColor,
+        coverPhotoUrl: input.coverPhotoUrl || '',
+        whatsappNumber: input.whatsappNumber || DEFAULT_STOREFRONT_CUSTOMIZATION.whatsappNumber,
+      };
+      setStorefrontCustomization(nextCustom);
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(
+            'lari_storefront_customization_v1',
+            JSON.stringify(nextCustom)
+          );
+        }
+      } catch {
+        // ignore storage failure
+      }
       if (input.initialServiceName && input.initialServicePrice) {
         setPartnerCatalog((current) => [
           {
@@ -847,6 +967,9 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       liveAppointmentStage,
       userProfile,
       selectedCurrency,
+      storefrontCustomization,
+      storefrontLastEditedAtIso,
+      saveStorefrontCustomization,
       setThemeMode,
       toggleThemeMode,
       showToast,
@@ -897,6 +1020,9 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       liveAppointmentStage,
       userProfile,
       selectedCurrency,
+      storefrontCustomization,
+      storefrontLastEditedAtIso,
+      saveStorefrontCustomization,
       toggleThemeMode,
       showToast,
       confirmBooking,

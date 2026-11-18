@@ -982,16 +982,22 @@ export const MobileExploreMarketplacePage: React.FC<
           <div className="relative">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white/80 px-3 py-1 text-[10px] font-black tracking-wider text-[#4338CA] dark:border-indigo-700 dark:bg-slate-900/70 dark:text-indigo-300">
               <Store className="h-3.5 w-3.5" />
-              İŞLETME SAHİBİ MİSİNİZ?
+              90 GÜN ÜCRETSİZ DENEME • BAŞLANGIÇ 999 TRY
             </span>
             <h2 className="mt-3 text-xl font-black leading-tight">
-              Kendi işletmeni LARİ’de müşterinin gözüyle gör.
+              90 Gün Ücretsiz Deneyin: İşletmenizi 2 Dakikada LARİ’ye Taşıyın
             </h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-              Kendi vitrinini ücretsiz önizle, %0 komisyon QR mağazanı ve Cep POS&apos;unu 2 dakikada aç.
+              Daha çok randevu alın, tahsilatı hızlandırın ve işletmenizi tek ekrandan büyütün.
+              Canlı web vitrininizi hemen önizleyin.
             </p>
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {['%0 Komisyon', 'QR & Cep POS', 'Canlı İşletme Önizleme'].map((badge) => (
+              {[
+                '%0 Komisyon QR Mağaza',
+                'Canlı Web Vitrin Önizleme',
+                'Cep POS',
+                'Otomatik Hatırlatma & Takvim',
+              ].map((badge) => (
                 <span
                   key={badge}
                   className="rounded-full border border-indigo-200 bg-white/80 px-2.5 py-1 text-[10px] font-black text-[#4338CA] dark:border-indigo-700 dark:bg-slate-800 dark:text-indigo-300"
@@ -1006,7 +1012,7 @@ export const MobileExploreMarketplacePage: React.FC<
               className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#4F46E5] to-[#7C3AED] px-4 py-3 text-sm font-black text-white shadow-lg shadow-indigo-200/40 dark:shadow-none"
               data-testid="explore-open-partner-onboarding-btn"
             >
-              İşletmeni Önizle & Partner Ol
+              90 Gün Ücretsiz Dene & Vitrinini Oluştur
               <LayoutDashboard className="h-4 w-4" />
             </button>
           </div>
