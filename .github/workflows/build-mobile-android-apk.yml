@@ -57,13 +57,14 @@ jobs:
           ./gradlew assembleDebug --no-daemon
 
       - name: Build Signed Android Release Bundle (when keystore secret is configured)
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        # Keystore secret varsa imzalı release derler; yoksa atlar
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then echo "Keystore secret yok, signed release atlandi."; exit 0; fi
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/release-keystore.jks
           cd android
           ./gradlew bundleRelease assembleRelease --no-daemon \
