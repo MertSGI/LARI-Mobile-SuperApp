@@ -5,7 +5,12 @@ on:
     branches:
       - feat/lari-mobile-superapp
       - feat/lari-qa-and-growth-updates
+    tags:
+      - "v*"
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build-android-apk:
@@ -57,3 +62,13 @@ jobs:
           name: lari-mobile-superapp-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
+
+      - name: Publish APK to GitHub Release on version tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "LARİ Mobile SuperApp ${{ github.ref_name }}"
+          files: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
