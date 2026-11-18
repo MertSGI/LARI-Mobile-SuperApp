@@ -25,6 +25,7 @@ import {
   PastAppointmentSnapshot,
   searchMobileMarketplace,
 } from '../../../services/mobile/mobileDiscoveryService';
+import { mobileCoreBridgeService } from '../../../services/mobile/mobileCoreBridgeService';
 import {
   convertFromTryMajor,
   validateMobileUserProfile,
@@ -344,14 +345,29 @@ export const MobileExploreMarketplacePage: React.FC<
   const [voiceStatus, setVoiceStatus] = useState(
     'Mikrofona dokunun veya hazır aramalardan birini seçin.'
   );
+  const [marketplaceListings, setMarketplaceListings] = useState<
+    MarketplaceTenantListing[]
+  >(DEFAULT_MOBILE_MARKETPLACE_LISTINGS);
   const recognitionRef = useRef<VoiceRecognitionController | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void mobileCoreBridgeService
+      .loadMarketplaceListings(DEFAULT_MOBILE_MARKETPLACE_LISTINGS)
+      .then((listings) => {
+        if (active) setMarketplaceListings(listings);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const userCoords = gpsEnabled
     ? { latitude: 41.048, longitude: 28.995 }
     : null;
 
   const searchResult = searchMobileMarketplace({
-    listings: DEFAULT_MOBILE_MARKETPLACE_LISTINGS,
+    listings: marketplaceListings,
     userCoords,
     verticalFilter: vertical,
     queryText,
@@ -362,7 +378,7 @@ export const MobileExploreMarketplacePage: React.FC<
   });
 
   const mapItems = searchMobileMarketplace({
-    listings: DEFAULT_MOBILE_MARKETPLACE_LISTINGS,
+    listings: marketplaceListings,
     userCoords,
     sortBy: userCoords ? 'distance_km' : 'rating',
   }).items;

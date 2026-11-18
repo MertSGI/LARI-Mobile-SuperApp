@@ -24,7 +24,94 @@ export interface ReportMetricsResult {
   };
 }
 
+export type MobileRevenuePeriod = 'daily' | 'weekly' | 'monthly' | 'quarterly';
+
+export interface MobileRevenueSummaryItem {
+  label: string;
+  revenue: number;
+  serviceRevenue: number;
+  productRevenue: number;
+  estimatedNetRevenue: number;
+  completedAppointments: number;
+}
+
+export type MobileRevenueSummary = Record<
+  MobileRevenuePeriod,
+  MobileRevenueSummaryItem
+>;
+
+const MOBILE_REVENUE_LABELS: Record<MobileRevenuePeriod, string> = {
+  daily: 'Günlük',
+  weekly: 'Haftalık',
+  monthly: 'Aylık',
+  quarterly: 'Son 3 Ay',
+};
+
+function startOfDay(value: Date): Date {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
+function isCanceledAppointment(appointment: Appointment): boolean {
+  return (
+    appointment.status === 'cancelled' ||
+    appointment.status === 'cancelled_by_customer' ||
+    appointment.status === 'cancelled_by_salon' ||
+    appointment.status === 'cancelled_by_system'
+  );
+}
+
 export const reportingService = {
+  getMobileRevenueSummary(
+    appointments: Appointment[],
+    services: Service[],
+    nowInput: Date = new Date()
+  ): MobileRevenueSummary {
+    const now = startOfDay(nowInput);
+    const periodStarts: Record<MobileRevenuePeriod, Date> = {
+      daily: now,
+      weekly: new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6),
+      monthly: new Date(now.getFullYear(), now.getMonth(), 1),
+      quarterly: new Date(now.getFullYear(), now.getMonth() - 2, 1),
+    };
+
+    const servicePriceById = new Map(
+      services.map((service) => [service.id, Number(service.price) || 0])
+    );
+
+    return (Object.keys(MOBILE_REVENUE_LABELS) as MobileRevenuePeriod[]).reduce(
+      (summary, period) => {
+        const periodAppointments = appointments.filter((appointment) => {
+          const appointmentDate = startOfDay(new Date(appointment.date));
+          return (
+            !Number.isNaN(appointmentDate.getTime()) &&
+            appointmentDate >= periodStarts[period] &&
+            appointmentDate <= now &&
+            !isCanceledAppointment(appointment)
+          );
+        });
+        const serviceRevenue = periodAppointments.reduce(
+          (total, appointment) =>
+            total + (servicePriceById.get(appointment.serviceId) || 0),
+          0
+        );
+
+        summary[period] = {
+          label: MOBILE_REVENUE_LABELS[period],
+          revenue: serviceRevenue,
+          serviceRevenue,
+          productRevenue: 0,
+          estimatedNetRevenue: Math.round(serviceRevenue * 0.8),
+          completedAppointments: periodAppointments.filter(
+            (appointment) =>
+              appointment.status === 'confirmed' || appointment.status === 'completed'
+          ).length,
+        };
+        return summary;
+      },
+      {} as MobileRevenueSummary
+    );
+  },
+
   getReportMetrics(
     appointments: Appointment[],
     services: Service[],

@@ -425,14 +425,34 @@ export interface MobileAppSessionValue {
   getLiveStageForAppointment: (appointmentId?: string) => 1 | 2 | 3 | 4;
   partnerStaffMembers: PartnerStaffMember[];
   setPartnerStaffMembers: React.Dispatch<React.SetStateAction<PartnerStaffMember[]>>;
+  addPartnerStaffMember: (
+    tenantId: string,
+    input: Omit<PartnerStaffMember, 'id'>
+  ) => Promise<void>;
+  updatePartnerStaffMember: (
+    tenantId: string,
+    staffId: string,
+    patch: Partial<Omit<PartnerStaffMember, 'id'>>
+  ) => Promise<void>;
+  removePartnerStaffMember: (tenantId: string, staffId: string) => Promise<void>;
   partnerGroupedHours: Record<BusinessHoursKey, BusinessHoursSchedule>;
   setPartnerGroupedHours: React.Dispatch<React.SetStateAction<Record<BusinessHoursKey, BusinessHoursSchedule>>>;
+  updatePartnerGroupedHours: (
+    tenantId: string,
+    hours: Record<BusinessHoursKey, BusinessHoursSchedule>
+  ) => Promise<void>;
   partnerDailyHours: Record<DailyBusinessHoursKey, BusinessHoursSchedule>;
   setPartnerDailyHours: React.Dispatch<React.SetStateAction<Record<DailyBusinessHoursKey, BusinessHoursSchedule>>>;
+  updatePartnerDailyHours: (
+    tenantId: string,
+    hours: Record<DailyBusinessHoursKey, BusinessHoursSchedule>
+  ) => Promise<void>;
   partnerDailyHoursMode: boolean;
   setPartnerDailyHoursMode: React.Dispatch<React.SetStateAction<boolean>>;
   partnerCampaigns: PartnerCampaign[];
   setPartnerCampaigns: React.Dispatch<React.SetStateAction<PartnerCampaign[]>>;
+  savePartnerCampaign: (tenantId: string, campaign: PartnerCampaign) => Promise<void>;
+  removePartnerCampaign: (campaignId: string) => Promise<void>;
   userProfile: MobileUserProfile;
   selectedCurrency: SupportedCurrency;
   sessionScopeKey: string;
@@ -877,14 +897,21 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   getLiveStageForAppointment: () => 2,
   partnerStaffMembers: INITIAL_PARTNER_STAFF,
   setPartnerStaffMembers: noop as any,
+  addPartnerStaffMember: noopAsync,
+  updatePartnerStaffMember: noopAsync,
+  removePartnerStaffMember: noopAsync,
   partnerGroupedHours: INITIAL_GROUPED_HOURS,
   setPartnerGroupedHours: noop as any,
+  updatePartnerGroupedHours: noopAsync,
   partnerDailyHours: INITIAL_DAILY_HOURS,
   setPartnerDailyHours: noop as any,
+  updatePartnerDailyHours: noopAsync,
   partnerDailyHoursMode: false,
   setPartnerDailyHoursMode: noop as any,
   partnerCampaigns: INITIAL_PARTNER_CAMPAIGNS,
   setPartnerCampaigns: noop as any,
+  savePartnerCampaign: noopAsync,
+  removePartnerCampaign: noopAsync,
   userProfile: DEFAULT_USER_PROFILE,
   selectedCurrency: 'TRY',
   sessionScopeKey: 'guest',
@@ -1568,6 +1595,138 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     setThemeMode((prev) => (prev === 'light' ? 'dark' : 'light'));
   }, []);
 
+  const addPartnerStaffMember = useCallback(
+    async (tenantId: string, input: Omit<PartnerStaffMember, 'id'>) => {
+      try {
+        const created = await mobileCoreBridgeService.addPartnerStaffMember(
+          tenantId,
+          input
+        );
+        setPartnerStaffMembers((current) => [created, ...current]);
+        showToast(`${created.name} uzman kadrosuna eklendi.`);
+      } catch {
+        showToast('Uzman personel çekirdek sisteme eklenemedi.');
+      }
+    },
+    [showToast]
+  );
+
+  const updatePartnerStaffMember = useCallback(
+    async (
+      tenantId: string,
+      staffId: string,
+      patch: Partial<Omit<PartnerStaffMember, 'id'>>
+    ) => {
+      const previous = partnerStaffMembers.find((member) => member.id === staffId);
+      if (!previous) return;
+      setPartnerStaffMembers((current) =>
+        current.map((member) =>
+          member.id === staffId ? { ...member, ...patch } : member
+        )
+      );
+      try {
+        await mobileCoreBridgeService.updatePartnerStaffMember(
+          tenantId,
+          staffId,
+          patch
+        );
+      } catch {
+        setPartnerStaffMembers((current) =>
+          current.map((member) => (member.id === staffId ? previous : member))
+        );
+        showToast('Personel değişikliği çekirdek sisteme kaydedilemedi.');
+      }
+    },
+    [partnerStaffMembers, showToast]
+  );
+
+  const removePartnerStaffMember = useCallback(
+    async (tenantId: string, staffId: string) => {
+      const previous = partnerStaffMembers.find((member) => member.id === staffId);
+      if (!previous) return;
+      setPartnerStaffMembers((current) =>
+        current.filter((member) => member.id !== staffId)
+      );
+      try {
+        await mobileCoreBridgeService.removePartnerStaffMember(tenantId, staffId);
+        showToast('Uzman personel kadrosundan çıkarıldı.');
+      } catch {
+        setPartnerStaffMembers((current) => [previous, ...current]);
+        showToast('Uzman personel çekirdek sistemden kaldırılamadı.');
+      }
+    },
+    [partnerStaffMembers, showToast]
+  );
+
+  const updatePartnerGroupedHours = useCallback(
+    async (
+      tenantId: string,
+      hours: Record<BusinessHoursKey, BusinessHoursSchedule>
+    ) => {
+      const previous = partnerGroupedHours;
+      setPartnerGroupedHours(hours);
+      try {
+        await mobileCoreBridgeService.savePartnerBusinessHours(tenantId, hours);
+      } catch {
+        setPartnerGroupedHours(previous);
+        showToast('Çalışma saatleri çekirdek sisteme kaydedilemedi.');
+      }
+    },
+    [partnerGroupedHours, showToast]
+  );
+
+  const updatePartnerDailyHours = useCallback(
+    async (
+      tenantId: string,
+      hours: Record<DailyBusinessHoursKey, BusinessHoursSchedule>
+    ) => {
+      const previous = partnerDailyHours;
+      setPartnerDailyHours(hours);
+      try {
+        await mobileCoreBridgeService.savePartnerBusinessHours(tenantId, hours);
+      } catch {
+        setPartnerDailyHours(previous);
+        showToast('Günlük çalışma saatleri çekirdek sisteme kaydedilemedi.');
+      }
+    },
+    [partnerDailyHours, showToast]
+  );
+
+  const savePartnerCampaign = useCallback(
+    async (tenantId: string, campaign: PartnerCampaign) => {
+      const previous = partnerCampaigns;
+      setPartnerCampaigns((current) => {
+        const exists = current.some((item) => item.id === campaign.id);
+        return exists
+          ? current.map((item) => (item.id === campaign.id ? campaign : item))
+          : [campaign, ...current];
+      });
+      try {
+        await mobileCoreBridgeService.savePartnerCampaign(tenantId, campaign);
+      } catch {
+        setPartnerCampaigns(previous);
+        showToast('Kampanya çekirdek sisteme kaydedilemedi.');
+      }
+    },
+    [partnerCampaigns, showToast]
+  );
+
+  const removePartnerCampaign = useCallback(
+    async (campaignId: string) => {
+      const previous = partnerCampaigns;
+      setPartnerCampaigns((current) =>
+        current.filter((campaign) => campaign.id !== campaignId)
+      );
+      try {
+        await mobileCoreBridgeService.removePartnerCampaign(campaignId);
+      } catch {
+        setPartnerCampaigns(previous);
+        showToast('Kampanya çekirdek sistemden silinemedi.');
+      }
+    },
+    [partnerCampaigns, showToast]
+  );
+
   const addCatalogItem = useCallback(
     async (item: Omit<PartnerCatalogItem, 'id'>) => {
       try {
@@ -1945,14 +2104,21 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       getLiveStageForAppointment,
       partnerStaffMembers,
       setPartnerStaffMembers,
+      addPartnerStaffMember,
+      updatePartnerStaffMember,
+      removePartnerStaffMember,
       partnerGroupedHours,
       setPartnerGroupedHours,
+      updatePartnerGroupedHours,
       partnerDailyHours,
       setPartnerDailyHours,
+      updatePartnerDailyHours,
       partnerDailyHoursMode,
       setPartnerDailyHoursMode,
       partnerCampaigns,
       setPartnerCampaigns,
+      savePartnerCampaign,
+      removePartnerCampaign,
       userProfile,
       selectedCurrency,
       sessionScopeKey,
@@ -2021,14 +2187,21 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       getLiveStageForAppointment,
       partnerStaffMembers,
       setPartnerStaffMembers,
+      addPartnerStaffMember,
+      updatePartnerStaffMember,
+      removePartnerStaffMember,
       partnerGroupedHours,
       setPartnerGroupedHours,
+      updatePartnerGroupedHours,
       partnerDailyHours,
       setPartnerDailyHours,
+      updatePartnerDailyHours,
       partnerDailyHoursMode,
       setPartnerDailyHoursMode,
       partnerCampaigns,
       setPartnerCampaigns,
+      savePartnerCampaign,
+      removePartnerCampaign,
       userProfile,
       selectedCurrency,
       sessionScopeKey,

@@ -47,6 +47,8 @@ import {
 import MobileAIStyleVisualizerPage from '../b2c/MobileAIStyleVisualizerPage';
 import { resolvePartnerFeatureEntitlements } from '../../../services/mobile/mobilePackageEntitlementService';
 import { MobilePersonaType } from '../../../services/mobile/mobileShellPolicyService';
+import { mobileCoreBridgeService } from '../../../services/mobile/mobileCoreBridgeService';
+import { MobileRevenueSummary } from '../../../services/reportingService';
 
 export interface PartnerAgendaItem {
   appointmentId: string;
@@ -111,17 +113,7 @@ const ALLOWED_IMAGE_MIME_TYPES = new Set([
 ]);
 const MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024;
 
-const REVENUE_REPORTS: Record<
-  RevenuePeriod,
-  {
-    label: string;
-    revenue: number;
-    serviceRevenue: number;
-    productRevenue: number;
-    estimatedNetRevenue: number;
-    completedAppointments: number;
-  }
-> = {
+const REVENUE_REPORTS: MobileRevenueSummary = {
   daily: {
     label: 'Günlük',
     revenue: 12450,
@@ -206,15 +198,18 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     getLiveStageForAppointment,
     updateLiveAppointmentStage,
     partnerStaffMembers: staffMembers,
-    setPartnerStaffMembers: setStaffMembers,
+    addPartnerStaffMember,
+    updatePartnerStaffMember,
+    removePartnerStaffMember,
     partnerGroupedHours: businessHours,
-    setPartnerGroupedHours: setBusinessHours,
+    updatePartnerGroupedHours,
     partnerDailyHours: dailyBusinessHours,
-    setPartnerDailyHours: setDailyBusinessHours,
+    updatePartnerDailyHours,
     partnerDailyHoursMode: dailyHoursMode,
     setPartnerDailyHoursMode: setDailyHoursMode,
     partnerCampaigns: campaigns,
-    setPartnerCampaigns: setCampaigns,
+    savePartnerCampaign,
+    removePartnerCampaign,
     showToast,
     themeMode,
     updateCatalogItem,
@@ -326,6 +321,8 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   const [newStaffShift, setNewStaffShift] = useState('09:00–19:00');
   const [selectedRevenuePeriod, setSelectedRevenuePeriod] =
     useState<RevenuePeriod>('daily');
+  const [revenueReports, setRevenueReports] =
+    useState<MobileRevenueSummary>(REVENUE_REPORTS);
   const [galleryUrl, setGalleryUrl] = useState(QUICK_GALLERY_PHOTO_URL);
   const [selectedGalleryPhoto, setSelectedGalleryPhoto] = useState<string | null>(
     null
@@ -379,6 +376,19 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     return () => window.clearInterval(intervalId);
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    void mobileCoreBridgeService
+      .loadPartnerRevenueSummary(tenantId, REVENUE_REPORTS)
+      .then((summary) => {
+        if (active) setRevenueReports(summary);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [tenantId]);
+
   const visiblePartnerCatalog = partnerCatalog.filter(
     (item) => item.tenantId === tenantId
   );
@@ -387,7 +397,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   );
   const storefrontUrl = `https://app.randevulari.com/#/m?slug=${dynamicStorefrontSlug}`;
   const venuePhotos = customVenuePhotos[PARTNER_TENANT_SLUG] ?? [];
-  const selectedRevenue = REVENUE_REPORTS[selectedRevenuePeriod];
+  const selectedRevenue = revenueReports[selectedRevenuePeriod];
   const storefrontLockStatus = getStorefrontEditLockStatus(
     storefrontLastEditedAtIso,
     storefrontNowMs
@@ -576,7 +586,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     setEditingCatalogId(null);
   };
 
-  const handleAddStaffMember = () => {
+  const handleAddStaffMember = async () => {
     if (!acquireActionGate('staff_add')) return;
     const name = newStaffName.trim();
     const specialty = newStaffSpecialty.trim();
@@ -593,41 +603,35 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
       showToast('Uzman adı, uzmanlık alanı ve 0-100 arası prim oranı girin.');
       return;
     }
-    setStaffMembers((current) => [
-      {
-        id: `staff-custom-${Date.now().toString(36)}`,
-        name,
-        specialty,
-        active: true,
-        available: true,
-        commissionRate: Math.round(commissionRate),
-        workDaysLabel: 'Pzt–Cmt',
-        shiftHours,
-      },
-      ...current,
-    ]);
+    await addPartnerStaffMember(tenantId, {
+      name,
+      specialty,
+      active: true,
+      available: true,
+      commissionRate: Math.round(commissionRate),
+      workDaysLabel: 'Pzt–Cmt',
+      shiftHours,
+    });
     setNewStaffName('');
     setNewStaffSpecialty('');
     setNewStaffCommission('20');
     setNewStaffShift('09:00–19:00');
     setIsStaffAddOpen(false);
-    showToast(`${name} uzman kadrosuna eklendi.`);
   };
 
   const handleDeleteStaffMember = (staffId: string) => {
-    setStaffMembers((current) => current.filter((member) => member.id !== staffId));
-    showToast('Uzman personel kadrosundan çıkarıldı.');
+    void removePartnerStaffMember(tenantId, staffId);
   };
 
   const toggleStaffField = (
     staffId: string,
     field: 'active' | 'available'
   ) => {
-    setStaffMembers((current) =>
-      current.map((member) =>
-        member.id === staffId ? { ...member, [field]: !member[field] } : member
-      )
-    );
+    const member = staffMembers.find((item) => item.id === staffId);
+    if (!member) return;
+    void updatePartnerStaffMember(tenantId, staffId, {
+      [field]: !member[field],
+    });
   };
 
   const handleStaffCommissionChange = (staffId: string, value: string) => {
@@ -635,21 +639,13 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     if (!Number.isFinite(commissionRate) || commissionRate < 0 || commissionRate > 100) {
       return;
     }
-    setStaffMembers((current) =>
-      current.map((member) =>
-        member.id === staffId
-          ? { ...member, commissionRate: Math.round(commissionRate) }
-          : member
-      )
-    );
+    void updatePartnerStaffMember(tenantId, staffId, {
+      commissionRate: Math.round(commissionRate),
+    });
   };
 
   const handleStaffShiftChange = (staffId: string, shiftHours: string) => {
-    setStaffMembers((current) =>
-      current.map((member) =>
-        member.id === staffId ? { ...member, shiftHours } : member
-      )
-    );
+    void updatePartnerStaffMember(tenantId, staffId, { shiftHours });
   };
 
   const handleToggleBusinessDay = (key: BusinessHoursKey) => {
@@ -657,10 +653,10 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
       showToast(`24 saatlik vitrin kilidi aktif (${storefrontLockStatus.countdownText} kaldı).`);
       return;
     }
-    setBusinessHours((current) => ({
-      ...current,
-      [key]: { ...current[key], open: !current[key].open },
-    }));
+    void updatePartnerGroupedHours(tenantId, {
+      ...businessHours,
+      [key]: { ...businessHours[key], open: !businessHours[key].open },
+    });
   };
 
   const handleBusinessTimeChange = (
@@ -672,10 +668,10 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
       showToast(`24 saatlik vitrin kilidi aktif (${storefrontLockStatus.countdownText} kaldı).`);
       return;
     }
-    setBusinessHours((current) => ({
-      ...current,
-      [key]: { ...current[key], [field]: value },
-    }));
+    void updatePartnerGroupedHours(tenantId, {
+      ...businessHours,
+      [key]: { ...businessHours[key], [field]: value },
+    });
     showToast(`${businessHours[key].label} çalışma saati ${value} olarak güncellendi.`);
   };
 
@@ -684,10 +680,10 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
       showToast(`24 saatlik vitrin kilidi aktif (${storefrontLockStatus.countdownText} kaldı).`);
       return;
     }
-    setDailyBusinessHours((current) => ({
-      ...current,
-      [key]: { ...current[key], open: !current[key].open },
-    }));
+    void updatePartnerDailyHours(tenantId, {
+      ...dailyBusinessHours,
+      [key]: { ...dailyBusinessHours[key], open: !dailyBusinessHours[key].open },
+    });
   };
 
   const handleDailyBusinessTimeChange = (
@@ -699,14 +695,14 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
       showToast(`24 saatlik vitrin kilidi aktif (${storefrontLockStatus.countdownText} kaldı).`);
       return;
     }
-    setDailyBusinessHours((current) => ({
-      ...current,
-      [key]: { ...current[key], [field]: value },
-    }));
+    void updatePartnerDailyHours(tenantId, {
+      ...dailyBusinessHours,
+      [key]: { ...dailyBusinessHours[key], [field]: value },
+    });
     showToast(`${dailyBusinessHours[key].label} çalışma saati ${value} olarak güncellendi.`);
   };
 
-  const handleGalleryFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleGalleryFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (storefrontLockStatus.locked) {
       showToast(`24 saatlik vitrin kilidi aktif (${storefrontLockStatus.countdownText} kaldı).`);
       event.target.value = '';
@@ -724,16 +720,18 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
       event.target.value = '';
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result !== 'string') return;
-      addVenuePhoto(PARTNER_TENANT_SLUG, reader.result);
-      setSelectedGalleryPhoto(reader.result);
-      showToast('İşletme fotoğrafı galeriye eklendi.');
-    };
-    reader.onerror = () => showToast('Fotoğraf okunamadı. Lütfen yeniden deneyin.');
-    reader.readAsDataURL(file);
     event.target.value = '';
+    try {
+      const uploadedUrl = await mobileCoreBridgeService.uploadPartnerGalleryImage(
+        tenantId,
+        file
+      );
+      addVenuePhoto(PARTNER_TENANT_SLUG, uploadedUrl);
+      setSelectedGalleryPhoto(uploadedUrl);
+      showToast('İşletme fotoğrafı galeriye eklendi.');
+    } catch {
+      showToast('Fotoğraf yüklenemedi. Lütfen yeniden deneyin.');
+    }
   };
 
   const handleAddGalleryUrl = () => {
@@ -797,15 +795,12 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
       showToast('Kampanya kodu ve 1-100 arası indirim oranı girin.');
       return;
     }
-    setCampaigns((current) => [
-      {
-        id: `campaign-${Date.now().toString(36)}`,
-        code,
-        discountPercent: Math.round(discountPercent),
-        active: true,
-      },
-      ...current,
-    ]);
+    void savePartnerCampaign(tenantId, {
+      id: `campaign-${Date.now().toString(36)}`,
+      code,
+      discountPercent: Math.round(discountPercent),
+      active: true,
+    });
     setNewCampaignCode('');
     setNewCampaignDiscount('10');
     showToast(`${code} kampanyası aktif edildi.`);
@@ -2078,36 +2073,44 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
             </span>
             <div className="space-y-2">
               {campaigns.map((campaign) => (
-                <button
+                <div
                   key={campaign.id}
-                  type="button"
-                  disabled={storefrontLockStatus.locked}
-                  aria-pressed={campaign.active}
-                  onClick={() => {
-                    if (storefrontLockStatus.locked) {
-                      showToast(
-                        `24 saatlik vitrin düzenleme kilidi aktif (${storefrontLockStatus.countdownText} kaldı).`
-                      );
-                      return;
-                    }
-                    setCampaigns((current) =>
-                      current.map((item) =>
-                        item.id === campaign.id ? { ...item, active: !item.active } : item
-                      )
-                    );
-                  }}
-                  className={`flex min-h-11 w-full items-center justify-between rounded-xl border px-3 text-xs font-black disabled:cursor-not-allowed disabled:opacity-50 ${
-                    campaign.active
-                      ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                      : 'border-slate-300 bg-white text-slate-500'
-                  }`}
-                  data-testid={`partner-campaign-toggle-${campaign.id}`}
+                  className="flex items-stretch gap-2"
                 >
-                  <span>
-                    {campaign.code} • %{campaign.discountPercent.toLocaleString('tr-TR')} İndirim
-                  </span>
-                  <span>{campaign.active ? 'Aktif' : 'Pasif'}</span>
-                </button>
+                  <button
+                    type="button"
+                    disabled={storefrontLockStatus.locked}
+                    aria-pressed={campaign.active}
+                    onClick={() => {
+                      if (storefrontLockStatus.locked) return;
+                      void savePartnerCampaign(tenantId, {
+                        ...campaign,
+                        active: !campaign.active,
+                      });
+                    }}
+                    className={`flex min-h-11 min-w-0 flex-1 items-center justify-between rounded-xl border px-3 text-xs font-black disabled:cursor-not-allowed disabled:opacity-50 ${
+                      campaign.active
+                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                        : 'border-slate-300 bg-white text-slate-500'
+                    }`}
+                    data-testid={`partner-campaign-toggle-${campaign.id}`}
+                  >
+                    <span className="truncate">
+                      {campaign.code} • %{campaign.discountPercent.toLocaleString('tr-TR')} İndirim
+                    </span>
+                    <span>{campaign.active ? 'Aktif' : 'Pasif'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={storefrontLockStatus.locked}
+                    aria-label={`${campaign.code} kampanyasını sil`}
+                    onClick={() => void removePartnerCampaign(campaign.id)}
+                    className="flex min-h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-white text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    data-testid={`partner-campaign-delete-${campaign.id}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               ))}
             </div>
             <div className="mt-3 grid grid-cols-[1fr_80px] gap-2">

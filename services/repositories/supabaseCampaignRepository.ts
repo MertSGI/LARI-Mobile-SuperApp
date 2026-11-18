@@ -31,8 +31,7 @@ export class SupabaseCampaignRepository implements CampaignRepository {
   }
 
   async saveCampaign(tenantId: string, campaign: BusinessCustomerCampaign): Promise<BusinessCustomerCampaign> {
-    try {
-      const dbRow = {
+    const dbRow = {
         id: campaign.id,
         tenant_id: tenantId,
         name: campaign.name,
@@ -48,7 +47,7 @@ export class SupabaseCampaignRepository implements CampaignRepository {
         updated_at: new Date().toISOString()
       };
       
-      const res = await fetchSupabase(`/rest/v1/business_customer_campaigns?id=eq.${campaign.id}`, {
+    const res = await fetchSupabase('/rest/v1/business_customer_campaigns', {
         method: 'POST', // or UPSERT behavior
         headers: { 
           'Content-Type': 'application/json', 
@@ -57,18 +56,20 @@ export class SupabaseCampaignRepository implements CampaignRepository {
         body: JSON.stringify(dbRow)
       });
       
-      if (!res.ok) {
-        // Fallback or retry with PATCH if POST doesn't upsert directly
-        await fetchSupabase(`/rest/v1/business_customer_campaigns?id=eq.${campaign.id}`, {
+    if (!res.ok) {
+      const patchRes = await fetchSupabase(
+        `/rest/v1/business_customer_campaigns?id=eq.${encodeURIComponent(campaign.id)}&tenant_id=eq.${encodeURIComponent(tenantId)}`,
+        {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
           body: JSON.stringify(dbRow)
-        });
+        }
+      );
+      if (!patchRes.ok) {
+        throw new Error(`Supabase campaign save failed: HTTP ${patchRes.status}`);
       }
-      return campaign;
-    } catch {
-      return campaign;
     }
+    return { ...campaign, tenantId, updatedAt: dbRow.updated_at };
   }
 
   async deleteCampaign(campaignId: string): Promise<boolean> {
