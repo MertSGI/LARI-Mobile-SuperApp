@@ -190,7 +190,7 @@ export const MobileBookingBottomSheet: React.FC<
     const base = ['İlk Müsait Uzman'];
     if (isPartnerManagedListing) {
       const names = partnerStaffMembers
-        .filter((staff) => staff.active)
+        .filter((staff) => staff.active && staff.available)
         .map((staff) => staff.name);
       return Array.from(new Set([...base, ...names]));
     }
@@ -328,6 +328,7 @@ export const MobileBookingBottomSheet: React.FC<
           </div>
           <button
             type="button"
+            aria-label="Kapat"
             onClick={onClose}
             className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300"
           >

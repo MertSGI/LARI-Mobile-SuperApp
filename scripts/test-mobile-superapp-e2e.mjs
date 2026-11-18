@@ -541,7 +541,13 @@ async function run() {
       await page.waitForSelector('[data-testid="partner-management-storefront-panel"]');
 
       // Verify daily working hours persistence across Partner tab navigation
-      await page.click('[data-testid="partner-hours-daily-mode-toggle"]');
+      const dailyModePressed = await page.getAttribute(
+        '[data-testid="partner-hours-daily-mode-toggle"]',
+        'aria-pressed'
+      );
+      if (dailyModePressed !== 'true') {
+        await page.click('[data-testid="partner-hours-daily-mode-toggle"]');
+      }
       await page.waitForSelector('[data-testid="partner-hours-toggle-monday"]');
       await page.click('[data-testid="mobile-tab-partner_pos"]');
       await page.waitForSelector('[data-testid="mobile-partner-pos-page"]');

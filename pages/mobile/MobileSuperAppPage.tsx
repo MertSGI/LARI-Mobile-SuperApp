@@ -65,7 +65,7 @@ export const MobileSuperAppContent: React.FC = () => {
         ? 'tenant_owner'
       : currentUser?.role
         ? currentUser.role
-        : isLocalOrNativePreviewHost || initialModeParam === 'partner'
+        : isLocalOrNativePreviewHost
           ? 'tenant_owner'
           : 'guest';
 
@@ -75,8 +75,9 @@ export const MobileSuperAppContent: React.FC = () => {
     currentUser?.role === 'super_admin';
 
   const defaultStartupMode: MobileShellMode =
-    initialModeParam === 'partner' ||
-    (!initialModeParam && !initialSlugParam && isSignedInPartnerAccount)
+    effectiveRole !== 'guest' &&
+    (initialModeParam === 'partner' ||
+      (!initialModeParam && !initialSlugParam && isSignedInPartnerAccount))
       ? 'b2b_partner'
       : 'b2c_customer';
 

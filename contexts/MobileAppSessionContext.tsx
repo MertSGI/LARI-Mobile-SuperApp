@@ -19,11 +19,82 @@ import {
 } from '../services/mobile/voiceCatalogMatcherService';
 import {
   DEFAULT_USER_PROFILE,
+  convertFromTryMajor,
   getStorefrontEditLockStatus,
   MobileUserProfile,
   resolveDefaultCurrencyForLocation,
   SupportedCurrency,
 } from '../services/mobile/mobileRegionCurrencyService';
+
+const VALID_CURRENCIES: readonly SupportedCurrency[] = ['TRY', 'USD', 'EUR', 'GBP'];
+
+function parseStoredArray<T extends object>(key: string, fallback: T[]): T[] {
+  try {
+    if (typeof window === 'undefined') return fallback;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return fallback;
+    const clean = parsed.filter(
+      (item): item is T => typeof item === 'object' && item !== null && !Array.isArray(item)
+    );
+    return clean;
+  } catch {
+    return fallback;
+  }
+}
+
+function parseStoredObject<T extends object>(key: string, fallback: T): T {
+  try {
+    if (typeof window === 'undefined') return fallback;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return fallback;
+    }
+    return { ...fallback, ...(parsed as Partial<T>) };
+  } catch {
+    return fallback;
+  }
+}
+
+function parseStoredScheduleMap<K extends string>(
+  key: string,
+  fallback: Record<K, BusinessHoursSchedule>
+): Record<K, BusinessHoursSchedule> {
+  try {
+    if (typeof window === 'undefined') return fallback;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return fallback;
+    }
+    const obj = parsed as Record<string, Partial<BusinessHoursSchedule> | undefined>;
+    const merged = { ...fallback };
+    (Object.keys(fallback) as K[]).forEach((dayKey) => {
+      const candidate = obj[dayKey];
+      if (
+        candidate &&
+        typeof candidate === 'object' &&
+        typeof candidate.open === 'boolean' &&
+        typeof candidate.openTime === 'string' &&
+        typeof candidate.closeTime === 'string'
+      ) {
+        merged[dayKey] = {
+          label: typeof candidate.label === 'string' ? candidate.label : fallback[dayKey].label,
+          open: candidate.open,
+          openTime: candidate.openTime,
+          closeTime: candidate.closeTime,
+        };
+      }
+    });
+    return merged;
+  } catch {
+    return fallback;
+  }
+}
 import { sanitizeUserMessage } from '../services/mobile/mobileUiSanitizer';
 
 export interface MobileActiveBooking {
@@ -604,46 +675,37 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
   const [liveStagesByAppointmentId, setLiveStagesByAppointmentId] = useState<
     Record<string, 1 | 2 | 3 | 4>
   >({});
-  const [partnerStaffMembers, setPartnerStaffMembers] = useState<PartnerStaffMember[]>(() => {
-    try {
-      const raw =
-        typeof window !== 'undefined'
-          ? window.localStorage.getItem('lari_partner_staff_v1')
-          : null;
-      return raw ? JSON.parse(raw) : INITIAL_PARTNER_STAFF;
-    } catch {
-      return INITIAL_PARTNER_STAFF;
-    }
-  });
+  const [partnerStaffMembers, setPartnerStaffMembers] = useState<PartnerStaffMember[]>(() =>
+    parseStoredArray<PartnerStaffMember>('lari_partner_staff_v1', INITIAL_PARTNER_STAFF)
+  );
   const [partnerGroupedHours, setPartnerGroupedHours] = useState<
     Record<BusinessHoursKey, BusinessHoursSchedule>
-  >(() => {
-    try {
-      const raw =
-        typeof window !== 'undefined'
-          ? window.localStorage.getItem('lari_partner_grouped_hours_v1')
-          : null;
-      return raw ? JSON.parse(raw) : INITIAL_GROUPED_HOURS;
-    } catch {
-      return INITIAL_GROUPED_HOURS;
-    }
-  });
+  >(() =>
+    parseStoredScheduleMap<BusinessHoursKey>(
+      'lari_partner_grouped_hours_v1',
+      INITIAL_GROUPED_HOURS
+    )
+  );
   const [partnerDailyHours, setPartnerDailyHours] = useState<
     Record<DailyBusinessHoursKey, BusinessHoursSchedule>
-  >(() => {
+  >(() =>
+    parseStoredScheduleMap<DailyBusinessHoursKey>(
+      'lari_partner_daily_hours_v1',
+      INITIAL_DAILY_HOURS
+    )
+  );
+  const [partnerDailyHoursMode, setPartnerDailyHoursMode] = useState<boolean>(() => {
     try {
-      const raw =
-        typeof window !== 'undefined'
-          ? window.localStorage.getItem('lari_partner_daily_hours_v1')
-          : null;
-      return raw ? JSON.parse(raw) : INITIAL_DAILY_HOURS;
+      return (
+        typeof window !== 'undefined' &&
+        window.localStorage.getItem('lari_partner_daily_hours_mode_v1') === 'true'
+      );
     } catch {
-      return INITIAL_DAILY_HOURS;
+      return false;
     }
   });
-  const [partnerDailyHoursMode, setPartnerDailyHoursMode] = useState<boolean>(false);
-  const [partnerCampaigns, setPartnerCampaigns] = useState<PartnerCampaign[]>(
-    () => INITIAL_PARTNER_CAMPAIGNS
+  const [partnerCampaigns, setPartnerCampaigns] = useState<PartnerCampaign[]>(() =>
+    parseStoredArray<PartnerCampaign>('lari_partner_campaigns_v1', INITIAL_PARTNER_CAMPAIGNS)
   );
 
   useEffect(() => {
@@ -684,20 +746,40 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       // ignore storage errors
     }
   }, [partnerDailyHours]);
-  const [storefrontCustomization, setStorefrontCustomization] =
-    useState<PartnerStorefrontCustomization>(() => {
-      try {
-        const raw =
-          typeof window !== 'undefined'
-            ? window.localStorage.getItem('lari_storefront_customization_v1')
-            : null;
-        return raw
-          ? { ...DEFAULT_STOREFRONT_CUSTOMIZATION, ...JSON.parse(raw) }
-          : DEFAULT_STOREFRONT_CUSTOMIZATION;
-      } catch {
-        return DEFAULT_STOREFRONT_CUSTOMIZATION;
+
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(
+          'lari_partner_daily_hours_mode_v1',
+          partnerDailyHoursMode ? 'true' : 'false'
+        );
       }
-    });
+    } catch {
+      // ignore storage errors
+    }
+  }, [partnerDailyHoursMode]);
+
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(
+          'lari_partner_campaigns_v1',
+          JSON.stringify(partnerCampaigns)
+        );
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [partnerCampaigns]);
+
+  const [storefrontCustomization, setStorefrontCustomization] =
+    useState<PartnerStorefrontCustomization>(() =>
+      parseStoredObject<PartnerStorefrontCustomization>(
+        'lari_storefront_customization_v1',
+        DEFAULT_STOREFRONT_CUSTOMIZATION
+      )
+    );
   const [storefrontLastEditedAtIso, setStorefrontLastEditedAtIso] = useState<string | null>(() => {
     try {
       return typeof window !== 'undefined'
@@ -707,24 +789,40 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       return null;
     }
   });
-  const [userProfile, setUserProfile] = useState<MobileUserProfile>(() => {
+  const [userProfile, setUserProfile] = useState<MobileUserProfile>(() =>
+    parseStoredObject<MobileUserProfile>(
+      'lari_mobile_user_profile_v1',
+      DEFAULT_USER_PROFILE
+    )
+  );
+  const [selectedCurrency, setSelectedCurrency] = useState<SupportedCurrency>(() => {
     try {
-      const raw =
+      const saved =
         typeof window !== 'undefined'
-          ? window.localStorage.getItem('lari_mobile_user_profile_v1')
+          ? (window.localStorage.getItem('lari_mobile_selected_currency_v1') as SupportedCurrency | null)
           : null;
-      return raw ? { ...DEFAULT_USER_PROFILE, ...JSON.parse(raw) } : DEFAULT_USER_PROFILE;
+      if (saved && VALID_CURRENCIES.includes(saved)) {
+        return saved;
+      }
     } catch {
-      return DEFAULT_USER_PROFILE;
+      // ignore storage failure
     }
-  });
-  const [selectedCurrency, setSelectedCurrency] = useState<SupportedCurrency>(() =>
-    resolveDefaultCurrencyForLocation(
+    return resolveDefaultCurrencyForLocation(
       DEFAULT_USER_PROFILE.countryCode,
       DEFAULT_USER_PROFILE.city,
       DEFAULT_USER_PROFILE.district
-    )
-  );
+    );
+  });
+
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('lari_mobile_selected_currency_v1', selectedCurrency);
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [selectedCurrency]);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
@@ -1029,13 +1127,14 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       );
       setStampCount((s) => Math.min(5, s + 1));
       setLoyaltyPoints((p) => p + 50);
+      const formattedTip = convertFromTryMajor(safeTip, selectedCurrency).toLocaleString('tr-TR');
       showToast(
         safeTip > 0
-          ? `QR Ödeme (+${safeTip.toLocaleString('tr-TR')} TRY isteğe bağlı bahşiş) tamamlandı • +50 Puan!`
+          ? `QR Ödeme (+${formattedTip} ${selectedCurrency} isteğe bağlı bahşiş) tamamlandı • +50 Puan!`
           : 'QR Ödeme (Bahşişsiz) tamamlandı • +50 Puan!'
       );
     },
-    [showToast]
+    [selectedCurrency, showToast]
   );
 
   const toggleLikeSocialPost = useCallback((postId: string) => {
