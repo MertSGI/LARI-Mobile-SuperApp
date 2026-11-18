@@ -755,6 +755,61 @@ async function run() {
       await context.close();
       console.log(`PASS: Playwright E2E on ${vp.name} (${vp.width}x${vp.height})`);
     }
+
+    // F) Strict Role & Session Data Isolation (Guest / Capacitor Cold Launch / Brand-New Customer)
+    {
+      const isoContext = await browser.newContext({ viewport: { width: 393, height: 852 } });
+      const isoPage = await isoContext.newPage();
+      await isoPage.addInitScript(() => {
+        if (!window.location.search.includes('skipCap=1')) {
+          window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android' };
+        }
+      });
+
+      // 1. Native APK cold launch must start as clean Guest with 0 leaked notifications or bookings
+      await isoPage.goto(`${url}/?app=1#/`, { waitUntil: 'networkidle' });
+      assert.equal((await isoPage.locator('[data-testid="header-notifications-btn"]').innerText()).trim(), '');
+      await isoPage.click('[data-testid="mobile-tab-wallet"]');
+      await isoPage.waitForSelector('[data-testid="wallet-guest-gate"]');
+      await isoPage.click('[data-testid="mobile-tab-profile"]');
+      assert.equal(await isoPage.locator('[data-testid="profile-booking-history-card"]').count(), 0);
+
+      // 2. Register brand-new customer -> 0 bookings, 0 passport formulas, 0 routine card, no role dropdown
+      await isoPage.click('[data-testid="profile-open-register-btn"]');
+      await isoPage.fill('[data-testid="auth-reg-fullname-input"]', 'Selin Demir');
+      await isoPage.fill('[data-testid="auth-reg-email-input"]', 'selin.isolation@test.com');
+      await isoPage.fill('[data-testid="auth-reg-phone-input"]', '5329876543');
+      await isoPage.fill('[data-testid="auth-reg-age-input"]', '27');
+      await isoPage.selectOption('[data-testid="auth-reg-gender-select"]', 'female');
+      await isoPage.fill('[data-testid="auth-reg-password-input"]', 'lari1234');
+      await isoPage.fill('[data-testid="auth-reg-password-confirm-input"]', 'lari1234');
+      await isoPage.check('[data-testid="auth-reg-kvkk-checkbox"]');
+      await isoPage.click('[data-testid="auth-register-submit-btn"]');
+      await isoPage.waitForSelector('[data-testid="mobile-auth-modal"]', { state: 'detached' });
+
+      await isoPage.click('[data-testid="mobile-tab-profile"]');
+      assert.equal(await isoPage.locator('[data-testid="persona-role-dropdown-btn"]').count(), 0);
+      await isoPage.click('[data-testid="mobile-tab-wallet"]');
+      await isoPage.click('[data-testid="wallet-subtab-passport"]');
+      await isoPage.waitForSelector('[data-testid="wallet-passport-empty"]');
+      const passportPanelText = await isoPage.locator('[data-testid="wallet-care-passport-panel"]').innerText();
+      assert.equal(passportPanelText.includes('Bugünkü Ev Devam Rutinin'), false);
+
+      await isoPage.click('[data-testid="header-notifications-btn"]');
+      const notifText = await isoPage.locator('[data-testid="notification-drawer"]').innerText();
+      assert.match(notifText, /LARİ’ye Hoş Geldiniz!/);
+      assert.equal(notifText.includes('Burak Kaya'), false);
+      await isoPage.click('[data-testid="notification-drawer-close-btn"]');
+
+      // 3. Logout wipes user vault back to clean Guest
+      await isoPage.click('[data-testid="mobile-tab-profile"]');
+      await isoPage.click('[data-testid="profile-logout-btn"]');
+      await isoPage.click('[data-testid="auth-continue-guest-btn"]');
+      await isoPage.click('[data-testid="mobile-tab-wallet"]');
+      await isoPage.waitForSelector('[data-testid="wallet-guest-gate"]');
+      await isoContext.close();
+      console.log('PASS: Strict Role & Session Data Isolation (APK Cold-Launch Guest, New Customer, Logout)');
+    }
   } finally {
     if (browser) await browser.close();
     server.close();

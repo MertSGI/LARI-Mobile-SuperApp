@@ -41,6 +41,7 @@ export const MobileSuperAppContent: React.FC = () => {
   const { currentUser, logout: authLogout } = useAuth();
   const {
     activeBooking,
+    bookingHistory,
     toastMessage,
     partnerSubscription,
     showToast,
@@ -63,14 +64,21 @@ export const MobileSuperAppContent: React.FC = () => {
   const initialPersonaParam = getParam('persona') as MobilePersonaType | null;
   const explicitRoleParam = getParam('role');
 
-  const isLocalOrNativePreviewHost =
+  const isNativeCapacitor =
     typeof window !== 'undefined' &&
-    (['localhost', '127.0.0.1'].includes(window.location.hostname) ||
-      Boolean((window as any).Capacitor?.isNativePlatform?.()));
+    Boolean((window as any).Capacitor?.isNativePlatform?.());
+
+  const isLocalhostPreviewHost =
+    typeof window !== 'undefined' &&
+    !isNativeCapacitor &&
+    ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
+  const isLocalOrNativePreviewHost = isLocalhostPreviewHost || isNativeCapacitor;
 
   const isGuestSession =
     (explicitRoleParam === 'guest' && !partnerSubscription && !mobileAuthUser) ||
-    (isExplicitlySignedOut && !mobileAuthUser && !partnerSubscription);
+    (isExplicitlySignedOut && !mobileAuthUser && !partnerSubscription) ||
+    (isNativeCapacitor && !mobileAuthUser && !partnerSubscription && !currentUser);
 
   const trustedMobileAuthRole: Role | null = mobileAuthUser
     ? isLocalOrNativePreviewHost
@@ -87,7 +95,7 @@ export const MobileSuperAppContent: React.FC = () => {
           ? currentUser.role
           : trustedMobileAuthRole
             ? trustedMobileAuthRole
-            : isLocalOrNativePreviewHost
+            : isLocalhostPreviewHost
               ? 'tenant_owner'
               : 'guest';
 
@@ -199,6 +207,11 @@ export const MobileSuperAppContent: React.FC = () => {
     await logoutMobileSession();
   };
 
+  const isDemoPreviewOrDemoCustomer =
+    (!mobileAuthUser && isLocalhostPreviewHost && !isGuestSession) ||
+    mobileAuthUser?.email.toLowerCase() === 'mert@randevulari.com' ||
+    mobileAuthUser?.userId === 'usr-lari-mert';
+
   const shellState = useMemo(
     () =>
       resolveMobileShellState({
@@ -207,8 +220,12 @@ export const MobileSuperAppContent: React.FC = () => {
         requestedPersona,
         verticals: {
           eligible: true,
-          clinicEnabled: partnerEntitlements.clinicPersonaAllowed,
-          healthTourismEnabled: partnerEntitlements.htPersonaAllowed,
+          clinicEnabled: hasPartnerEntitlement
+            ? partnerEntitlements.clinicPersonaAllowed
+            : isDemoPreviewOrDemoCustomer,
+          healthTourismEnabled: hasPartnerEntitlement
+            ? partnerEntitlements.htPersonaAllowed
+            : isDemoPreviewOrDemoCustomer,
           posInventoryEnabled: true,
           loyaltyWalletEnabled: true,
           aiVisualizerEnabled: b2cAiAvailable,
@@ -216,7 +233,17 @@ export const MobileSuperAppContent: React.FC = () => {
         whiteLabelLockedTenantSlug: tenantSlug,
         activeLanguage: 'tr',
       }),
-    [b2cAiAvailable, effectiveRole, partnerEntitlements.clinicPersonaAllowed, partnerEntitlements.htPersonaAllowed, requestedMode, requestedPersona, tenantSlug]
+    [
+      b2cAiAvailable,
+      effectiveRole,
+      hasPartnerEntitlement,
+      isDemoPreviewOrDemoCustomer,
+      partnerEntitlements.clinicPersonaAllowed,
+      partnerEntitlements.htPersonaAllowed,
+      requestedMode,
+      requestedPersona,
+      tenantSlug,
+    ]
   );
 
   const handleSelectTab = (tab: MobileTabDescriptor) => {
@@ -301,22 +328,27 @@ export const MobileSuperAppContent: React.FC = () => {
         return (
           <MobileExploreMarketplacePage
             whiteLabelLockedTenantSlug={tenantSlug}
-            pastAppointments={[
-              {
-                appointmentId: 'apt-prev-1',
-                tenantId,
-                tenantSlug: 'atelier-nisantasi',
-                businessName: 'Atelier Nişantaşı Hair & Spa',
-                serviceId: 'srv-balayage',
-                serviceName: 'Soft Balayage & Bakım',
-                staffId: 'st-merve',
-                staffName: 'Merve Yılmaz',
-                durationMinutes: 120,
-                priceMajor: 4200,
-                currency: 'TRY',
-                completedAtIso: '2026-11-01T14:00:00Z',
-              },
-            ]}
+            pastAppointments={
+              isGuestSession
+                ? []
+                : bookingHistory
+                    .filter((item) => item.status === 'completed' || item.status === 'confirmed')
+                    .slice(0, 1)
+                    .map((item) => ({
+                      appointmentId: item.appointmentId,
+                      tenantId: item.tenantId,
+                      tenantSlug: item.tenantSlug,
+                      businessName: item.businessName,
+                      serviceId: 'srv-rebook',
+                      serviceName: item.serviceName,
+                      staffId: 'st-1',
+                      staffName: item.specialistName,
+                      durationMinutes: 90,
+                      priceMajor: item.priceMajor,
+                      currency: item.currency,
+                      completedAtIso: `${item.scheduledDate}T${item.scheduledTime}:00Z`,
+                    }))
+            }
             onOpenBookingSheet={handleOpenBooking}
             onOneTapRebook={() => {
               const first = DEFAULT_MOBILE_MARKETPLACE_LISTINGS[0];
@@ -334,6 +366,7 @@ export const MobileSuperAppContent: React.FC = () => {
         return (
           <MobileCustomerWalletPage
             tenantId={tenantId}
+            isGuestSession={isGuestSession}
             onGoToExplore={handleGoToExplore}
           />
         );
@@ -353,6 +386,30 @@ export const MobileSuperAppContent: React.FC = () => {
           />
         );
       case 'ht_concierge':
+        if (isGuestSession || !shellState.availablePersonas.includes('ht_patient')) {
+          return (
+            <div
+              className="rounded-3xl bg-white border border-slate-200 p-6 text-center space-y-3 shadow-sm"
+              data-testid="ht-concierge-locked-card"
+            >
+              <p className="text-sm font-black text-[#111827]">
+                Sağlık Turizmi VIP Konsiyerj Erişimi
+              </p>
+              <p className="text-xs text-slate-500">
+                Bu alan yalnızca tedavi planı ve transfer daveti tanımlanmış hastalar ile yetkili demo hesapları için açıktır.
+              </p>
+              {isGuestSession && (
+                <button
+                  type="button"
+                  onClick={() => openAuthModal('login')}
+                  className="min-h-11 px-5 rounded-xl bg-[#4F46E5] text-white text-xs font-black"
+                >
+                  Giriş Yap / Demo İncele
+                </button>
+              )}
+            </div>
+          );
+        }
         return <MobileHealthTourismConciergePage tenantId={tenantId} />;
       case 'profile':
       case 'partner_switch':
@@ -463,6 +520,18 @@ export const MobileSuperAppContent: React.FC = () => {
           <div className="-mx-3.5 -mt-3 mb-3">
             <MobileStoryOnboarding
               onNavigateExperience={({ mode, persona, tabId }) => {
+                if (
+                  (tabId === 'ht_concierge' || persona === 'ht_patient') &&
+                  (isGuestSession || !shellState.availablePersonas.includes('ht_patient'))
+                ) {
+                  if (isGuestSession) {
+                    openAuthModal('login');
+                    showToast('Sağlık Turizmi VIP konsiyerjini görmek için giriş yapın veya demo hesabı seçin.');
+                  } else {
+                    showToast('Sağlık Turizmi konsiyerji yalnızca davetli VIP hastalar için aktiftir.');
+                  }
+                  return;
+                }
                 if (mode) setRequestedMode(mode);
                 if (persona) setRequestedPersona(persona);
                 if (tabId) setActiveTabId(tabId);

@@ -117,7 +117,26 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
   language = 'tr',
   children,
 }) => {
-  const { themeMode, showToast, activeBooking, completedBreakdown, userProfile, mobileAuthUser, isExplicitlySignedOut } = useMobileAppSession(); const showGuestAvatar = isGuestSession || (isExplicitlySignedOut && !mobileAuthUser); const avatarInitials = (mobileAuthUser?.fullName || userProfile.fullName || 'LARİ').split(/\s+/).filter(Boolean).map((p) => p[0]).join('').slice(0, 2).toLocaleUpperCase('tr-TR');
+  const {
+    themeMode,
+    showToast,
+    activeBooking,
+    bookingHistory,
+    completedBreakdown,
+    userProfile,
+    mobileAuthUser,
+    isExplicitlySignedOut,
+    sessionScopeKey,
+    openAuthModal,
+  } = useMobileAppSession();
+  const showGuestAvatar = isGuestSession || (isExplicitlySignedOut && !mobileAuthUser);
+  const avatarInitials = (mobileAuthUser?.fullName || userProfile.fullName || 'LARİ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toLocaleUpperCase('tr-TR');
 
   const isDark = themeMode === 'dark';
   const activeTab =
@@ -125,7 +144,17 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
 
   const [dockVisible, setDockVisible] = useState(true);
   const [notificationDrawerOpen, setNotificationDrawerOpen] = useState(false);
-  const [unreadNotificationCount, setUnreadNotificationCount] = useState(3);
+  const [readScopes, setReadScopes] = useState<Record<string, boolean>>({});
+  const notifScopeKey = `${sessionScopeKey}:${shellState.effectiveMode}`;
+  const computedUnreadCount = showGuestAvatar
+    ? 0
+    : readScopes[notifScopeKey]
+      ? 0
+      : shellState.effectiveMode === 'b2b_partner'
+        ? 2
+        : bookingHistory.length > 0 || activeBooking
+          ? Math.min(3, (activeBooking ? 1 : 0) + (bookingHistory[0] ? 1 : 0) + 1)
+          : 1;
   const lastScrollY = useRef(0);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -270,9 +299,9 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
                 data-testid="header-notifications-btn"
               >
                 <Bell className="w-5 h-5 stroke-[2.2]" />
-                {unreadNotificationCount > 0 && (
+                {computedUnreadCount > 0 && (
                   <span className="absolute right-0.5 top-0.5 flex min-h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-rose-500 px-1 text-[10px] font-black leading-none text-white dark:border-slate-950">
-                    {unreadNotificationCount}
+                    {computedUnreadCount}
                   </span>
                 )}
               </button>
@@ -288,13 +317,18 @@ export const MobileAppShell: React.FC<MobileAppShellProps> = ({
 
       <NotificationDrawer
         open={notificationDrawerOpen}
-        unreadCount={unreadNotificationCount}
+        unreadCount={computedUnreadCount}
         isDark={isDark}
+        isGuestSession={showGuestAvatar}
         mode={shellState.effectiveMode}
         onPartnerInboxAction={onNotificationBellClick}
+        onOpenAuth={(tab) => {
+          setNotificationDrawerOpen(false);
+          openAuthModal(tab);
+        }}
         onClose={() => setNotificationDrawerOpen(false)}
         onMarkAllRead={() => {
-          setUnreadNotificationCount(0);
+          setReadScopes((prev) => ({ ...prev, [notifScopeKey]: true }));
           showToast('Tüm bildirimler okundu olarak işaretlendi.');
         }}
         onRepeatAppointment={(businessName, serviceName) => {

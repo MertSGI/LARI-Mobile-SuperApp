@@ -989,10 +989,53 @@ export const MobileAuthModal: React.FC<MobileAuthModalProps> = ({
                 </button>
               </form>
 
-              <p className="text-center text-[11px] text-slate-500 font-medium">
-                Hızlı test için demo hesap: <strong>mert@randevulari.com</strong> • Şifre:{' '}
-                <strong>lari123</strong>
-              </p>
+              <div className="rounded-2xl border border-indigo-100 bg-[#F8FAFC] p-3 space-y-2">
+                <p className="text-[11px] font-bold text-slate-600 text-center">
+                  Tek Dokunuşla Demo Hesaplarla Dene (Şifre: lari123)
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={async () => {
+                      setSubmitting(true);
+                      setErrors({});
+                      setFormBannerError(null);
+                      const res = await loginWithEmail('mert@randevulari.com', 'lari123');
+                      setSubmitting(false);
+                      if (res.success) {
+                        onAuthenticated?.({ role: res.user?.role || 'customer' });
+                      } else {
+                        setFormBannerError(res.errorMessage || 'Demo girişi yapılamadı.');
+                      }
+                    }}
+                    className="min-h-10 rounded-xl border border-indigo-200 bg-white px-2.5 py-2 text-[11px] font-black text-[#4338CA] hover:bg-indigo-50 transition"
+                    data-testid="auth-quick-demo-customer-btn"
+                  >
+                    Demo Müşteri (Mert)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={async () => {
+                      setSubmitting(true);
+                      setErrors({});
+                      setFormBannerError(null);
+                      const res = await loginWithEmail('partner@randevulari.com', 'lari123');
+                      setSubmitting(false);
+                      if (res.success) {
+                        onAuthenticated?.({ role: res.user?.role || 'tenant_owner' });
+                      } else {
+                        setFormBannerError(res.errorMessage || 'Demo girişi yapılamadı.');
+                      }
+                    }}
+                    className="min-h-10 rounded-xl border border-indigo-200 bg-white px-2.5 py-2 text-[11px] font-black text-[#4338CA] hover:bg-indigo-50 transition"
+                    data-testid="auth-quick-demo-partner-btn"
+                  >
+                    Demo Partner (Merve)
+                  </button>
+                </div>
+              </div>
             </>
           )}
 

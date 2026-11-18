@@ -428,6 +428,7 @@ export interface MobileAppSessionValue {
   setPartnerCampaigns: React.Dispatch<React.SetStateAction<PartnerCampaign[]>>;
   userProfile: MobileUserProfile;
   selectedCurrency: SupportedCurrency;
+  sessionScopeKey: string;
   mobileAuthUser: MobileAuthUser | null;
   isExplicitlySignedOut: boolean;
   authModalOpen: boolean;
@@ -521,6 +522,167 @@ const INITIAL_PASSPORT_ENTRIES: MobilePassportEntry[] = [
     specialistNote: 'Mockup onayı alındı; doğal yüzey dokusu korunacak.',
   },
 ];
+
+const DEMO_INITIAL_ACTIVE_BOOKING: MobileActiveBooking = {
+  appointmentId: 'apt-live-101',
+  tenantId: 'ten-atelier-nisantasi',
+  tenantSlug: 'atelier-nisantasi',
+  businessName: 'Atelier Nişantaşı Hair & Spa',
+  branchLabel: 'Nişantaşı Merkez',
+  serviceName: 'Soft Balayage & Bakım',
+  serviceCategory: 'beauty_salon',
+  specialistName: 'Merve Y.',
+  scheduledDate: '2026-11-18',
+  scheduledTime: '15:30',
+  priceMajor: 4200,
+  currency: 'TRY',
+  status: 'confirmed',
+  hospitalityDrink: 'Filtre Kahve',
+  quietSession: true,
+};
+
+interface UserSessionVault {
+  activeBooking: MobileActiveBooking | null;
+  bookingHistory: MobileActiveBooking[];
+  passportEntries: MobilePassportEntry[];
+  loyaltyPoints: number;
+  stampCount: number;
+  walletBalanceMinor: number;
+  packageCreditsRemaining: number;
+  likedSocialPosts: string[];
+  savedSocialPosts: string[];
+}
+
+function createEmptyUserVault(): UserSessionVault {
+  return {
+    activeBooking: null,
+    bookingHistory: [],
+    passportEntries: [],
+    loyaltyPoints: 0,
+    stampCount: 0,
+    walletBalanceMinor: 0,
+    packageCreditsRemaining: 0,
+    likedSocialPosts: [],
+    savedSocialPosts: [],
+  };
+}
+
+function createDemoUserVault(): UserSessionVault {
+  return {
+    activeBooking: { ...DEMO_INITIAL_ACTIVE_BOOKING },
+    bookingHistory: INITIAL_BOOKING_HISTORY.map((item) => ({ ...item })),
+    passportEntries: INITIAL_PASSPORT_ENTRIES.map((entry) => ({ ...entry })),
+    loyaltyPoints: 480,
+    stampCount: 4,
+    walletBalanceMinor: 125000,
+    packageCreditsRemaining: 5,
+    likedSocialPosts: [],
+    savedSocialPosts: [],
+  };
+}
+
+function isDemoAccountUser(user: MobileAuthUser | null): boolean {
+  if (!user) return false;
+  return (
+    user.userId === 'usr-lari-mert' ||
+    user.userId === 'usr-lari-partner' ||
+    user.email.trim().toLowerCase() === 'mert@randevulari.com' ||
+    user.email.trim().toLowerCase() === 'partner@randevulari.com'
+  );
+}
+
+function resolveSessionScopeKey(
+  user: MobileAuthUser | null,
+  signedOut: boolean,
+  hasPartnerSubscription = false
+): string {
+  if (user) {
+    return isDemoAccountUser(user) ? 'demo' : `user:${user.userId}`;
+  }
+  if (hasPartnerSubscription) {
+    return 'partner-onboarding';
+  }
+  if (signedOut) {
+    return 'guest';
+  }
+  if (typeof window !== 'undefined') {
+    const roleParam = new URLSearchParams(window.location.search).get('role');
+    if (roleParam === 'guest') return 'guest';
+    const isNativeCapacitor = Boolean((window as any).Capacitor?.isNativePlatform?.());
+    const isLocalhostPreview =
+      !isNativeCapacitor && ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    return isLocalhostPreview ? 'demo' : 'guest';
+  }
+  return 'demo';
+}
+
+function loadUserVaultForScope(scopeKey: string): UserSessionVault {
+  if (scopeKey === 'guest') {
+    return createEmptyUserVault();
+  }
+  const fallback = scopeKey === 'demo' ? createDemoUserVault() : createEmptyUserVault();
+  try {
+    if (typeof window === 'undefined') return fallback;
+    const raw = window.localStorage.getItem(`lari_mobile_user_vault_v1_${scopeKey}`);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<UserSessionVault> | null;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return fallback;
+    }
+    return {
+      activeBooking:
+        parsed.activeBooking && typeof parsed.activeBooking === 'object'
+          ? parsed.activeBooking
+          : fallback.activeBooking,
+      bookingHistory: Array.isArray(parsed.bookingHistory)
+        ? parsed.bookingHistory
+        : fallback.bookingHistory,
+      passportEntries: Array.isArray(parsed.passportEntries)
+        ? parsed.passportEntries
+        : fallback.passportEntries,
+      loyaltyPoints:
+        typeof parsed.loyaltyPoints === 'number' && Number.isFinite(parsed.loyaltyPoints)
+          ? parsed.loyaltyPoints
+          : fallback.loyaltyPoints,
+      stampCount:
+        typeof parsed.stampCount === 'number' && Number.isFinite(parsed.stampCount)
+          ? parsed.stampCount
+          : fallback.stampCount,
+      walletBalanceMinor:
+        typeof parsed.walletBalanceMinor === 'number' &&
+        Number.isFinite(parsed.walletBalanceMinor)
+          ? parsed.walletBalanceMinor
+          : fallback.walletBalanceMinor,
+      packageCreditsRemaining:
+        typeof parsed.packageCreditsRemaining === 'number' &&
+        Number.isFinite(parsed.packageCreditsRemaining)
+          ? parsed.packageCreditsRemaining
+          : fallback.packageCreditsRemaining,
+      likedSocialPosts: Array.isArray(parsed.likedSocialPosts)
+        ? parsed.likedSocialPosts.filter((x): x is string => typeof x === 'string')
+        : [],
+      savedSocialPosts: Array.isArray(parsed.savedSocialPosts)
+        ? parsed.savedSocialPosts.filter((x): x is string => typeof x === 'string')
+        : [],
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function saveUserVaultForScope(scopeKey: string, vault: UserSessionVault): void {
+  if (scopeKey === 'guest') return;
+  try {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(
+        `lari_mobile_user_vault_v1_${scopeKey}`,
+        JSON.stringify(vault)
+      );
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
 
 const INITIAL_BOOKING_HISTORY: MobileActiveBooking[] = [
   {
@@ -681,6 +843,7 @@ const SAFE_FALLBACK: MobileAppSessionValue = {
   setPartnerCampaigns: noop as any,
   userProfile: DEFAULT_USER_PROFILE,
   selectedCurrency: 'TRY',
+  sessionScopeKey: 'guest',
   mobileAuthUser: null,
   isExplicitlySignedOut: false,
   authModalOpen: false,
@@ -728,40 +891,63 @@ const MobileAppSessionContext = createContext<MobileAppSessionValue | null>(null
 export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
   children,
 }) => {
+  const [mobileAuthUser, setMobileAuthUser] = useState<MobileAuthUser | null>(() =>
+    getActiveMobileAuthUser()
+  );
+  const [isExplicitlySignedOut, setIsExplicitlySignedOut] = useState<boolean>(() =>
+    isMobileExplicitlySignedOut()
+  );
+  const [partnerSubscription, setPartnerSubscription] =
+    useState<PartnerSubscriptionSnapshot | null>(null);
+  const sessionScopeKey = resolveSessionScopeKey(
+    mobileAuthUser,
+    isExplicitlySignedOut,
+    Boolean(partnerSubscription)
+  );
+  const [initialVault] = useState<UserSessionVault>(() =>
+    loadUserVaultForScope(sessionScopeKey)
+  );
+
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>('light');
   const [activeBooking, setActiveBooking] = useState<MobileActiveBooking | null>(
-    null
+    () => initialVault.activeBooking
   );
   const [bookingHistory, setBookingHistory] = useState<MobileActiveBooking[]>(
-    () => INITIAL_BOOKING_HISTORY.map((item) => ({ ...item }))
+    () => initialVault.bookingHistory
   );
   const [passportEntries, setPassportEntries] = useState<MobilePassportEntry[]>(
-    () => INITIAL_PASSPORT_ENTRIES.map((entry) => ({ ...entry }))
+    () => initialVault.passportEntries
   );
-  const [loyaltyPoints, setLoyaltyPoints] = useState(480);
-  const [stampCount, setStampCount] = useState(4);
-  const [walletBalanceMinor, setWalletBalanceMinor] = useState(125000);
+  const [loyaltyPoints, setLoyaltyPoints] = useState(initialVault.loyaltyPoints);
+  const [stampCount, setStampCount] = useState(initialVault.stampCount);
+  const [walletBalanceMinor, setWalletBalanceMinor] = useState(
+    initialVault.walletBalanceMinor
+  );
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [partnerCatalog, setPartnerCatalog] = useState<PartnerCatalogItem[]>(
     () => INITIAL_PARTNER_CATALOG.map((item) => ({ ...item }))
   );
-  const [packageCreditsRemaining, setPackageCreditsRemaining] = useState(5);
+  const [packageCreditsRemaining, setPackageCreditsRemaining] = useState(
+    initialVault.packageCreditsRemaining
+  );
   const [admittedPatientSession, setAdmittedPatientSession] =
     useState<AdmittedPatientSession | null>(null);
   const [completedBreakdown, setCompletedBreakdown] =
     useState<CompletedAppointmentBreakdown | null>(null);
   const [activePaymentQr, setActivePaymentQr] =
     useState<MobileQrArtifact | null>(null);
-  const [likedSocialPosts, setLikedSocialPosts] = useState<string[]>([]);
-  const [savedSocialPosts, setSavedSocialPosts] = useState<string[]>([]);
+  const [likedSocialPosts, setLikedSocialPosts] = useState<string[]>(
+    () => initialVault.likedSocialPosts
+  );
+  const [savedSocialPosts, setSavedSocialPosts] = useState<string[]>(
+    () => initialVault.savedSocialPosts
+  );
   const [customVenuePhotos, setCustomVenuePhotos] = useState<Record<string, string[]>>(
     {}
   );
   const [customSocialPosts, setCustomSocialPosts] = useState<MobileCustomSocialPost[]>(
     []
   );
-  const [partnerSubscription, setPartnerSubscription] =
-    useState<PartnerSubscriptionSnapshot | null>(null);
   const [liveStagesByAppointmentId, setLiveStagesByAppointmentId] = useState<
     Record<string, 1 | 2 | 3 | 4>
   >({});
@@ -904,14 +1090,33 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       }
     )
   );
-  const [mobileAuthUser, setMobileAuthUser] = useState<MobileAuthUser | null>(() =>
-    getActiveMobileAuthUser()
-  );
-  const [isExplicitlySignedOut, setIsExplicitlySignedOut] = useState<boolean>(() =>
-    isMobileExplicitlySignedOut()
-  );
   const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
   const [authModalInitialTab, setAuthModalInitialTab] = useState<'login' | 'register'>('login');
+
+  useEffect(() => {
+    saveUserVaultForScope(sessionScopeKey, {
+      activeBooking,
+      bookingHistory,
+      passportEntries,
+      loyaltyPoints,
+      stampCount,
+      walletBalanceMinor,
+      packageCreditsRemaining,
+      likedSocialPosts,
+      savedSocialPosts,
+    });
+  }, [
+    activeBooking,
+    bookingHistory,
+    likedSocialPosts,
+    loyaltyPoints,
+    packageCreditsRemaining,
+    passportEntries,
+    savedSocialPosts,
+    sessionScopeKey,
+    stampCount,
+    walletBalanceMinor,
+  ]);
   const [selectedCurrency, setSelectedCurrency] = useState<SupportedCurrency>(() => {
     try {
       const saved =
@@ -1043,9 +1248,27 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     setAuthModalOpen(false);
   }, []);
 
+  const hydrateSessionVault = useCallback((vault: UserSessionVault) => {
+    setActiveBooking(vault.activeBooking);
+    setBookingHistory(vault.bookingHistory);
+    setPassportEntries(vault.passportEntries);
+    setLoyaltyPoints(vault.loyaltyPoints);
+    setStampCount(vault.stampCount);
+    setWalletBalanceMinor(vault.walletBalanceMinor);
+    setPackageCreditsRemaining(vault.packageCreditsRemaining);
+    setLikedSocialPosts(vault.likedSocialPosts);
+    setSavedSocialPosts(vault.savedSocialPosts);
+    setCompletedBreakdown(null);
+    setActivePaymentQr(null);
+    setAdmittedPatientSession(null);
+    setLiveStagesByAppointmentId({});
+  }, []);
+
   const applyAuthenticatedSession = useCallback(
     (result: MobileAuthActionResult, welcomeVerb: string) => {
       if (!result.success || !result.user) return;
+      const nextScope = resolveSessionScopeKey(result.user, false);
+      hydrateSessionVault(loadUserVaultForScope(nextScope));
       setMobileAuthUser(result.user);
       setIsExplicitlySignedOut(false);
       if (result.profile) {
@@ -1054,7 +1277,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       setAuthModalOpen(false);
       showToast(`${welcomeVerb}, ${result.user.fullName}!`);
     },
-    [showToast, updateUserProfile]
+    [hydrateSessionVault, showToast, updateUserProfile]
   );
 
   const loginWithEmail = useCallback(
@@ -1089,11 +1312,11 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
     setMobileAuthUser(null);
     setIsExplicitlySignedOut(true);
     setPartnerSubscription(null);
-    setAdmittedPatientSession(null);
+    hydrateSessionVault(createEmptyUserVault());
     setAuthModalInitialTab('login');
     setAuthModalOpen(true);
     showToast('Oturumunuz güvenle kapatıldı.');
-  }, [showToast]);
+  }, [hydrateSessionVault, showToast]);
 
   const rescheduleActiveBooking = useCallback(
     (newDate: string, newTime: string) => {
@@ -1555,6 +1778,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       setPartnerCampaigns,
       userProfile,
       selectedCurrency,
+      sessionScopeKey,
       mobileAuthUser,
       isExplicitlySignedOut,
       authModalOpen,
@@ -1630,6 +1854,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       setPartnerCampaigns,
       userProfile,
       selectedCurrency,
+      sessionScopeKey,
       mobileAuthUser,
       isExplicitlySignedOut,
       authModalOpen,

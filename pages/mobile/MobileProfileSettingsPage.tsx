@@ -329,36 +329,65 @@ export const MobileProfileSettingsPage: React.FC<
         </div>
 
         {/* 3-Column Bento Stats Row */}
-        <div className="grid grid-cols-3 divide-x-2 divide-slate-200 dark:divide-slate-700">
-          <div className="p-3 text-center">
-            <span className="block text-[10px] font-black uppercase text-slate-500">
-              LARİ Puan
-            </span>
-            <span className="text-base font-black text-[#4F46E5] mt-0.5 block">
-              {loyaltyPoints}
-            </span>
+        {effectiveGuestSession ? (
+          <div className="grid grid-cols-3 divide-x-2 divide-slate-200 dark:divide-slate-700">
+            <div className="p-3 text-center">
+              <span className="block text-[10px] font-black uppercase text-slate-500">
+                Üyelik
+              </span>
+              <span className="text-xs font-black text-[#4F46E5] mt-1 block">
+                Misafir
+              </span>
+            </div>
+            <div className="p-3 text-center">
+              <span className="block text-[10px] font-black uppercase text-slate-500">
+                LARİ Puan
+              </span>
+              <span className="text-base font-black text-slate-400 mt-0.5 block">
+                —
+              </span>
+            </div>
+            <div className="p-3 text-center">
+              <span className="block text-[10px] font-black uppercase text-slate-500">
+                Randevular
+              </span>
+              <span className="text-base font-black text-slate-400 mt-0.5 block">
+                —
+              </span>
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowAllBookings((prev) => !prev)}
-            className="p-3 text-center transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
-          >
-            <span className="block text-[10px] font-black uppercase text-slate-500">
-              Randevularım
-            </span>
-            <span className="text-base font-black mt-0.5 block">
-              {bookingHistory.length}
-            </span>
-          </button>
-          <div className="p-3 text-center">
-            <span className="block text-[10px] font-black uppercase text-slate-500">
-              Paket Hakkı
-            </span>
-            <span className="text-base font-black text-emerald-600 mt-0.5 block">
-              {packageCreditsRemaining}/8
-            </span>
+        ) : (
+          <div className="grid grid-cols-3 divide-x-2 divide-slate-200 dark:divide-slate-700">
+            <div className="p-3 text-center">
+              <span className="block text-[10px] font-black uppercase text-slate-500">
+                LARİ Puan
+              </span>
+              <span className="text-base font-black text-[#4F46E5] mt-0.5 block">
+                {loyaltyPoints}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAllBookings((prev) => !prev)}
+              className="p-3 text-center transition hover:bg-slate-50 dark:hover:bg-slate-800/60"
+            >
+              <span className="block text-[10px] font-black uppercase text-slate-500">
+                Randevularım
+              </span>
+              <span className="text-base font-black mt-0.5 block">
+                {bookingHistory.length}
+              </span>
+            </button>
+            <div className="p-3 text-center">
+              <span className="block text-[10px] font-black uppercase text-slate-500">
+                Paket Hakkı
+              </span>
+              <span className="text-base font-black text-emerald-600 mt-0.5 block">
+                {packageCreditsRemaining > 0 ? `${packageCreditsRemaining}/8` : '0'}
+              </span>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Appearance, Working Mode & Role Selector Card */}
@@ -409,7 +438,7 @@ export const MobileProfileSettingsPage: React.FC<
                 ? 'Aktif Yetki: Cep Ajanda, QR Müşteri Kabul, Sesli Katalog Eşleştirme, Cep POS, Fiyat Dökümü, Katalog Yönetimi ve (FaceID ile) Klinik PHI.'
                 : hasPartnerAccess
                   ? 'Aktif Görünüm: Keşfet & Sosyal Akış, Google Haritalar, Randevu/Paket QR, Fiyat Dökümü Ödeme ve Sağlık Turizmi. İşletme araçları yalnızca Partner modunda açılır.'
-                  : 'Misafir / Müşteri Hesabı: Yalnızca Keşfet, Randevu, QR Pass, Fiyat Dökümü ve Sağlık Turizmi ekranlarını görür; İşletme/POS panelleri rol bazlı kilitlidir.'}
+                  : 'Misafir / Müşteri Hesabı: Yalnızca Keşfet, Randevu ve size ait Cüzdan / QR alanlarını görür; İşletme/POS ve Sağlık Turizmi panelleri yetki bazlı kilitlidir.'}
             </p>
           )}
         </div>
@@ -604,75 +633,83 @@ export const MobileProfileSettingsPage: React.FC<
       </div>
 
       {/* Customer Past & Active Appointments History */}
-      <div
-        className={`rounded-3xl p-4 space-y-3 shadow-sm ${cardSurface}`}
-        data-testid="profile-booking-history-card"
-      >
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-black flex items-center gap-2">
-            <CalendarClock className="w-4 h-4 text-[#4F46E5]" />
-            Önceki & Aktif Randevularım
-          </span>
-          {bookingHistory.length > 2 && (
-            <button
-              type="button"
-              onClick={() => setShowAllBookings((v) => !v)}
-              className="text-xs font-black text-[#4F46E5] hover:underline"
-              data-testid="profile-toggle-all-bookings-btn"
-            >
-              {showAllBookings
-                ? 'Daralt'
-                : `Tümünü Gör (${bookingHistory.length})`}
-            </button>
+      {!effectiveGuestSession && (
+        <div
+          className={`rounded-3xl p-4 space-y-3 shadow-sm ${cardSurface}`}
+          data-testid="profile-booking-history-card"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-black flex items-center gap-2">
+              <CalendarClock className="w-4 h-4 text-[#4F46E5]" />
+              Önceki & Aktif Randevularım
+            </span>
+            {bookingHistory.length > 2 && (
+              <button
+                type="button"
+                onClick={() => setShowAllBookings((v) => !v)}
+                className="text-xs font-black text-[#4F46E5] hover:underline"
+                data-testid="profile-toggle-all-bookings-btn"
+              >
+                {showAllBookings
+                  ? 'Daralt'
+                  : `Tümünü Gör (${bookingHistory.length})`}
+              </button>
+            )}
+          </div>
+
+          {displayedHistory.length > 0 ? (
+            <div className="space-y-2">
+              {displayedHistory.map((apt) => (
+                <div
+                  key={apt.appointmentId}
+                  className={`rounded-2xl p-3 flex items-center justify-between gap-2 ${innerSurface}`}
+                  data-testid={`profile-history-item-${apt.appointmentId}`}
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-black truncate">{apt.businessName}</p>
+                    <p className="text-[11px] font-semibold text-[#4F46E5] truncate">
+                      {apt.serviceName}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {apt.scheduledDate} • {apt.scheduledTime} • {apt.specialistName}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0 space-y-1">
+                    <span
+                      className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold border ${
+                        apt.status === 'confirmed'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : apt.status === 'cancelled'
+                            ? 'bg-rose-50 text-rose-700 border-rose-200'
+                            : 'bg-[#EEF2FF] text-[#4338CA] border-indigo-200'
+                      }`}
+                    >
+                      {apt.status === 'confirmed'
+                        ? 'Onaylı'
+                        : apt.status === 'rescheduled'
+                          ? 'Ertelendi'
+                          : apt.status === 'cancelled'
+                            ? 'İptal'
+                            : 'Tamamlandı'}
+                    </span>
+                    <p className="text-xs font-black">
+                      {(apt.currency === 'TRY'
+                        ? convertFromTryMajor(apt.priceMajor, selectedCurrency)
+                        : apt.priceMajor
+                      ).toLocaleString('tr-TR')}{' '}
+                      {apt.currency === 'TRY' ? selectedCurrency : apt.currency}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-2xl border border-slate-200 dark:border-slate-700 p-3 text-center text-xs text-slate-500">
+              Henüz aktif veya geçmiş randevunuz bulunmuyor.
+            </p>
           )}
         </div>
-
-        <div className="space-y-2">
-          {displayedHistory.map((apt) => (
-            <div
-              key={apt.appointmentId}
-              className={`rounded-2xl p-3 flex items-center justify-between gap-2 ${innerSurface}`}
-              data-testid={`profile-history-item-${apt.appointmentId}`}
-            >
-              <div className="min-w-0">
-                <p className="text-xs font-black truncate">{apt.businessName}</p>
-                <p className="text-[11px] font-semibold text-[#4F46E5] truncate">
-                  {apt.serviceName}
-                </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  {apt.scheduledDate} • {apt.scheduledTime} • {apt.specialistName}
-                </p>
-              </div>
-              <div className="text-right shrink-0 space-y-1">
-                <span
-                  className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold border ${
-                    apt.status === 'confirmed'
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : apt.status === 'cancelled'
-                        ? 'bg-rose-50 text-rose-700 border-rose-200'
-                        : 'bg-[#EEF2FF] text-[#4338CA] border-indigo-200'
-                  }`}
-                >
-                  {apt.status === 'confirmed'
-                    ? 'Onaylı'
-                    : apt.status === 'rescheduled'
-                      ? 'Ertelendi'
-                      : apt.status === 'cancelled'
-                        ? 'İptal'
-                        : 'Tamamlandı'}
-                </span>
-                <p className="text-xs font-black">
-                  {(apt.currency === 'TRY'
-                    ? convertFromTryMajor(apt.priceMajor, selectedCurrency)
-                    : apt.priceMajor
-                  ).toLocaleString('tr-TR')}{' '}
-                  {apt.currency === 'TRY' ? selectedCurrency : apt.currency}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      )}
 
       {/* Accordion Settings List (Matches Corporate Clean Design) */}
       <div className={`rounded-3xl overflow-hidden shadow-sm divide-y-2 divide-slate-200 dark:divide-slate-800 ${cardSurface}`}>
