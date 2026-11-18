@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/lari-mobile-superapp
+      - feat/lari-qa-and-growth-updates
   workflow_dispatch:
 
 jobs:
