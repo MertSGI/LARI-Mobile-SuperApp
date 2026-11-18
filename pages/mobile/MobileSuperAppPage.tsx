@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Compass } from 'lucide-react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { Role } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
@@ -20,9 +19,11 @@ import MobileExploreMarketplacePage, {
   DEFAULT_MOBILE_MARKETPLACE_LISTINGS,
 } from './b2c/MobileExploreMarketplacePage';
 import MobileBookingBottomSheet from '../../components/mobile/b2c/MobileBookingBottomSheet';
+import MobileQuickBookCarouselSheet from '../../components/mobile/b2c/MobileQuickBookCarouselSheet';
 import { StorefrontSpecialistProfile } from '../../components/mobile/b2c/MobileStorefrontDetailDrawer';
 import MobilePartnerOnboardingFunnel from '../../components/mobile/partner/MobilePartnerOnboardingFunnel';
 import MobileCustomerWalletPage from './b2c/MobileCustomerWalletPage';
+import MobileSocialFeedPage from './b2c/MobileSocialFeedPage';
 import MobileAIStyleVisualizerPage from './b2c/MobileAIStyleVisualizerPage';
 import MobileHealthTourismConciergePage from './b2c/MobileHealthTourismConciergePage';
 import MobileProfileSettingsPage from './MobileProfileSettingsPage';
@@ -96,6 +97,7 @@ export const MobileSuperAppContent: React.FC = () => {
   );
   const [partnerQuickAddTick, setPartnerQuickAddTick] = useState(0);
   const [partnerOnboardingOpen, setPartnerOnboardingOpen] = useState(false);
+  const [quickBookCarouselOpen, setQuickBookCarouselOpen] = useState(false);
   const [bookingListing, setBookingListing] =
     useState<MobileDiscoveryListingItem | null>(null);
   const [bookingSpecialistName, setBookingSpecialistName] = useState<
@@ -145,12 +147,18 @@ export const MobileSuperAppContent: React.FC = () => {
 
   const handleSelectTab = (tab: MobileTabDescriptor) => {
     if (tab.id === 'quick_book') {
-      const first = DEFAULT_MOBILE_MARKETPLACE_LISTINGS[0];
-      setBookingListing({
-        ...first,
-        distanceKm: 0.4,
-        estimatedTravelMinutes: 5,
-      });
+      if (tenantSlug) {
+        const lockedListing =
+          DEFAULT_MOBILE_MARKETPLACE_LISTINGS.find((item) => item.slug === tenantSlug) ||
+          DEFAULT_MOBILE_MARKETPLACE_LISTINGS[0];
+        handleOpenBooking({
+          ...lockedListing,
+          distanceKm: 0.4,
+          estimatedTravelMinutes: 5,
+        });
+      } else {
+        setQuickBookCarouselOpen(true);
+      }
       return;
     }
     setActiveTabId(tab.id);
@@ -284,6 +292,8 @@ export const MobileSuperAppContent: React.FC = () => {
             partnerQuickAddTick={partnerQuickAddTick}
           />
         );
+      case 'social_feed':
+        return <MobileSocialFeedPage onOpenBookingSheet={handleOpenBooking} />;
       case 'partner_inbox':
         return (
           <MobilePartnerAgendaAndInboxPage
@@ -330,12 +340,19 @@ export const MobileSuperAppContent: React.FC = () => {
             setActiveTabId('partner_agenda');
             return;
           }
-          const first = DEFAULT_MOBILE_MARKETPLACE_LISTINGS[0];
-          handleOpenBooking({
-            ...first,
-            distanceKm: 0.4,
-            estimatedTravelMinutes: 5,
-          });
+          if (tenantSlug) {
+            const lockedListing =
+              DEFAULT_MOBILE_MARKETPLACE_LISTINGS.find(
+                (item) => item.slug === tenantSlug
+              ) || DEFAULT_MOBILE_MARKETPLACE_LISTINGS[0];
+            handleOpenBooking({
+              ...lockedListing,
+              distanceKm: 0.4,
+              estimatedTravelMinutes: 5,
+            });
+          } else {
+            setQuickBookCarouselOpen(true);
+          }
         }}
         onNotificationBellClick={() => {
           setActiveTabId(shellState.effectiveMode === 'b2b_partner' ? 'partner_inbox' : 'wallet');
@@ -372,6 +389,17 @@ export const MobileSuperAppContent: React.FC = () => {
         >
           {toastMessage}
         </div>
+      ) : null}
+
+      {quickBookCarouselOpen ? (
+        <MobileQuickBookCarouselSheet
+          listings={DEFAULT_MOBILE_MARKETPLACE_LISTINGS}
+          onClose={() => setQuickBookCarouselOpen(false)}
+          onOpenBooking={(listing, specialist, serviceNames) => {
+            setQuickBookCarouselOpen(false);
+            handleOpenBooking(listing, specialist, serviceNames);
+          }}
+        />
       ) : null}
 
       {bookingListing && (

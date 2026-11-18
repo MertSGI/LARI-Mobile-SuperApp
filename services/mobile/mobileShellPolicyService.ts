@@ -248,8 +248,8 @@ function buildB2cTabs(
       }
     : {
         id: 'explore',
-        labelTr: 'Keşfet & Harita',
-        labelEn: 'Explore & Map',
+        labelTr: 'Ana Sayfa',
+        labelEn: 'Home',
         iconName: 'Compass',
         routePath: '/m/explore',
         minTouchTargetPx: 48,
@@ -257,64 +257,77 @@ function buildB2cTabs(
         capabilityTier: resolveHonestCapabilityTier('core_booking_and_qr'),
       };
 
-  const fourthTab: MobileTabDescriptor =
-    persona === 'ht_patient' && verticals.healthTourismEnabled
-      ? {
-          id: 'ht_concierge',
-          labelTr: 'VIP Seyahat & Teklif',
-          labelEn: 'Medical Concierge',
-          iconName: 'Plane',
-          routePath: '/m/concierge',
-          minTouchTargetPx: 48,
-          requiresBiometricGate: false,
-          capabilityTier: resolveHonestCapabilityTier('health_tourism_concierge'),
-          badgeText: 'EUR/USD',
-        }
-      : {
-          id: 'ai_style',
-          labelTr: persona === 'clinic_patient' ? 'Klinik & Onam' : 'AI Stil & Paket',
-          labelEn: persona === 'clinic_patient' ? 'Clinic & Consent' : 'AI Style & Packs',
-          iconName: 'Sparkles',
-          routePath: '/m/ai-style',
-          minTouchTargetPx: 48,
-          requiresBiometricGate: false,
-          capabilityTier: resolveHonestCapabilityTier('ai_style_and_clinical_draft'),
-        };
+  const qrTab: MobileTabDescriptor = {
+    id: 'wallet',
+    labelTr: 'Randevu & QR',
+    labelEn: 'Wallet & QR',
+    iconName: 'QrCode',
+    routePath: '/m/wallet',
+    minTouchTargetPx: 48,
+    requiresBiometricGate: false,
+    capabilityTier: resolveHonestCapabilityTier('core_booking_and_qr'),
+    badgeText: 'Offline',
+  };
+
+  const socialFeedTab: MobileTabDescriptor = {
+    id: 'social_feed',
+    labelTr: 'Keşfet & Akış',
+    labelEn: 'Discover Feed',
+    iconName: 'Flame',
+    routePath: '/m/discover-feed',
+    minTouchTargetPx: 48,
+    requiresBiometricGate: false,
+    capabilityTier: resolveHonestCapabilityTier('core_booking_and_qr'),
+  };
+
+  const quickBookTab: MobileTabDescriptor = {
+    id: 'quick_book',
+    labelTr: 'Hızlı Randevu',
+    labelEn: 'Quick Book',
+    iconName: 'CalendarPlus',
+    routePath: '/m/book',
+    minTouchTargetPx: 52,
+    requiresBiometricGate: false,
+    capabilityTier: resolveHonestCapabilityTier('waitlist_and_resources'),
+  };
+
+  const profileTab: MobileTabDescriptor = {
+    id: 'profile',
+    labelTr: 'Profil & KVKK',
+    labelEn: 'Profile & Privacy',
+    iconName: 'UserCheck',
+    routePath: '/m/profile',
+    minTouchTargetPx: 48,
+    requiresBiometricGate: false,
+    capabilityTier: resolveHonestCapabilityTier('core_booking_and_qr'),
+  };
+
+  if (persona === 'ht_patient' && verticals.healthTourismEnabled) {
+    return [
+      firstTab,
+      qrTab,
+      socialFeedTab,
+      {
+        id: 'ht_concierge',
+        labelTr: 'VIP Seyahat & Teklif',
+        labelEn: 'Medical Concierge',
+        iconName: 'Plane',
+        routePath: '/m/concierge',
+        minTouchTargetPx: 48,
+        requiresBiometricGate: false,
+        capabilityTier: resolveHonestCapabilityTier('health_tourism_concierge'),
+        badgeText: 'EUR/USD',
+      },
+      profileTab,
+    ];
+  }
 
   return [
     firstTab,
-    {
-      id: 'wallet',
-      labelTr: 'Randevu & QR',
-      labelEn: 'Wallet & QR',
-      iconName: 'QrCode',
-      routePath: '/m/wallet',
-      minTouchTargetPx: 48,
-      requiresBiometricGate: false,
-      capabilityTier: resolveHonestCapabilityTier('core_booking_and_qr'),
-      badgeText: 'Offline',
-    },
-    {
-      id: 'quick_book',
-      labelTr: '1-Tap Randevu',
-      labelEn: '1-Tap Book',
-      iconName: 'CalendarPlus',
-      routePath: '/m/book',
-      minTouchTargetPx: 52,
-      requiresBiometricGate: false,
-      capabilityTier: resolveHonestCapabilityTier('waitlist_and_resources'),
-    },
-    fourthTab,
-    {
-      id: 'profile',
-      labelTr: 'Profil & KVKK',
-      labelEn: 'Profile & Privacy',
-      iconName: 'UserCheck',
-      routePath: '/m/profile',
-      minTouchTargetPx: 48,
-      requiresBiometricGate: false,
-      capabilityTier: resolveHonestCapabilityTier('core_booking_and_qr'),
-    },
+    quickBookTab,
+    socialFeedTab,
+    qrTab,
+    profileTab,
   ];
 }
 

@@ -1,19 +1,16 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Bookmark,
   CalendarCheck,
-  CalendarPlus,
   Clock,
   Compass,
   ExternalLink,
-  Heart,
   LayoutDashboard,
   Map,
   MapPin,
+  Maximize2,
   Mic,
   RotateCcw,
   Search,
-  Share2,
   ShieldCheck,
   SlidersHorizontal,
   Star,
@@ -28,6 +25,7 @@ import {
   PastAppointmentSnapshot,
   searchMobileMarketplace,
 } from '../../../services/mobile/mobileDiscoveryService';
+import { convertFromTryMajor } from '../../../services/mobile/mobileRegionCurrencyService';
 import {
   MOBILE_CATEGORY_ARTWORKS,
   VENUE_VISUAL_CATALOG,
@@ -52,6 +50,9 @@ export const DEFAULT_MOBILE_MARKETPLACE_LISTINGS: MarketplaceTenantListing[] = [
     priceTier: 3,
     availableToday: true,
     nextAvailableSlot: '15:30',
+    isSponsored: true,
+    sponsorPriority: 1,
+    sponsorTagTr: 'Öne Çıkan',
     googleBusinessProfile: {
       googlePlaceId: 'ChIJ_LARI_ATELIER_NISANTASI',
       mapsUri: 'https://www.google.com/maps/search/?api=1&query=41.0504,28.9932',
@@ -267,49 +268,19 @@ const MOBILE_CATEGORY_OPTIONS = [
   { id: 'personal_trainer', label: 'Pilates & Fitness', visualId: 'personal_trainer', vertical: 'personal_trainer' },
 ] as const;
 
-interface SocialShowcasePost {
-  postId: string;
-  tenantSlug: string;
-  businessName: string;
-  specialist: string;
-  caption: string;
-  baseLikes: number;
-  serviceTag: string;
-  photoUrl?: string;
+interface VoiceRecognitionController {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  start: () => void;
+  stop: () => void;
+  abort?: () => void;
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  onend: (() => void) | null;
 }
 
-const DEFAULT_SOCIAL_SHOWCASE_POSTS: SocialShowcasePost[] = [
-  {
-    postId: 'post-balayage-merve',
-    tenantSlug: 'atelier-nisantasi',
-    businessName: 'Atelier Nişantaşı Hair & Spa',
-    specialist: 'Merve Yılmaz • Kuaför & Güzellik',
-    caption:
-      '9.12 Soğuk Bej Balayage + Olaplex No.2 onarımı tamamlandı. Bakım formülü müşterinin dijital pasaportuna işlendi.',
-    baseLikes: 142,
-    serviceTag: 'Soft Balayage & Bakım',
-  },
-  {
-    postId: 'post-maslak-auto',
-    tenantSlug: 'maslak-auto-studio',
-    businessName: 'Maslak Auto Studio • Bakım & Servis',
-    specialist: 'Kemal Usta • Oto Servis & Detailing',
-    caption:
-      'Seramik boya koruma + 60.000 km periyodik bakım & bilgisayarlı arıza tespiti şeffaf fiyat dökümü ile teslim edildi.',
-    baseLikes: 98,
-    serviceTag: 'Periyodik Bakım & Bilgisayarlı Kontrol',
-  },
-  {
-    postId: 'post-dent-smile',
-    tenantSlug: 'lari-dent-kadikoy',
-    businessName: 'LARİ Dent & Estetik Kliniği',
-    specialist: 'Dr. Ece Aksoy • Diş & Gülüş Kliniği',
-    caption:
-      'Üst çene OM1 doğal ton E-Max lamina önizleme ve QR kabul ile 45 dakikada dijital prova.',
-    baseLikes: 116,
-    serviceTag: 'Dijital Gülüş Tasarımı Muayenesi',
-  },
-];
+type VoiceRecognitionConstructor = new () => VoiceRecognitionController;
 
 export interface MobileExploreMarketplacePageProps {
   whiteLabelLockedTenantSlug?: string | null;
@@ -337,17 +308,9 @@ export const MobileExploreMarketplacePage: React.FC<
   const {
     showToast,
     themeMode,
-    customSocialPosts,
-    likedSocialPosts,
-    savedSocialPosts,
-    toggleLikeSocialPost,
-    toggleSaveSocialPost,
+    selectedCurrency,
   } = useMobileAppSession();
   const isDark = themeMode === 'dark';
-  const socialShowcasePosts: SocialShowcasePost[] = [
-    ...customSocialPosts,
-    ...DEFAULT_SOCIAL_SHOWCASE_POSTS,
-  ];
 
   const [vertical, setVertical] = useState<LariBusinessVertical | 'all'>('all');
   const [queryText, setQueryText] = useState('');
@@ -356,6 +319,7 @@ export const MobileExploreMarketplacePage: React.FC<
   const [minRating, setMinRating] = useState<number>(0);
   const [gpsEnabled, setGpsEnabled] = useState(false);
   const [showRadarMap, setShowRadarMap] = useState(true);
+  const [expandedMapOpen, setExpandedMapOpen] = useState(false);
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
   const [showAllCategories, setShowAllCategories] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
@@ -364,6 +328,12 @@ export const MobileExploreMarketplacePage: React.FC<
   );
   const [storefrontDrawerListing, setStorefrontDrawerListing] =
     useState<MobileDiscoveryListingItem | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceFallbackOpen, setVoiceFallbackOpen] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState(
+    'Mikrofona dokunun veya hazır aramalardan birini seçin.'
+  );
+  const recognitionRef = useRef<VoiceRecognitionController | null>(null);
 
   const userCoords = gpsEnabled
     ? { latitude: 41.048, longitude: 28.995 }
@@ -380,13 +350,18 @@ export const MobileExploreMarketplacePage: React.FC<
     whiteLabelLockedTenantSlug,
   });
 
+  const mapItems = searchMobileMarketplace({
+    listings: DEFAULT_MOBILE_MARKETPLACE_LISTINGS,
+    userCoords,
+    sortBy: userCoords ? 'distance_km' : 'rating',
+  }).items;
+
   const rebook = buildOneTapRebookCandidate(pastAppointments);
   const pinnedItem =
-    searchResult.items.find((i) => i.slug === selectedMapPinSlug) ||
-    searchResult.items[0];
+    mapItems.find((i) => i.slug === selectedMapPinSlug) || mapItems[0];
   const orderedMapPins = pinnedItem
-    ? [pinnedItem, ...searchResult.items.filter((item) => item.slug !== pinnedItem.slug)]
-    : searchResult.items;
+    ? [pinnedItem, ...mapItems.filter((item) => item.slug !== pinnedItem.slug)]
+    : mapItems;
 
   const activeFilterCount =
     (vertical !== 'all' ? 1 : 0) +
@@ -401,6 +376,91 @@ export const MobileExploreMarketplacePage: React.FC<
   const innerSurface = isDark
     ? 'bg-slate-800 border-2 border-slate-700 text-slate-100'
     : 'bg-[#F8FAFC] border-2 border-slate-200 text-slate-900';
+
+  useEffect(
+    () => () => {
+      recognitionRef.current?.abort?.();
+    },
+    []
+  );
+
+  const handleVoiceSearch = async () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      setVoiceStatus('Dinleme durduruldu. Tekrar deneyebilir veya hazır arama seçebilirsiniz.');
+      return;
+    }
+
+    const speechWindow = window as Window & {
+      SpeechRecognition?: VoiceRecognitionConstructor;
+      webkitSpeechRecognition?: VoiceRecognitionConstructor;
+    };
+    const Recognition =
+      speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+
+    if (!Recognition) {
+      setVoiceFallbackOpen(true);
+      setVoiceStatus(
+        'Bu tarayıcı ses tanımayı desteklemiyor. Hazır aramalardan birini seçebilirsiniz.'
+      );
+      showToast('Sesli arama bu cihazda desteklenmiyor; hızlı arama seçenekleri açıldı.');
+      return;
+    }
+
+    try {
+      if (navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+      }
+
+      const recognition = new Recognition();
+      recognition.lang = 'tr-TR';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+      recognition.onresult = (event) => {
+        const transcript = event.results[0]?.[0]?.transcript?.trim();
+        if (transcript) {
+          setQueryText(transcript);
+          setVoiceStatus(`Algılandı: “${transcript}”`);
+          setVoiceFallbackOpen(false);
+          showToast(`Sesli arama: "${transcript}"`);
+        }
+        setIsListening(false);
+      };
+      recognition.onerror = (event) => {
+        const permissionDenied = event.error === 'not-allowed' || event.error === 'service-not-allowed';
+        setIsListening(false);
+        setVoiceFallbackOpen(true);
+        setVoiceStatus(
+          permissionDenied
+            ? 'Mikrofon izni verilmedi. Tarayıcı ayarlarından mikrofon erişimine izin verin.'
+            : 'Ses anlaşılamadı. Yeniden deneyin veya hazır aramalardan birini seçin.'
+        );
+        showToast(
+          permissionDenied
+            ? 'Mikrofon izni gerekli. Lütfen cihaz ayarlarından izin verin.'
+            : 'Sesli arama tamamlanamadı; tekrar deneyebilirsiniz.'
+        );
+      };
+      recognition.onend = () => {
+        setIsListening(false);
+        recognitionRef.current = null;
+      };
+      recognitionRef.current = recognition;
+      setVoiceFallbackOpen(false);
+      setVoiceStatus('Dinleniyor… Aramak istediğiniz işletmeyi veya hizmeti söyleyin.');
+      setIsListening(true);
+      recognition.start();
+    } catch {
+      setIsListening(false);
+      setVoiceFallbackOpen(true);
+      setVoiceStatus(
+        'Mikrofona erişilemedi. İzinleri kontrol edin veya hazır aramalardan birini seçin.'
+      );
+      showToast('Mikrofon izni gerekli. Lütfen cihaz ayarlarından izin verin.');
+    }
+  };
 
   return (
     <div className="space-y-5 pb-28" data-testid="mobile-explore-marketplace-page">
@@ -460,11 +520,14 @@ export const MobileExploreMarketplacePage: React.FC<
               )}
               <button
                 type="button"
-                aria-label="Sesli arama"
-                onClick={() =>
-                  showToast('Sesli arama: Örn. "Maslak oto servis" veya "Nişantaşı" diyebilirsiniz')
-                }
-                className="w-8 h-8 rounded-xl shrink-0 bg-[#EEF2FF] text-[#4F46E5] flex items-center justify-center"
+                aria-label={isListening ? 'Sesli aramayı durdur' : 'Sesli aramayı başlat'}
+                aria-pressed={isListening}
+                onClick={() => void handleVoiceSearch()}
+                className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition ${
+                  isListening
+                    ? 'animate-pulse bg-rose-500 text-white ring-4 ring-rose-200 dark:ring-rose-900'
+                    : 'bg-[#EEF2FF] text-[#4F46E5] hover:bg-indigo-100'
+                }`}
                 data-testid="explore-voice-search-btn"
               >
                 <Mic className="w-4 h-4" />
@@ -508,6 +571,53 @@ export const MobileExploreMarketplacePage: React.FC<
               <Map className="w-4 h-4" />
             </button>
           </div>
+
+          {voiceFallbackOpen && (
+            <div
+              className={`rounded-2xl border-2 p-3.5 ${innerSurface}`}
+              data-testid="voice-search-fallback-bar"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-black text-[#4F46E5]">Sesli Arama Yardımcısı</p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                    {voiceStatus}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setVoiceFallbackOpen(false)}
+                  aria-label="Sesli arama yardımcısını kapat"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {['Maslak oto servis', 'Soft Balayage', 'Kadıköy diş'].map((voiceQuery) => (
+                  <button
+                    key={voiceQuery}
+                    type="button"
+                    onClick={() => {
+                      setQueryText(voiceQuery);
+                      setVoiceFallbackOpen(false);
+                      showToast(`Sesli arama: "${voiceQuery}"`);
+                    }}
+                    className="rounded-full border-2 border-indigo-200 bg-white px-3 py-1.5 text-xs font-black text-[#4338CA] dark:border-indigo-700 dark:bg-slate-900 dark:text-indigo-200"
+                  >
+                    {voiceQuery}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => void handleVoiceSearch()}
+                  className="flex items-center gap-1 rounded-full bg-[#4F46E5] px-3 py-1.5 text-xs font-black text-white"
+                >
+                  <Mic className="h-3.5 w-3.5" /> Mikrofonu Yeniden Dene
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Clean Visual Bento Category Grid (Zero Redundant Sub-Pills!) */}
           <section className="space-y-2.5">
@@ -583,7 +693,7 @@ export const MobileExploreMarketplacePage: React.FC<
           </section>
 
           {/* Real Google Maps Container + Google Business Profile Integration */}
-          {showRadarMap && searchResult.items.length > 0 && pinnedItem && (
+          {showRadarMap && mapItems.length > 0 && pinnedItem && (
             <div
               className={`rounded-3xl overflow-hidden shadow-sm ${cardSurface}`}
               data-testid="interactive-radar-map-card"
@@ -609,6 +719,9 @@ export const MobileExploreMarketplacePage: React.FC<
                       >
                         <MapPin className="w-3.5 h-3.5 shrink-0" />
                         <span>{pin.district}</span>
+                        {pin.isSponsored ? (
+                          <Star className="h-3 w-3 fill-amber-300 text-amber-300" />
+                        ) : null}
                       </button>
                     );
                   })}
@@ -647,6 +760,15 @@ export const MobileExploreMarketplacePage: React.FC<
                     Google İşletme Doğrulanmış
                   </span>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setExpandedMapOpen(true)}
+                  className="absolute right-2.5 top-2.5 flex items-center gap-1 rounded-xl border-2 border-indigo-200 bg-white/95 px-2.5 py-1.5 text-xs font-black text-[#4338CA] shadow-sm"
+                  data-testid="explore-expand-map-btn"
+                >
+                  <Maximize2 className="h-3.5 w-3.5" />
+                  Haritayı Büyüt
+                </button>
               </div>
 
               {/* Selected Google Business Pin Card */}
@@ -655,7 +777,11 @@ export const MobileExploreMarketplacePage: React.FC<
                   <p className="text-sm font-black truncate">{pinnedItem.name}</p>
                   <p className="text-xs text-emerald-700 font-bold truncate mt-0.5">
                     İlk Müsait: {pinnedItem.nextAvailableSlot} •{' '}
-                    {pinnedItem.popularServices[0]?.priceMajor.toLocaleString('tr-TR')} TRY
+                    {convertFromTryMajor(
+                      pinnedItem.popularServices[0]?.priceMajor || 0,
+                      selectedCurrency
+                    ).toLocaleString('tr-TR')}{' '}
+                    {selectedCurrency}
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -756,11 +882,18 @@ export const MobileExploreMarketplacePage: React.FC<
                     }}
                     className="w-full h-full object-cover"
                   />
-                  <span
-                    className={`absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-bold border-2 shadow-sm ${accent.pillClass}`}
-                  >
-                    {accent.badgeTr}
-                  </span>
+                  <div className="absolute left-3 top-3 flex flex-col items-start gap-1.5">
+                    <span
+                      className={`rounded-full border-2 px-3 py-1 text-xs font-bold shadow-sm ${accent.pillClass}`}
+                    >
+                      {accent.badgeTr}
+                    </span>
+                    {item.isSponsored ? (
+                      <span className="rounded-full border-2 border-amber-300 bg-amber-50 px-2.5 py-1 text-[10px] font-black text-amber-900 shadow-sm">
+                        {item.sponsorTagTr || 'Sponsorlu'}
+                      </span>
+                    ) : null}
+                  </div>
                   <span className="absolute top-3 right-3 inline-flex items-center gap-1 px-3 py-1 rounded-full bg-white text-slate-900 border-2 border-slate-300 text-xs font-black shadow-sm">
                     <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
                     {item.rating}
@@ -792,8 +925,11 @@ export const MobileExploreMarketplacePage: React.FC<
                       </span>
                     </div>
                     <span className="font-black shrink-0 text-base">
-                      {item.popularServices[0].priceMajor.toLocaleString('tr-TR')}{' '}
-                      {item.popularServices[0].currency}
+                      {convertFromTryMajor(
+                        item.popularServices[0].priceMajor,
+                        selectedCurrency
+                      ).toLocaleString('tr-TR')}{' '}
+                      {selectedCurrency}
                     </span>
                   </div>
                 )}
@@ -877,121 +1013,121 @@ export const MobileExploreMarketplacePage: React.FC<
         </section>
       )}
 
-      {!searchResult.storefrontLockActive && (
-        <section className="space-y-3" data-testid="lari-social-showcase-feed">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-black tracking-wide uppercase">
-              YAPILAN İŞLER • TOPLULUK AKIŞI
-            </h2>
-            <span className="text-xs font-bold text-[#4F46E5]">Tüm Kesimler</span>
+      {expandedMapOpen && pinnedItem && (
+        <div
+          className={`fixed inset-0 z-[95] flex flex-col ${
+            isDark ? 'bg-slate-950 text-white' : 'bg-[#F8F9FB] text-slate-900'
+          }`}
+          data-testid="explore-expanded-map-modal"
+        >
+          <div className="flex items-center justify-between gap-3 border-b-2 border-slate-200 px-4 py-3 dark:border-slate-700">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-[#4F46E5]">
+                Tüm LARİ İşletmeleri
+              </p>
+              <h2 className="text-lg font-black">Yakındaki İşletme Haritası</h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => setExpandedMapOpen(false)}
+              aria-label="Büyük haritayı kapat"
+              className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-slate-300 bg-white text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+              data-testid="explore-expanded-map-close-btn"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
 
-          {socialShowcasePosts.map((post) => {
-            const listing = DEFAULT_MOBILE_MARKETPLACE_LISTINGS.find(
-              (l) => l.slug === post.tenantSlug
-            );
-            const visual = VENUE_VISUAL_CATALOG[post.tenantSlug];
-            const postPhotoUrl = post.photoUrl ?? visual?.coverPhotoUrl;
-            const isLiked = likedSocialPosts.includes(post.postId);
-            const isSaved = savedSocialPosts.includes(post.postId);
-
-            return (
-              <article
-                key={post.postId}
-                className={`rounded-3xl overflow-hidden shadow-sm ${cardSurface}`}
-                data-testid={`social-post-${post.postId}`}
+          <div className="flex gap-2 overflow-x-auto border-b-2 border-slate-200 px-3 py-2.5 no-scrollbar dark:border-slate-700">
+            {orderedMapPins.map((pin) => (
+              <button
+                key={pin.slug}
+                type="button"
+                onClick={() => setSelectedMapPinSlug(pin.slug)}
+                className={`flex shrink-0 items-center gap-1.5 rounded-full border-2 px-3 py-2 text-xs font-black ${
+                  pinnedItem.slug === pin.slug
+                    ? 'border-[#4338CA] bg-[#4F46E5] text-white'
+                    : isDark
+                      ? 'border-slate-600 bg-slate-800 text-slate-200'
+                      : 'border-slate-300 bg-white text-slate-700'
+                }`}
+                data-testid={`expanded-map-pin-${pin.slug}`}
               >
-                <div className="px-4 py-3 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="w-9 h-9 rounded-full bg-[#EEF2FF] text-[#4338CA] border-2 border-[#4F46E5] flex items-center justify-center font-black text-xs shrink-0">
-                      {post.businessName.slice(0, 2).toUpperCase()}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-sm font-black truncate">{post.businessName}</p>
-                      <p className="text-xs text-slate-500 truncate">{post.specialist}</p>
-                    </div>
-                  </div>
-                  <ShieldCheck className="w-4 h-4 text-[#4F46E5] shrink-0" />
-                </div>
+                <MapPin className="h-3.5 w-3.5" />
+                {pin.district}
+                {pin.isSponsored ? (
+                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] text-amber-900">
+                    Sponsorlu
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </div>
 
-                {postPhotoUrl && (
-                  <img
-                    src={postPhotoUrl}
-                    alt={post.caption}
-                    onError={(e) => {
-                      const img = e.currentTarget;
-                      if (visual && img.src !== visual.fallbackSvgUrl) {
-                        img.src = visual.fallbackSvgUrl;
-                      }
-                    }}
-                    className="w-full h-48 object-cover bg-slate-100 border-y-2 border-slate-200 dark:border-slate-700"
-                  />
-                )}
+          <div className="relative min-h-[48vh] flex-1 bg-slate-200">
+            <iframe
+              title={`Büyük Google Maps - ${pinnedItem.name}`}
+              src={`https://maps.google.com/maps?q=${pinnedItem.latitude},${pinnedItem.longitude}&z=15&output=embed`}
+              className="h-full min-h-[48vh] w-full border-0"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+            {pinnedItem.isSponsored ? (
+              <span className="absolute left-3 top-3 rounded-full border-2 border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-black text-amber-900 shadow-sm">
+                {pinnedItem.sponsorTagTr || 'Sponsorlu'}
+              </span>
+            ) : null}
+          </div>
 
-                <div className="p-4 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => toggleLikeSocialPost(post.postId)}
-                        className="flex items-center gap-1 overflow-visible pl-1 text-xs font-black"
-                      >
-                        <Heart
-                          className={`w-5 h-5 ${
-                            isLiked ? 'text-rose-500 fill-rose-500' : 'text-slate-600'
-                          }`}
-                        />
-                        <span>{post.baseLikes + (isLiked ? 1 : 0)}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => showToast('Gönderi bağlantısı paylaşıma kopyalandı!')}
-                        aria-label="Paylaş"
-                        className="text-slate-600 hover:text-[#4F46E5]"
-                      >
-                        <Share2 className="w-5 h-5" />
-                      </button>
-                      {listing && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onOpenBookingSheet?.(
-                              { ...listing, distanceKm: 1.2, estimatedTravelMinutes: 8 },
-                              undefined,
-                              [post.serviceTag]
-                            )
-                          }
-                          aria-label={`${post.serviceTag} için hızlı randevu al`}
-                          className="text-[#4F46E5] transition hover:text-[#4338CA]"
-                          data-testid={`social-quick-book-${post.postId}`}
-                        >
-                          <CalendarPlus className="h-5 w-5" />
-                        </button>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => toggleSaveSocialPost(post.postId)}
-                      aria-label="Kaydet"
-                    >
-                      <Bookmark
-                        className={`w-5 h-5 ${
-                          isSaved ? 'text-[#4F46E5] fill-[#4F46E5]' : 'text-slate-600'
-                        }`}
-                      />
-                    </button>
-                  </div>
-
-                  <p className="text-xs leading-relaxed">
-                    <strong className="mr-1">{post.businessName}</strong>
-                    {post.caption}
-                  </p>
-
-                </div>
-              </article>
-            );
-          })}
-        </section>
+          <div className="rounded-t-3xl border-t-2 border-slate-200 bg-white p-4 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="truncate text-base font-black">{pinnedItem.name}</h3>
+                <p className="mt-1 text-xs font-bold text-slate-500">
+                  {pinnedItem.district} • ⭐ {pinnedItem.rating} • İlk müsait {pinnedItem.nextAvailableSlot}
+                </p>
+              </div>
+              {pinnedItem.googleBusinessProfile?.verifiedGoogleBusiness ? (
+                <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-600" />
+              ) : null}
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <a
+                href={
+                  pinnedItem.googleBusinessProfile?.mapsUri ||
+                  `https://www.google.com/maps/search/?api=1&query=${pinnedItem.latitude},${pinnedItem.longitude}`
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-h-12 items-center justify-center gap-1 rounded-2xl border-2 border-slate-300 bg-white px-2 text-center text-xs font-black text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+              >
+                <ExternalLink className="h-3.5 w-3.5" /> Yol Tarifi
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  setExpandedMapOpen(false);
+                  setStorefrontDrawerListing(pinnedItem);
+                }}
+                className="min-h-12 rounded-2xl border-2 border-[#4F46E5] px-2 text-xs font-black text-[#4338CA] dark:text-indigo-200"
+                data-testid="expanded-map-open-storefront-btn"
+              >
+                Vitrine Gir
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setExpandedMapOpen(false);
+                  onOpenBookingSheet?.(pinnedItem);
+                }}
+                className="min-h-12 rounded-2xl bg-[#4F46E5] px-2 text-xs font-black text-white"
+                data-testid="expanded-map-open-booking-btn"
+              >
+                Randevu Al
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Business Filter Modal Drawer */}

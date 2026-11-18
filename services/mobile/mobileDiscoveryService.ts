@@ -33,6 +33,9 @@ export interface MarketplaceTenantListing {
   priceTier: 1 | 2 | 3;
   availableToday: boolean;
   nextAvailableSlot?: string;
+  isSponsored?: boolean;
+  sponsorPriority?: number;
+  sponsorTagTr?: string;
   googleBusinessProfile?: GoogleBusinessProfileMetadata;
   popularServices: Array<{
     id: string;
@@ -196,6 +199,11 @@ export function searchMobileMarketplace(
   if (!storefrontLockActive) {
     const sortBy = input.sortBy ?? (input.userCoords ? 'distance_km' : 'rating');
     enriched.sort((a, b) => {
+      const aSponsor = a.isSponsored ? (a.sponsorPriority ?? 1) : 0;
+      const bSponsor = b.isSponsored ? (b.sponsorPriority ?? 1) : 0;
+      if (bSponsor !== aSponsor) {
+        return bSponsor - aSponsor;
+      }
       if (sortBy === 'distance_km') {
         const da = a.distanceKm ?? Number.MAX_SAFE_INTEGER;
         const db = b.distanceKm ?? Number.MAX_SAFE_INTEGER;
@@ -220,6 +228,22 @@ export function searchMobileMarketplace(
     marketplaceCommissionBps: storefrontLockActive ? 0 : 1200,
     items: enriched,
   };
+}
+
+export function sortItemsByPreferredSectors<T extends { vertical?: LariBusinessVertical }>(
+  items: T[],
+  preferredSectors?: LariBusinessVertical[]
+): Array<T & { matchesPreferredSector: boolean }> {
+  const preferred = new Set(preferredSectors || []);
+  const tagged = items.map((item) => ({
+    ...item,
+    matchesPreferredSector: Boolean(item.vertical && preferred.has(item.vertical)),
+  }));
+  if (preferred.size === 0) return tagged;
+  return [
+    ...tagged.filter((item) => item.matchesPreferredSector),
+    ...tagged.filter((item) => !item.matchesPreferredSector),
+  ];
 }
 
 export function buildOneTapRebookCandidate(

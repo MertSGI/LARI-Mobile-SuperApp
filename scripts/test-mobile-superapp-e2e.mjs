@@ -111,7 +111,11 @@ async function run() {
       await page.waitForSelector('[data-testid="interactive-radar-map-card"]');
       await page.waitForSelector('[data-testid="marketplace-card-maslak-auto-studio"]');
       await page.waitForSelector('[data-testid="explore-partner-invite-card"]');
-      await page.waitForSelector('[data-testid="lari-social-showcase-feed"]');
+      assert.equal(
+        await page.locator('[data-testid="lari-social-showcase-feed"]').count(),
+        0,
+        `Social feed must not be rendered on Home on ${vp.name}`
+      );
 
       // Story modal advances with the right-side tap zone.
       await page.click('[data-testid="story-bubble-story-flash-nisantasi"]');
@@ -129,19 +133,59 @@ async function run() {
       await page.fill('[data-testid="explore-search-input"]', 'Nişantaşı');
       await page.click('[data-testid="explore-search-clear-btn"]');
       assert.equal(await page.inputValue('[data-testid="explore-search-input"]'), '');
+      await page.click('[data-testid="explore-voice-search-btn"]');
+      await page.waitForSelector('[data-testid="voice-search-fallback-bar"]');
+      await page.click('[data-testid="voice-search-fallback-bar"] button:has-text("Maslak oto servis")');
+      assert.equal(
+        await page.inputValue('[data-testid="explore-search-input"]'),
+        'Maslak oto servis'
+      );
+      await page.click('[data-testid="explore-search-clear-btn"]');
       await page.click('[data-testid="category-visibility-toggle"]');
       await page.waitForSelector('[data-testid="category-card-health_tourism"]');
       await page.click('[data-testid="category-visibility-toggle"]');
 
+      await page.click('[data-testid="explore-expand-map-btn"]');
+      await page.waitForSelector('[data-testid="explore-expanded-map-modal"]');
+      assert.ok(
+        (await page.locator('[data-testid^="expanded-map-pin-"]').count()) >= 6,
+        `Expanded map must expose all LARİ businesses on ${vp.name}`
+      );
+      await page.click('[data-testid="explore-expanded-map-close-btn"]');
+      await page.waitForSelector('[data-testid="explore-expanded-map-modal"]', {
+        state: 'detached',
+      });
+
+      await page.click('[data-testid="mobile-tab-social_feed"]');
+      await page.waitForSelector('[data-testid="mobile-social-feed-page"]');
+      await page.waitForSelector('[data-testid="lari-social-showcase-feed"]');
       const legacySocialCtaCount = await page
         .locator('button:has-text("Bu İşlem İçin Hemen Randevu Al")')
         .count();
       assert.equal(legacySocialCtaCount, 0);
       assert.ok((await page.locator('[data-testid^="social-quick-book-"]').count()) > 0);
+      assert.ok(
+        (await page.getByText('İlgi Alanınıza Göre', { exact: true }).count()) > 0,
+        `Preferred-sector badges must appear in Discover on ${vp.name}`
+      );
+      await page.click('[data-testid="mobile-tab-explore"]');
 
       // Header brand + notification center drawer + quick booking date navigation
       await page.waitForSelector('[data-testid="header-brand-symbol"]');
       await page.click('[data-testid="header-quick-plus-btn"]');
+      await page.waitForSelector('[data-testid="mobile-quick-book-carousel-sheet"]');
+      assert.ok(
+        (await page.locator('[data-testid^="quick-book-business-"]').count()) >= 6,
+        `Quick-book carousel must show all nearby businesses on ${vp.name}`
+      );
+      await page.click('[data-testid="quick-book-filter-auto_service"]');
+      assert.equal(
+        await page.locator('[data-testid^="quick-book-business-"]').count(),
+        1,
+        `Quick-book sector filter must narrow businesses on ${vp.name}`
+      );
+      await page.click('[data-testid="quick-book-filter-all"]');
+      await page.click('[data-testid="quick-book-book-atelier-nisantasi"]');
       await page.waitForSelector('[data-testid="mobile-booking-bottom-sheet"]');
       await page.waitForSelector('[data-testid="booking-date-selector"]');
       await page.waitForSelector('[data-testid="booking-calendar-picker-btn"]');
@@ -208,11 +252,6 @@ async function run() {
       await page.waitForSelector('[data-testid="wallet-care-passport-panel"]');
       await page.click('[data-testid="wallet-subtab-loyalty"]');
       await page.waitForSelector('[data-testid="wallet-stamp-card"]');
-
-      // B.2) Switch to AI Style Studio & verify Before/After Slider
-      await page.click('[data-testid="mobile-tab-ai_style"]');
-      await page.waitForSelector('[data-testid="ai-before-after-viewfinder"]');
-      await page.waitForSelector('[data-testid="ai-comparison-slider"]');
 
       // C) Tap 5th Floating Avatar Tab (Profile) -> Test Panel Boundaries, Dark/Light toggle & Switch to HT Patient Concierge + VIP QR
       await page.click('[data-testid="mobile-tab-profile"]');

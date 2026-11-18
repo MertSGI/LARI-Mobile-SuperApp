@@ -4,7 +4,9 @@ import {
   CalendarClock,
   CalendarPlus,
   Compass,
+  Flame,
   Globe2,
+  Home,
   Inbox,
   Lock,
   Plane,
@@ -55,7 +57,10 @@ function renderDockIcon(tab: MobileTabDescriptor, isActive: boolean, isDark: boo
   }`;
 
   if (tab.id === 'explore') {
-    return <Compass className={cls} />;
+    return <Home className={cls} />;
+  }
+  if (tab.id === 'social_feed') {
+    return <Flame className={cls} />;
   }
   if (tab.id === 'storefront') {
     return <Store className={cls} />;

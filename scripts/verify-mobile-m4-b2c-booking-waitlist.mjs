@@ -11,15 +11,17 @@ async function run() {
   // 1. Apple Guideline 5.1.1 Guest Browsing without auth
   assert.equal(canBrowseWithoutAuth(), true);
 
-  // 2. GPS Haversine sorting (user near Kadıköy should see Kadıköy clinic first)
+  // 2. Sponsored-first policy, then GPS Haversine sorting within organic results
   const kadikoySearch = searchMobileMarketplace({
     listings: DEFAULT_MOBILE_MARKETPLACE_LISTINGS,
     userCoords: { latitude: 40.982, longitude: 29.027 },
     sortBy: 'distance_km',
   });
   assert.equal(kadikoySearch.storefrontLockActive, false);
-  assert.equal(kadikoySearch.items[0].slug, 'lari-dent-kadikoy');
-  assert.ok((kadikoySearch.items[0].distanceKm ?? 99) < 1);
+  assert.equal(kadikoySearch.items[0].slug, 'atelier-nisantasi');
+  assert.equal(kadikoySearch.items[0].isSponsored, true);
+  assert.equal(kadikoySearch.items[1].slug, 'lari-dent-kadikoy');
+  assert.ok((kadikoySearch.items[1].distanceKm ?? 99) < 1);
 
   // 3. White-Label Storefront Lock: 0% commission, zero competitor leakage
   const locked = searchMobileMarketplace({
