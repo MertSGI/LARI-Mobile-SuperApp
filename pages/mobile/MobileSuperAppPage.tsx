@@ -32,6 +32,7 @@ import MobilePartnerPosAndInventoryPage from './partner/MobilePartnerPosAndInven
 import MobilePartnerClinicWorkspacePage from './partner/MobilePartnerClinicWorkspacePage';
 import MobilePartnerHtLeadOpsPage from './partner/MobilePartnerHtLeadOpsPage';
 import MobilePartnerCustomer360Page from './partner/MobilePartnerCustomer360Page';
+import { resolvePartnerFeatureEntitlements } from '../../services/mobile/mobilePackageEntitlementService';
 
 export const MobileSuperAppContent: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -117,6 +118,20 @@ export const MobileSuperAppContent: React.FC = () => {
       ? location.pathname.split('/')[3]
       : null);
 
+  const partnerEntitlements = useMemo(
+    () =>
+      resolvePartnerFeatureEntitlements({
+        partnerSubscription,
+        effectivePersona: requestedPersona,
+      }),
+    [partnerSubscription, requestedPersona]
+  );
+  const b2cAiAvailable =
+    partnerEntitlements.aiVisualizerEnabled ||
+    requestedPersona === 'ht_patient' ||
+    requestedPersona === 'clinic_practitioner' ||
+    requestedPersona === 'ht_coordinator';
+
   useEffect(() => {
     if (tenantSlug) {
       setRequestedMode('b2c_customer');
@@ -137,12 +152,12 @@ export const MobileSuperAppContent: React.FC = () => {
           healthTourismEnabled: true,
           posInventoryEnabled: true,
           loyaltyWalletEnabled: true,
-          aiVisualizerEnabled: true,
+          aiVisualizerEnabled: b2cAiAvailable,
         },
         whiteLabelLockedTenantSlug: tenantSlug,
         activeLanguage: 'tr',
       }),
-    [effectiveRole, requestedMode, requestedPersona, tenantSlug]
+    [b2cAiAvailable, effectiveRole, requestedMode, requestedPersona, tenantSlug]
   );
 
   const handleSelectTab = (tab: MobileTabDescriptor) => {
@@ -290,6 +305,8 @@ export const MobileSuperAppContent: React.FC = () => {
             userRole={effectiveRole}
             initialTabFocus="agenda"
             partnerQuickAddTick={partnerQuickAddTick}
+            effectivePersona={shellState.effectivePersona}
+            onRequestPlanUpgrade={() => setPartnerOnboardingOpen(true)}
           />
         );
       case 'social_feed':
@@ -300,6 +317,8 @@ export const MobileSuperAppContent: React.FC = () => {
             tenantId={tenantId}
             userRole={effectiveRole}
             initialTabFocus="inbox"
+            effectivePersona={shellState.effectivePersona}
+            onRequestPlanUpgrade={() => setPartnerOnboardingOpen(true)}
           />
         );
       case 'partner_pos':
@@ -307,6 +326,8 @@ export const MobileSuperAppContent: React.FC = () => {
           <MobilePartnerPosAndInventoryPage
             tenantId={tenantId}
             userRole={effectiveRole}
+            effectivePersona={shellState.effectivePersona}
+            onRequestPlanUpgrade={() => setPartnerOnboardingOpen(true)}
           />
         );
       case 'clinic_phi':

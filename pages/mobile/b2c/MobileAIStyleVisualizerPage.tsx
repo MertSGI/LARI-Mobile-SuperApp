@@ -5,6 +5,7 @@ import {
   Camera,
   CheckCircle2,
   ImagePlus,
+  LockKeyhole,
   Palette,
   ShieldAlert,
   SlidersHorizontal,
@@ -264,6 +265,10 @@ const SWATCH_PALETTES: Record<
 export interface MobileAIStyleVisualizerPageProps {
   tenantId: string;
   language?: 'tr' | 'en';
+  embeddedMode?: boolean;
+  isPackageEligible?: boolean;
+  requiredPlanLabel?: string;
+  onRequestUpgrade?: () => void;
   onAttachStyleToBooking?: (
     note: string,
     suggestion: AIStyleSuggestion
@@ -272,8 +277,17 @@ export interface MobileAIStyleVisualizerPageProps {
 
 export const MobileAIStyleVisualizerPage: React.FC<
   MobileAIStyleVisualizerPageProps
-> = ({ tenantId, language = 'tr', onAttachStyleToBooking }) => {
-  const { showToast } = useMobileAppSession();
+> = ({
+  tenantId,
+  language = 'tr',
+  embeddedMode = false,
+  isPackageEligible,
+  requiredPlanLabel,
+  onRequestUpgrade,
+  onAttachStyleToBooking,
+}) => {
+  const { showToast, themeMode } = useMobileAppSession();
+  const isDark = themeMode === 'dark';
   const [vertical, setVertical] =
     useState<AIStyleSuggestion['vertical']>('hair_beauty');
   const [goalText, setGoalText] = useState('');
@@ -289,6 +303,46 @@ export const MobileAIStyleVisualizerPage: React.FC<
   const activeSwatches = SWATCH_PALETTES[vertical] || SWATCH_PALETTES.hair_beauty;
   const activeSwatch = activeSwatches[selectedSwatchIdx] || activeSwatches[0];
   const portraitUrl = uploadedPhotoUrl || AI_STUDIO_PORTRAIT_FALLBACK;
+
+  if (embeddedMode && isPackageEligible === false) {
+    return (
+      <div
+        className={`rounded-3xl border-2 p-5 shadow-sm ${
+          isDark
+            ? 'border-indigo-800 bg-slate-900 text-white'
+            : 'border-indigo-200 bg-gradient-to-br from-white to-indigo-50 text-slate-900'
+        }`}
+        data-testid="partner-ai-upgrade-gate"
+      >
+        <div className="flex items-start gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#4F46E5] text-white shadow-sm">
+            <LockKeyhole className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-sm font-black">AI İmaj Önizleme</h3>
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+              AI İmaj Önizleme; Profesyonel, Klinik ve Sağlık Turizmi planlarında
+              aktiftir. İşletme vitrininizde etkileşimli önce/sonra görselleri
+              hazırlamak için paketinizi yükseltebilirsiniz.
+            </p>
+            {requiredPlanLabel ? (
+              <span className="mt-2 inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-black text-[#4338CA] dark:border-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-200">
+                Gerekli paket: {requiredPlanLabel}
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onRequestUpgrade}
+          className="mt-4 min-h-11 w-full rounded-2xl bg-[#4F46E5] px-4 text-xs font-black text-white shadow-sm"
+        >
+          Paketi Yükselt
+        </button>
+      </div>
+    );
+  }
+
   const afterFilter = (() => {
     const filters: Record<string, string> = {
       '8.34': 'sepia(.42) saturate(1.45) brightness(1.04) contrast(1.05)',
@@ -334,8 +388,13 @@ export const MobileAIStyleVisualizerPage: React.FC<
   };
 
   return (
-    <div className="space-y-4" data-testid="mobile-ai-style-visualizer-page">
-      <div className="rounded-3xl bg-white border border-slate-200 p-4 space-y-3.5 shadow-sm">
+    <div
+      className="space-y-4"
+      data-testid={
+        embeddedMode ? 'partner-embedded-ai-studio' : 'mobile-ai-style-visualizer-page'
+      }
+    >
+      <div className="rounded-3xl bg-white border-2 border-slate-200 p-4 space-y-3.5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center justify-between gap-2">
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#EEF0FF] text-[#5B5FEF] border border-indigo-100">
             <Sparkles className="w-3.5 h-3.5" />

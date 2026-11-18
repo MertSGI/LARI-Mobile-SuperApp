@@ -209,6 +209,14 @@ async function run() {
       await page.waitForSelector('[data-testid="mobile-storefront-detail-drawer"]');
       await page.waitForSelector('[data-testid="storefront-hero-carousel"]');
       await page.waitForSelector('[data-testid="storefront-overlap-avatar"]');
+      const storefrontWhatsappButton = page.locator(
+        '[data-testid="mobile-storefront-detail-drawer"] [data-testid="storefront-whatsapp-btn"]'
+      );
+      await storefrontWhatsappButton.waitFor();
+      assert.match(
+        (await storefrontWhatsappButton.getAttribute('href')) || '',
+        /^https:\/\/wa\.me\/\d+\?text=/
+      );
       await page.click('[data-testid="storefront-tab-specialists"]');
       await page.click('[data-testid="storefront-tab-portfolio"]');
       await page.click('[data-testid="close-storefront-drawer-btn"]');
@@ -327,12 +335,34 @@ async function run() {
       await page.fill('[data-testid="partner-staff-name-input"]', 'E2E Uzman Deniz');
       await page.fill('[data-testid="partner-staff-specialty-input"]', 'E2E Renk Uzmanı');
       await page.fill('[data-testid="partner-staff-commission-input"]', '22');
+      await page.fill('[data-testid="partner-staff-shift-input"]', '08:00–17:00');
       await page.click('[data-testid="partner-staff-add-submit-btn"]');
       const addedStaffMember = page
         .locator('[data-testid^="partner-staff-item-"]')
         .filter({ hasText: 'E2E Uzman Deniz' });
       await addedStaffMember.waitFor();
       assert.match(await addedStaffMember.innerText(), /Prim %22/);
+      const addedStaffTestId = await addedStaffMember.getAttribute('data-testid');
+      assert.ok(addedStaffTestId);
+      const addedStaffId = addedStaffTestId.replace('partner-staff-item-', '');
+      await addedStaffMember
+        .locator(`[data-testid="partner-staff-commission-edit-${addedStaffId}"]`)
+        .fill('27');
+      await addedStaffMember
+        .locator(`[data-testid="partner-staff-shift-edit-${addedStaffId}"]`)
+        .fill('10:00–18:00');
+      assert.equal(
+        await addedStaffMember
+          .locator(`[data-testid="partner-staff-commission-edit-${addedStaffId}"]`)
+          .inputValue(),
+        '27'
+      );
+      assert.equal(
+        await addedStaffMember
+          .locator(`[data-testid="partner-staff-shift-edit-${addedStaffId}"]`)
+          .inputValue(),
+        '10:00–18:00'
+      );
       await addedStaffMember.locator('[data-testid^="partner-staff-delete-"]').click();
       await addedStaffMember.waitFor({ state: 'detached' });
 
@@ -354,10 +384,21 @@ async function run() {
       await page.click('[data-testid="partner-management-tab-storefront"]');
       await page.waitForSelector('[data-testid="partner-management-storefront-panel"]');
       await page.waitForSelector('[data-testid="partner-copy-storefront-link-btn"]');
+      await page.waitForSelector('[data-testid="partner-ai-upgrade-gate"]');
       await page.fill('[data-testid="partner-hours-open-weekdays"]', '08:30');
       await page.fill('[data-testid="partner-hours-close-weekdays"]', '21:00');
       assert.equal(await page.inputValue('[data-testid="partner-hours-open-weekdays"]'), '08:30');
       assert.equal(await page.inputValue('[data-testid="partner-hours-close-weekdays"]'), '21:00');
+      await page.click('[data-testid="partner-hours-daily-mode-toggle"]');
+      assert.equal(
+        await page.getAttribute('[data-testid="partner-hours-daily-mode-toggle"]', 'aria-pressed'),
+        'true'
+      );
+      assert.equal(await page.locator('[data-testid^="partner-hours-toggle-"]').count(), 7);
+      await page.fill('[data-testid="partner-hours-open-monday"]', '08:00');
+      await page.fill('[data-testid="partner-hours-close-monday"]', '18:30');
+      assert.equal(await page.inputValue('[data-testid="partner-hours-open-monday"]'), '08:00');
+      assert.equal(await page.inputValue('[data-testid="partner-hours-close-monday"]'), '18:30');
 
       await page.setInputFiles('[data-testid="partner-gallery-file-input"]', {
         name: 'e2e-gallery.svg',
@@ -396,6 +437,23 @@ async function run() {
       await addedInventoryItem.locator('[data-testid^="partner-inventory-delete-"]').click();
       await addedInventoryItem.waitFor({ state: 'detached' });
 
+      assert.equal(await page.locator('[data-testid="partner-admit-ht-qr-btn"]').count(), 0);
+      await page.click('[data-testid="partner-voice-match-btn"]');
+      await page.waitForSelector('[data-testid="partner-voice-upgrade-gate"]');
+
+      // D.2) HT Coordinator package unlocks Embedded AI, HT QR and Voice Catalog Match
+      await page.click('[data-testid="mobile-tab-partner_switch"]');
+      await page.click('[data-testid="persona-role-dropdown-btn"]');
+      await page.click('[data-testid="persona-pill-ht_coordinator"]');
+      await page.waitForSelector('[data-testid="mobile-ht-lead-ops"]');
+      await page.click('[data-testid="mobile-tab-partner_agenda"]');
+      await page.waitForSelector('[data-testid="mobile-partner-agenda-page"]');
+      await page.click('[data-testid="partner-management-tab-storefront"]');
+      assert.equal(await page.locator('[data-testid="partner-ai-upgrade-gate"]').count(), 0);
+      await page.waitForSelector('[data-testid="partner-embedded-ai-studio"]');
+      await page.click('[data-testid="mobile-tab-partner_pos"]');
+      await page.waitForSelector('[data-testid="mobile-partner-pos-page"]');
+      await page.waitForSelector('[data-testid="partner-admit-ht-qr-btn"]');
       await page.click('[data-testid="partner-admit-ht-qr-btn"]');
       await page.waitForSelector('[data-testid="partner-admitted-patient-banner"]');
       await page.click('[data-testid="partner-voice-match-btn"]');
@@ -404,14 +462,14 @@ async function run() {
       await page.waitForSelector('[data-testid="partner-generated-payment-qr"]');
       await page.click('[data-testid="partner-pos-cash-checkout-btn"]');
 
-      // D.2) Switch back to Customer Mode & confirm Payment QR with Optional Tip in Wallet
+      // D.3) Switch back to Customer Mode & confirm Payment QR with Optional Tip in Wallet
       await page.click('[data-testid="mobile-tab-partner_switch"]');
       await page.click('[data-testid="mobile-mode-customer-btn"]');
       await page.click('[data-testid="mobile-tab-wallet"]');
       await page.waitForSelector('[data-testid="wallet-checkout-breakdown-card"]');
       await page.click('[data-testid="customer-confirm-qr-payment-btn"]');
 
-      // D.3) Switch back to Partner -> Clinic Practitioner PHI Persona & Touch Canvas
+      // D.4) Switch back to Partner -> Clinic Practitioner PHI Persona & Touch Canvas
       await page.click('[data-testid="mobile-tab-profile"]');
       await page.click('[data-testid="mobile-mode-partner-btn"]');
       await page.click('[data-testid="mobile-tab-partner_switch"]');

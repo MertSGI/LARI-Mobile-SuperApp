@@ -44,6 +44,8 @@ import {
 } from '../../../services/mobile/voiceCatalogMatcherService';
 import LariQrCodeSvg from '../../../components/mobile/LariQrCodeSvg';
 import { sanitizeUserMessage } from '../../../services/mobile/mobileUiSanitizer';
+import { resolvePartnerFeatureEntitlements } from '../../../services/mobile/mobilePackageEntitlementService';
+import { MobilePersonaType } from '../../../services/mobile/mobileShellPolicyService';
 
 export interface MobilePosCheckoutRequest {
   userRole: Role | 'guest';
@@ -278,16 +280,19 @@ export interface MobilePartnerPosAndInventoryPageProps {
   tenantId: string;
   userRole: Role | 'guest';
   language?: 'tr' | 'en';
+  effectivePersona?: MobilePersonaType;
+  onRequestPlanUpgrade?: () => void;
 }
 
 const uiPosEngine = new PartnerMobilePosEngine();
 
 export const MobilePartnerPosAndInventoryPage: React.FC<
   MobilePartnerPosAndInventoryPageProps
-> = ({ tenantId, userRole }) => {
+> = ({ tenantId, userRole, effectivePersona, onRequestPlanUpgrade }) => {
   const {
     themeMode,
     partnerCatalog,
+    partnerSubscription,
     admittedPatientSession,
     admitCustomerByQr,
     publishCheckoutBreakdown,
@@ -297,6 +302,10 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
     showToast,
   } = useMobileAppSession();
   const isDark = themeMode === 'dark';
+  const entitlements = resolvePartnerFeatureEntitlements({
+    partnerSubscription,
+    effectivePersona,
+  });
 
   const access = verifyPartnerMobileAccess(userRole, tenantId, tenantId);
   const [qrInputRaw, setQrInputRaw] = useState('');
@@ -304,6 +313,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
     'Soft balayage, bir adet keratin bakım ve iki adet serum'
   );
   const [isListeningVoice, setIsListeningVoice] = useState(false);
+  const [voiceUpgradePromptVisible, setVoiceUpgradePromptVisible] = useState(false);
   const [folioLines, setFolioLines] = useState<VoiceMatchedLine[]>([
     {
       catalogItem: partnerCatalog[0],
@@ -425,6 +435,12 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
   };
 
   const handleVoiceCatalogMatch = (textOverride?: string) => {
+    if (!entitlements.voiceCatalogMatchEnabled) {
+      setIsListeningVoice(false);
+      setVoiceUpgradePromptVisible(true);
+      return;
+    }
+    setVoiceUpgradePromptVisible(false);
     const inputStr = textOverride ?? voiceTranscript;
     const matchRes = matchSpokenUtteranceToCatalog(inputStr, partnerCatalog, {
       packageActive,
@@ -455,6 +471,12 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
   };
 
   const handleStartMicrophone = () => {
+    if (!entitlements.voiceCatalogMatchEnabled) {
+      setIsListeningVoice(false);
+      setVoiceUpgradePromptVisible(true);
+      return;
+    }
+    setVoiceUpgradePromptVisible(false);
     const SpeechRec =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRec) {
@@ -660,7 +682,9 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
             QR ile Müşteri & Hasta Kabulü
           </span>
           <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-[#EEF2FF] text-[#4338CA] border border-[#4F46E5]/30">
-            SAĞLIK TURİZMİ + PAKET
+            {entitlements.healthTourismQrEnabled
+              ? 'SAĞLIK TURİZMİ + PAKET'
+              : 'STANDART + PAKET'}
           </span>
         </div>
 
@@ -668,16 +692,22 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
           Sağlık turizmi hastası veya çok seanslı paket müşterisinin QR kodunu okutarak kabul edin; paket hakkı otomatik düşülür.
         </p>
 
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            type="button"
-            onClick={() => handleSimulatePatientQrScan('ht')}
-            style={{ minHeight: '44px' }}
-            className="rounded-xl bg-[#4F46E5] hover:bg-[#4338CA] text-white text-xs font-bold px-2 py-2"
-            data-testid="partner-admit-ht-qr-btn"
-          >
-            Sağlık Turizmi QR Kabul
-          </button>
+        <div
+          className={`grid gap-2 ${
+            entitlements.healthTourismQrEnabled ? 'grid-cols-3' : 'grid-cols-2'
+          }`}
+        >
+          {entitlements.healthTourismQrEnabled ? (
+            <button
+              type="button"
+              onClick={() => handleSimulatePatientQrScan('ht')}
+              style={{ minHeight: '44px' }}
+              className="rounded-xl bg-[#4F46E5] hover:bg-[#4338CA] text-white text-xs font-bold px-2 py-2"
+              data-testid="partner-admit-ht-qr-btn"
+            >
+              Sağlık Turizmi QR Kabul
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => handleSimulatePatientQrScan('package')}
@@ -692,6 +722,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
             onClick={() => handleSimulatePatientQrScan('standard')}
             style={{ minHeight: '44px' }}
             className={`rounded-xl border-2 text-xs font-bold px-2 py-2 ${innerSurface}`}
+            data-testid="partner-admit-standard-qr-btn"
           >
             Standart Check-in
           </button>
@@ -749,14 +780,21 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
 
       {/* 2. SESLİ SÖYLEMDE KATALOG EŞLEŞTİRME & CANLI İŞLEM ADİSYONU */}
       <div className={`rounded-3xl p-4 space-y-3 shadow-sm ${cardSurface}`}>
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between gap-2">
           <span className="text-sm font-black flex items-center gap-1.5">
             <Mic className="w-5 h-5 text-[#4F46E5]" />
             Sesli Söylemde Katalog Eşleştirme
           </span>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 border border-amber-300">
-            TR Ses Motoru
-          </span>
+          <div className="flex max-w-[48%] flex-col items-end gap-1">
+            <span className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-right text-[10px] font-bold text-[#4338CA]">
+              Klinik &amp; Sağlık Turizmi
+            </span>
+            {!entitlements.voiceCatalogMatchEnabled ? (
+              <span className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-0.5 text-right text-[10px] font-black text-amber-800">
+                Paket Yükseltme Gerekli
+              </span>
+            ) : null}
+          </div>
         </div>
 
         <p className="text-xs text-slate-500">
@@ -818,6 +856,25 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
             </button>
           ))}
         </div>
+
+        {voiceUpgradePromptVisible ? (
+          <div
+            className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-3 text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100"
+            data-testid="partner-voice-upgrade-gate"
+          >
+            <p className="text-xs font-black">
+              Sesli Söylemede Katalog Eşleştirme yalnızca Klinik ve Sağlık Turizmi
+              paketlerinde aktiftir.
+            </p>
+            <button
+              type="button"
+              onClick={onRequestPlanUpgrade}
+              className="mt-3 min-h-10 w-full rounded-xl bg-amber-700 px-3 text-xs font-black text-white"
+            >
+              Paketini Yükselt
+            </button>
+          </div>
+        ) : null}
 
         {/* Matched Live Folio Items + Price Breakdown */}
         <div

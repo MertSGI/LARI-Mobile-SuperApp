@@ -19,6 +19,7 @@ import {
 import { MobileDiscoveryListingItem } from '../../../services/mobile/mobileDiscoveryService';
 import { VENUE_VISUAL_CATALOG } from '../../../services/mobile/mobileVisualAssets';
 import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
+import { convertFromTryMajor } from '../../../services/mobile/mobileRegionCurrencyService';
 
 export interface StorefrontSpecialistProfile {
   id: string;
@@ -205,7 +206,12 @@ const LOOKBOOK_PORTFOLIO: StorefrontLookbookItem[] = [
 export const MobileStorefrontDetailDrawer: React.FC<
   MobileStorefrontDetailDrawerProps
 > = ({ listing, onClose, onProceedToBooking }) => {
-  const { customVenuePhotos, showToast } = useMobileAppSession();
+  const {
+    customVenuePhotos,
+    selectedCurrency,
+    showToast,
+    storefrontCustomization,
+  } = useMobileAppSession();
   const [activeTab, setActiveTab] = useState<
     'services' | 'specialists' | 'portfolio' | 'hospitality'
   >('services');
@@ -216,6 +222,23 @@ export const MobileStorefrontDetailDrawer: React.FC<
   const services = getExtraServicesForListing(listing);
   const specialists = getSpecialistsForVertical(listing.vertical);
   const visual = VENUE_VISUAL_CATALOG[listing.slug];
+  const isActivePartnerStorefront =
+    listing.slug === 'atelier-nisantasi' ||
+    listing.name === storefrontCustomization.businessName;
+  const requestedAccentColor = isActivePartnerStorefront
+    ? storefrontCustomization.accentColor || '#4F46E5'
+    : '#4F46E5';
+  const accentColor = /^#[0-9a-f]{6}$/i.test(requestedAccentColor)
+    ? requestedAccentColor
+    : '#4F46E5';
+  const whatsappDigits = (
+    isActivePartnerStorefront
+      ? storefrontCustomization.whatsappNumber
+      : visual?.phone || storefrontCustomization.whatsappNumber
+  ).replace(/\D/g, '');
+  const whatsappUrl = `https://wa.me/${whatsappDigits || '905325550140'}?text=${encodeURIComponent(
+    `Merhaba, ${listing.name} için LARİ üzerinden bilgi almak istiyorum.`
+  )}`;
   const catalogHeroImages = visual?.galleryPhotoUrls?.length
     ? visual.galleryPhotoUrls
     : visual
@@ -396,7 +419,11 @@ export const MobileStorefrontDetailDrawer: React.FC<
               <span>•</span>
               <span className="text-emerald-700">Açık • Bugün {listing.nextAvailableSlot}</span>
             </p>
-            <p className="mt-1.5 text-[11px] font-bold text-[#4F46E5]" data-testid="storefront-selected-specialist-heading">
+            <p
+              className="mt-1.5 text-[11px] font-bold"
+              style={{ color: accentColor }}
+              data-testid="storefront-selected-specialist-heading"
+            >
               {selectedSpecialist.name} • {selectedSpecialist.titleTr}
             </p>
           </div>
@@ -412,8 +439,8 @@ export const MobileStorefrontDetailDrawer: React.FC<
                   selectedServices.map((s) => s.name)
                 )
               }
-              style={{ minHeight: '42px' }}
-              className="flex-1 rounded-xl bg-[#5B5FEF] hover:bg-[#4A4EE0] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm"
+              style={{ minHeight: '42px', backgroundColor: accentColor }}
+              className="flex-1 rounded-xl text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm"
             >
               <CalendarPlus className="w-4 h-4" />
               Hemen Randevu Al
@@ -421,8 +448,8 @@ export const MobileStorefrontDetailDrawer: React.FC<
             <button
               type="button"
               onClick={handleCall}
-              style={{ minHeight: '42px' }}
-              className="w-11 rounded-xl bg-[#EEF0FF] hover:bg-indigo-100 text-[#5B5FEF] flex items-center justify-center"
+              style={{ minHeight: '42px', borderColor: accentColor, color: accentColor }}
+              className="w-11 rounded-xl border bg-[#EEF0FF] flex items-center justify-center"
               aria-label="Ara"
               data-testid="storefront-call-btn"
             >
@@ -431,18 +458,30 @@ export const MobileStorefrontDetailDrawer: React.FC<
             <button
               type="button"
               onClick={() => setShowMessageComposer((v) => !v)}
-              style={{ minHeight: '42px' }}
-              className="w-11 rounded-xl bg-[#EEF0FF] hover:bg-indigo-100 text-[#5B5FEF] flex items-center justify-center"
+              style={{ minHeight: '42px', borderColor: accentColor, color: accentColor }}
+              className="w-11 rounded-xl border bg-[#EEF0FF] flex items-center justify-center"
               aria-label="Mesaj Gönder"
               data-testid="storefront-message-btn"
             >
               <MessageCircle className="w-4 h-4" />
             </button>
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => showToast('WhatsApp ile işletme sohbeti açılıyor...')}
+              style={{ minHeight: '42px', borderColor: accentColor, color: accentColor }}
+              className="flex w-11 items-center justify-center rounded-xl border bg-[#EEF0FF]"
+              aria-label="WhatsApp ile iletişime geç"
+              data-testid="storefront-whatsapp-btn"
+            >
+              <MessageCircle className="h-4 w-4" />
+            </a>
             <button
               type="button"
               onClick={handleDirections}
-              style={{ minHeight: '42px' }}
-              className="w-11 rounded-xl bg-[#EEF0FF] hover:bg-indigo-100 text-[#5B5FEF] flex items-center justify-center"
+              style={{ minHeight: '42px', borderColor: accentColor, color: accentColor }}
+              className="w-11 rounded-xl border bg-[#EEF0FF] flex items-center justify-center"
               aria-label="Yol Tarifi"
               data-testid="storefront-directions-btn"
             >
@@ -462,7 +501,8 @@ export const MobileStorefrontDetailDrawer: React.FC<
               <button
                 type="button"
                 onClick={handleSendMessage}
-                className="px-3 py-1.5 rounded-lg bg-[#5B5FEF] text-white text-xs font-bold"
+                style={{ backgroundColor: accentColor }}
+                className="px-3 py-1.5 rounded-lg text-white text-xs font-bold"
               >
                 Gönder
               </button>
@@ -483,9 +523,14 @@ export const MobileStorefrontDetailDrawer: React.FC<
                 key={t.id}
                 type="button"
                 onClick={() => setActiveTab(t.id)}
+                style={
+                  activeTab === t.id
+                    ? { backgroundColor: accentColor, color: '#FFFFFF' }
+                    : undefined
+                }
                 className={`py-2 rounded-lg text-[11px] font-bold transition ${
                   activeTab === t.id
-                    ? 'bg-white text-[#5B5FEF] shadow-xs'
+                    ? 'shadow-xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
                 data-testid={`storefront-tab-${t.id}`}
@@ -515,8 +560,16 @@ export const MobileStorefrontDetailDrawer: React.FC<
                 return (
                   <div
                     key={srv.id}
+                    style={
+                      isSelected
+                        ? {
+                            borderColor: accentColor,
+                            boxShadow: `0 0 0 1px ${accentColor}33`,
+                          }
+                        : undefined
+                    }
                     className={`rounded-2xl bg-white p-3.5 border transition space-y-2 shadow-xs ${
-                      isSelected ? 'border-[#5B5FEF] ring-1 ring-[#5B5FEF]/20' : 'border-slate-200'
+                      isSelected ? '' : 'border-slate-200'
                     }`}
                     data-testid={`storefront-service-item-${srv.id}`}
                   >
@@ -534,10 +587,15 @@ export const MobileStorefrontDetailDrawer: React.FC<
                       <button
                         type="button"
                         onClick={() => toggleService(srv.id)}
+                        style={
+                          isSelected
+                            ? { backgroundColor: accentColor }
+                            : { borderColor: accentColor, color: accentColor }
+                        }
                         className={`px-3 py-1 rounded-full text-[11px] font-bold shrink-0 flex items-center gap-1 transition ${
                           isSelected
-                            ? 'bg-[#5B5FEF] text-white'
-                            : 'bg-[#EEF0FF] text-[#5B5FEF] hover:bg-indigo-100'
+                            ? 'text-white'
+                            : 'border bg-[#EEF0FF]'
                         }`}
                       >
                         {isSelected ? (
@@ -552,7 +610,10 @@ export const MobileStorefrontDetailDrawer: React.FC<
                     </div>
                     <div className="flex items-center gap-3 text-[11px] text-slate-600 pt-1 border-t border-slate-100">
                       <span className="font-bold text-[#111827]">
-                        {srv.priceMajor.toLocaleString('tr-TR')} {srv.currency}
+                        {convertFromTryMajor(srv.priceMajor, selectedCurrency).toLocaleString(
+                          'tr-TR'
+                        )}{' '}
+                        {selectedCurrency}
                       </span>
                       <span>•</span>
                       <span className="inline-flex items-center gap-1">
@@ -574,14 +635,25 @@ export const MobileStorefrontDetailDrawer: React.FC<
                   <div
                     key={sp.id}
                     onClick={() => setSelectedSpecialist(sp)}
+                    style={
+                      isPicked
+                        ? {
+                            borderColor: accentColor,
+                            boxShadow: `0 0 0 1px ${accentColor}33`,
+                          }
+                        : undefined
+                    }
                     className={`rounded-2xl bg-white p-4 border cursor-pointer transition space-y-2 shadow-xs ${
-                      isPicked ? 'border-[#5B5FEF] ring-1 ring-[#5B5FEF]/20' : 'border-slate-200'
+                      isPicked ? '' : 'border-slate-200'
                     }`}
                     data-testid={`storefront-specialist-${sp.id}`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="w-11 h-11 rounded-2xl bg-[#EEF0FF] text-[#5B5FEF] flex items-center justify-center font-black text-sm">
+                        <div
+                          className="w-11 h-11 rounded-2xl border bg-[#EEF0FF] flex items-center justify-center font-black text-sm"
+                          style={{ borderColor: accentColor, color: accentColor }}
+                        >
                           {sp.name
                             .split(' ')
                             .map((n) => n[0])
@@ -592,7 +664,10 @@ export const MobileStorefrontDetailDrawer: React.FC<
                           <h4 className="text-xs font-bold text-[#111827]">
                             {sp.name}
                           </h4>
-                          <p className="text-[11px] text-[#5B5FEF] font-semibold">
+                          <p
+                            className="text-[11px] font-semibold"
+                            style={{ color: accentColor }}
+                          >
                             {sp.titleTr}
                           </p>
                         </div>
@@ -607,7 +682,7 @@ export const MobileStorefrontDetailDrawer: React.FC<
                     </p>
                     <div className="flex items-center justify-between pt-1 text-[10px] text-slate-500">
                       <span>{sp.experienceYears} Yıl Deneyim • {sp.reviewCount} Değerlendirme</span>
-                      <span className="font-bold text-[#5B5FEF]">
+                      <span className="font-bold" style={{ color: accentColor }}>
                         {isPicked ? '✓ Seçili Uzman' : 'Bu Uzmanı Seç'}
                       </span>
                     </div>
@@ -628,7 +703,10 @@ export const MobileStorefrontDetailDrawer: React.FC<
                     <span className="text-xs font-bold text-[#111827]">
                       {item.titleTr}
                     </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-[#EEF0FF] text-[#4338CA] font-semibold">
+                    <span
+                      className="text-[10px] px-2 py-0.5 rounded border bg-[#EEF0FF] font-semibold"
+                      style={{ borderColor: accentColor, color: accentColor }}
+                    >
                       {item.durationMinutes} dk işlem
                     </span>
                   </div>
@@ -656,7 +734,7 @@ export const MobileStorefrontDetailDrawer: React.FC<
             <div className="space-y-3">
               <div className="rounded-2xl bg-white border border-slate-200 p-4 space-y-2 shadow-xs">
                 <h4 className="text-xs font-bold text-[#111827] flex items-center gap-1.5">
-                  <Award className="w-4 h-4 text-[#5B5FEF]" />
+                  <Award className="w-4 h-4" style={{ color: accentColor }} />
                   Uygulamaya Özel VIP Karşılama Standartları
                 </h4>
                 <div className="flex flex-wrap gap-1.5 pt-1">
@@ -664,7 +742,7 @@ export const MobileStorefrontDetailDrawer: React.FC<
                     <Coffee className="w-3 h-3 text-amber-600" /> Barista Kahve & Matcha
                   </span>
                   <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F8F9FB] border border-slate-200 text-[10px] font-semibold text-slate-700">
-                    <VolumeX className="w-3 h-3 text-[#5B5FEF]" /> Sessiz Seans
+                    <VolumeX className="w-3 h-3" style={{ color: accentColor }} /> Sessiz Seans
                   </span>
                   <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F8F9FB] border border-slate-200 text-[10px] font-semibold text-slate-700">
                     <Sparkles className="w-3 h-3 text-emerald-600" /> Pasaport Formül Kaydı
@@ -698,7 +776,8 @@ export const MobileStorefrontDetailDrawer: React.FC<
               {selectedServices.length} Hizmet • {totalMinutes} dk • {selectedSpecialist.name}
             </span>
             <span className="text-base font-black text-[#111827]">
-              {totalPrice.toLocaleString('tr-TR')} TRY
+              {convertFromTryMajor(totalPrice, selectedCurrency).toLocaleString('tr-TR')}{' '}
+              {selectedCurrency}
             </span>
           </div>
           <button
@@ -710,8 +789,8 @@ export const MobileStorefrontDetailDrawer: React.FC<
                 selectedServices.map((s) => s.name)
               )
             }
-            style={{ minHeight: '46px' }}
-            className="px-5 py-2.5 rounded-xl bg-[#5B5FEF] hover:bg-[#4A4EE0] text-white text-xs font-bold flex items-center gap-2 shadow-sm"
+            style={{ minHeight: '46px', backgroundColor: accentColor }}
+            className="px-5 py-2.5 rounded-xl text-white text-xs font-bold flex items-center gap-2 shadow-sm"
             data-testid="storefront-proceed-booking-btn"
           >
             <CalendarPlus className="w-4 h-4" />

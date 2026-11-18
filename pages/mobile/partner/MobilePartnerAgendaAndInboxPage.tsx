@@ -38,6 +38,9 @@ import {
   SupportedCurrency,
 } from '../../../services/mobile/mobileRegionCurrencyService';
 import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
+import MobileAIStyleVisualizerPage from '../b2c/MobileAIStyleVisualizerPage';
+import { resolvePartnerFeatureEntitlements } from '../../../services/mobile/mobilePackageEntitlementService';
+import { MobilePersonaType } from '../../../services/mobile/mobileShellPolicyService';
 
 export interface PartnerAgendaItem {
   appointmentId: string;
@@ -94,10 +97,20 @@ interface PartnerStaffMember {
   active: boolean;
   available: boolean;
   commissionRate: number;
+  workDaysLabel: string;
+  shiftHours: string;
 }
 
 type RevenuePeriod = 'daily' | 'weekly' | 'monthly' | 'quarterly';
 type BusinessHoursKey = 'weekdays' | 'saturday' | 'sunday';
+type DailyBusinessHoursKey =
+  | 'monday'
+  | 'tuesday'
+  | 'wednesday'
+  | 'thursday'
+  | 'friday'
+  | 'saturday'
+  | 'sunday';
 
 interface BusinessHoursSchedule {
   label: string;
@@ -185,6 +198,8 @@ export interface MobilePartnerAgendaAndInboxPageProps {
   language?: 'tr' | 'en';
   initialTabFocus?: 'agenda' | 'inbox';
   partnerQuickAddTick?: number;
+  effectivePersona?: MobilePersonaType;
+  onRequestPlanUpgrade?: () => void;
 }
 
 export const MobilePartnerAgendaAndInboxPage: React.FC<
@@ -195,6 +210,8 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   language = 'tr',
   initialTabFocus = 'agenda',
   partnerQuickAddTick = 0,
+  effectivePersona,
+  onRequestPlanUpgrade,
 }) => {
   const {
     addCatalogItem,
@@ -202,6 +219,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     appendPassportFormula,
     customVenuePhotos,
     partnerCatalog,
+    partnerSubscription,
     publishSocialPost,
     removeCatalogItem,
     removeVenuePhoto,
@@ -218,6 +236,10 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   } = useMobileAppSession();
   const isDark = themeMode === 'dark';
   const access = verifyPartnerMobileAccess(userRole, tenantId, tenantId);
+  const entitlements = resolvePartnerFeatureEntitlements({
+    partnerSubscription,
+    effectivePersona,
+  });
   const [agenda, setAgenda] = useState<PartnerAgendaItem[]>([
     {
       appointmentId: 'apt-p1',
@@ -306,6 +328,8 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
       active: true,
       available: true,
       commissionRate: 30,
+      workDaysLabel: 'Pzt–Cmt',
+      shiftHours: '09:00–19:00',
     },
     {
       id: 'staff-ece',
@@ -314,6 +338,8 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
       active: true,
       available: false,
       commissionRate: 25,
+      workDaysLabel: 'Pzt–Cum',
+      shiftHours: '10:00–18:00',
     },
     {
       id: 'staff-deniz',
@@ -322,18 +348,33 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
       active: true,
       available: true,
       commissionRate: 20,
+      workDaysLabel: 'Sal–Paz',
+      shiftHours: '11:00–20:00',
     },
   ]);
   const [isStaffAddOpen, setIsStaffAddOpen] = useState(false);
   const [newStaffName, setNewStaffName] = useState('');
   const [newStaffSpecialty, setNewStaffSpecialty] = useState('');
   const [newStaffCommission, setNewStaffCommission] = useState('20');
+  const [newStaffShift, setNewStaffShift] = useState('09:00–19:00');
   const [selectedRevenuePeriod, setSelectedRevenuePeriod] =
     useState<RevenuePeriod>('daily');
   const [businessHours, setBusinessHours] = useState<
     Record<BusinessHoursKey, BusinessHoursSchedule>
   >({
     weekdays: { label: 'Hafta İçi', open: true, openTime: '09:00', closeTime: '20:00' },
+    saturday: { label: 'Cumartesi', open: true, openTime: '10:00', closeTime: '19:00' },
+    sunday: { label: 'Pazar', open: false, openTime: '10:00', closeTime: '17:00' },
+  });
+  const [dailyHoursMode, setDailyHoursMode] = useState(false);
+  const [dailyBusinessHours, setDailyBusinessHours] = useState<
+    Record<DailyBusinessHoursKey, BusinessHoursSchedule>
+  >({
+    monday: { label: 'Pazartesi', open: true, openTime: '09:00', closeTime: '20:00' },
+    tuesday: { label: 'Salı', open: true, openTime: '09:00', closeTime: '20:00' },
+    wednesday: { label: 'Çarşamba', open: true, openTime: '09:00', closeTime: '20:00' },
+    thursday: { label: 'Perşembe', open: true, openTime: '09:00', closeTime: '20:00' },
+    friday: { label: 'Cuma', open: true, openTime: '09:00', closeTime: '20:00' },
     saturday: { label: 'Cumartesi', open: true, openTime: '10:00', closeTime: '19:00' },
     sunday: { label: 'Pazar', open: false, openTime: '10:00', closeTime: '17:00' },
   });
@@ -563,10 +604,12 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   const handleAddStaffMember = () => {
     const name = newStaffName.trim();
     const specialty = newStaffSpecialty.trim();
+    const shiftHours = newStaffShift.trim();
     const commissionRate = Number(newStaffCommission);
     if (
       !name ||
       !specialty ||
+      !shiftHours ||
       !Number.isFinite(commissionRate) ||
       commissionRate < 0 ||
       commissionRate > 100
@@ -582,12 +625,15 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
         active: true,
         available: true,
         commissionRate: Math.round(commissionRate),
+        workDaysLabel: 'Pzt–Cmt',
+        shiftHours,
       },
       ...current,
     ]);
     setNewStaffName('');
     setNewStaffSpecialty('');
     setNewStaffCommission('20');
+    setNewStaffShift('09:00–19:00');
     setIsStaffAddOpen(false);
     showToast(`${name} uzman kadrosuna eklendi.`);
   };
@@ -604,6 +650,28 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     setStaffMembers((current) =>
       current.map((member) =>
         member.id === staffId ? { ...member, [field]: !member[field] } : member
+      )
+    );
+  };
+
+  const handleStaffCommissionChange = (staffId: string, value: string) => {
+    const commissionRate = Number(value);
+    if (!Number.isFinite(commissionRate) || commissionRate < 0 || commissionRate > 100) {
+      return;
+    }
+    setStaffMembers((current) =>
+      current.map((member) =>
+        member.id === staffId
+          ? { ...member, commissionRate: Math.round(commissionRate) }
+          : member
+      )
+    );
+  };
+
+  const handleStaffShiftChange = (staffId: string, shiftHours: string) => {
+    setStaffMembers((current) =>
+      current.map((member) =>
+        member.id === staffId ? { ...member, shiftHours } : member
       )
     );
   };
@@ -625,6 +693,25 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
       [key]: { ...current[key], [field]: value },
     }));
     showToast(`${businessHours[key].label} çalışma saati ${value} olarak güncellendi.`);
+  };
+
+  const handleToggleDailyBusinessDay = (key: DailyBusinessHoursKey) => {
+    setDailyBusinessHours((current) => ({
+      ...current,
+      [key]: { ...current[key], open: !current[key].open },
+    }));
+  };
+
+  const handleDailyBusinessTimeChange = (
+    key: DailyBusinessHoursKey,
+    field: 'openTime' | 'closeTime',
+    value: string
+  ) => {
+    setDailyBusinessHours((current) => ({
+      ...current,
+      [key]: { ...current[key], [field]: value },
+    }));
+    showToast(`${dailyBusinessHours[key].label} çalışma saati ${value} olarak güncellendi.`);
   };
 
   const handleGalleryFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -711,6 +798,17 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
       showToast(`Mağaza linki: ${storefrontUrl}`);
     }
   };
+
+  const displayedBusinessHours: Array<{
+    key: BusinessHoursKey | DailyBusinessHoursKey;
+    schedule: BusinessHoursSchedule;
+  }> = dailyHoursMode
+    ? (Object.entries(dailyBusinessHours) as [DailyBusinessHoursKey, BusinessHoursSchedule][]).map(
+        ([key, schedule]) => ({ key, schedule })
+      )
+    : (Object.entries(businessHours) as [BusinessHoursKey, BusinessHoursSchedule][]).map(
+        ([key, schedule]) => ({ key, schedule })
+      );
 
   return (
     <div
@@ -1389,6 +1487,15 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                   className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs text-slate-900"
                   data-testid="partner-staff-commission-input"
                 />
+                <input
+                  type="text"
+                  value={newStaffShift}
+                  onChange={(event) => setNewStaffShift(event.target.value)}
+                  placeholder="Çalışma saati (09:00–19:00)"
+                  aria-label="Personel çalışma saati"
+                  className="col-span-2 min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs text-slate-900"
+                  data-testid="partner-staff-shift-input"
+                />
                 <button
                   type="button"
                   onClick={handleAddStaffMember}
@@ -1412,6 +1519,9 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                         {member.name}
                       </p>
                       <p className="text-[10px] text-slate-500">{member.specialty}</p>
+                      <p className="mt-0.5 text-[10px] font-semibold text-slate-500">
+                        {member.workDaysLabel} • {member.shiftHours}
+                      </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
                       <span className="rounded-lg bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-800">
@@ -1427,6 +1537,34 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-800">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                      Prim %
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={member.commissionRate}
+                        onChange={(event) =>
+                          handleStaffCommissionChange(member.id, event.target.value)
+                        }
+                        className="mt-1 min-h-9 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                        data-testid={`partner-staff-commission-edit-${member.id}`}
+                      />
+                    </label>
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                      Çalışma Saatleri
+                      <input
+                        type="text"
+                        value={member.shiftHours}
+                        onChange={(event) =>
+                          handleStaffShiftChange(member.id, event.target.value)
+                        }
+                        className="mt-1 min-h-9 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                        data-testid={`partner-staff-shift-edit-${member.id}`}
+                      />
+                    </label>
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <button
@@ -1642,9 +1780,26 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
               <Clock className="h-4 w-4 text-[#5B5FEF]" />
               İşletme Çalışma Saatleri
             </span>
+            <button
+              type="button"
+              aria-pressed={dailyHoursMode}
+              onClick={() => setDailyHoursMode((current) => !current)}
+              className={`mb-3 flex min-h-11 w-full items-center justify-between rounded-2xl border-2 px-3 text-left text-[11px] font-black transition ${
+                dailyHoursMode
+                  ? 'border-[#4F46E5] bg-[#EEF2FF] text-[#4338CA]'
+                  : 'border-slate-200 bg-slate-50 text-slate-700'
+              }`}
+              data-testid="partner-hours-daily-mode-toggle"
+            >
+              <span>Gün Gün Saat Düzenle (Pzt–Paz)</span>
+              {dailyHoursMode ? (
+                <ToggleRight className="h-6 w-6 text-[#4F46E5]" />
+              ) : (
+                <ToggleLeft className="h-6 w-6 text-slate-400" />
+              )}
+            </button>
             <div className="space-y-2">
-              {(Object.entries(businessHours) as [BusinessHoursKey, BusinessHoursSchedule][]).map(
-                ([key, schedule]) => {
+              {displayedBusinessHours.map(({ key, schedule }) => {
                 const isOpen = schedule.open;
                 return (
                   <div
@@ -1654,7 +1809,11 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                     <button
                       type="button"
                       aria-pressed={isOpen}
-                      onClick={() => handleToggleBusinessDay(key)}
+                      onClick={() =>
+                        dailyHoursMode
+                          ? handleToggleDailyBusinessDay(key as DailyBusinessHoursKey)
+                          : handleToggleBusinessDay(key as BusinessHoursKey)
+                      }
                       className="flex min-h-10 w-full items-center justify-between text-left"
                       data-testid={`partner-hours-toggle-${key}`}
                     >
@@ -1682,7 +1841,17 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                             type="time"
                             value={schedule.openTime}
                             onChange={(event) =>
-                              handleBusinessTimeChange(key, 'openTime', event.target.value)
+                              dailyHoursMode
+                                ? handleDailyBusinessTimeChange(
+                                    key as DailyBusinessHoursKey,
+                                    'openTime',
+                                    event.target.value
+                                  )
+                                : handleBusinessTimeChange(
+                                    key as BusinessHoursKey,
+                                    'openTime',
+                                    event.target.value
+                                  )
                             }
                             className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-2 text-xs text-slate-900"
                             data-testid={`partner-hours-open-${key}`}
@@ -1694,7 +1863,17 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
                             type="time"
                             value={schedule.closeTime}
                             onChange={(event) =>
-                              handleBusinessTimeChange(key, 'closeTime', event.target.value)
+                              dailyHoursMode
+                                ? handleDailyBusinessTimeChange(
+                                    key as DailyBusinessHoursKey,
+                                    'closeTime',
+                                    event.target.value
+                                  )
+                                : handleBusinessTimeChange(
+                                    key as BusinessHoursKey,
+                                    'closeTime',
+                                    event.target.value
+                                  )
                             }
                             className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-2 text-xs text-slate-900"
                             data-testid={`partner-hours-close-${key}`}
@@ -1808,6 +1987,14 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
               </button>
             </div>
           </div>
+
+          <MobileAIStyleVisualizerPage
+            tenantId={tenantId}
+            embeddedMode
+            isPackageEligible={entitlements.aiVisualizerActiveOnStorefront}
+            requiredPlanLabel={entitlements.requiredUpgradeForAi}
+            onRequestUpgrade={onRequestPlanUpgrade}
+          />
 
           <div className="rounded-3xl border-2 border-amber-300 bg-amber-50 p-4 shadow-sm">
             <span className="mb-3 flex items-center gap-1.5 text-xs font-black text-amber-950">
