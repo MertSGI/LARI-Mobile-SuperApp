@@ -1101,7 +1101,11 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
               className={`px-3 py-1.5 rounded-xl border-2 text-xs font-bold whitespace-nowrap flex items-center gap-1 ${innerSurface}`}
             >
               <Plus className="w-3.5 h-3.5 text-[#4F46E5]" />
-              {catItem.name} ({catItem.unitPriceMajor.toLocaleString('tr-TR')}₺)
+              {catItem.name} (
+              {convertFromTryMajor(catItem.unitPriceMajor, selectedCurrency).toLocaleString(
+                'tr-TR'
+              )}{' '}
+              {selectedCurrency})
             </button>
           ))}
         </div>

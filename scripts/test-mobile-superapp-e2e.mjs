@@ -694,9 +694,39 @@ async function run() {
         'Selin Demir'
       );
 
-      // I) Hardening checks: Customer 360 PIN rejection & malformed localStorage resilience
+      // I) Hardening checks: Customer 360 PIN rejection, Partner self-reg non-escalation & malformed localStorage resilience
+      await page.click('[data-testid="profile-logout-btn"]');
+      await page.waitForSelector('[data-testid="mobile-auth-modal"]');
+      await page.click('[data-testid="auth-tab-register-btn"]');
+      await page.click('[data-testid="auth-role-partner-btn"]');
+      await page.fill('[data-testid="auth-reg-fullname-input"]', 'Kaan Partner Aday');
+      await page.fill('[data-testid="auth-reg-email-input"]', 'kaan.aday@gmail.com');
+      await page.fill('[data-testid="auth-reg-password-input"]', 'lari2026');
+      await page.fill('[data-testid="auth-reg-password-confirm-input"]', 'lari2026');
+      await page.fill('[data-testid="auth-reg-phone-input"]', '5331234567');
+      await page.fill('[data-testid="auth-reg-age-input"]', '30');
+      await page.selectOption('[data-testid="auth-reg-gender-select"]', 'male');
+      await page.check('[data-testid="auth-reg-kvkk-checkbox"]');
+      await page.click('[data-testid="auth-register-submit-btn"]');
+      await page.waitForSelector('[data-testid="mobile-partner-onboarding-funnel"]');
+      const storedPartnerApplicant = await page.evaluate(() =>
+        JSON.parse(localStorage.getItem('lari_mobile_auth_user_v1') || '{}')
+      );
+      assert.equal(
+        storedPartnerApplicant.role,
+        'customer',
+        `Partner signup must remain customer until onboarding completes on ${vp.name}`
+      );
+      await page.reload({ waitUntil: 'networkidle' });
+      assert.equal(
+        await page.getAttribute('[data-testid="lari-mobile-app-shell"]', 'data-effective-mode'),
+        'b2c_customer',
+        `Incomplete partner signup must stay b2c_customer after reload on ${vp.name}`
+      );
+
       await page.evaluate(() => {
         localStorage.setItem('lari_partner_campaigns_v1', '[{}]');
+        localStorage.setItem('lari_partner_c360_pin_hash_v1', 'pin_2cf9a0f0');
         localStorage.removeItem('lari_mobile_signed_out_v1');
         localStorage.removeItem('lari_mobile_auth_user_v1');
       });

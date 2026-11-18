@@ -72,20 +72,26 @@ export const MobileSuperAppContent: React.FC = () => {
     (explicitRoleParam === 'guest' && !partnerSubscription && !mobileAuthUser) ||
     (isExplicitlySignedOut && !mobileAuthUser && !partnerSubscription);
 
+  const trustedMobileAuthRole: Role | null = mobileAuthUser
+    ? isLocalOrNativePreviewHost
+      ? mobileAuthUser.role
+      : 'customer'
+    : null;
+
   const effectiveRole: Role | 'guest' =
     isGuestSession
       ? 'guest'
       : partnerSubscription
         ? 'tenant_owner'
-        : mobileAuthUser
-          ? mobileAuthUser.role
-          : currentUser?.role
-            ? currentUser.role
+        : currentUser?.role
+          ? currentUser.role
+          : trustedMobileAuthRole
+            ? trustedMobileAuthRole
             : isLocalOrNativePreviewHost
               ? 'tenant_owner'
               : 'guest';
 
-  const signedInRole = mobileAuthUser?.role || currentUser?.role;
+  const signedInRole = currentUser?.role || trustedMobileAuthRole;
   const isSignedInPartnerAccount =
     signedInRole === 'tenant_owner' ||
     signedInRole === 'staff' ||

@@ -328,7 +328,7 @@ export async function registerMobileAccount(
       email: normalizedEmail,
       fullName: payload.profile.fullName.trim(),
       provider: 'email',
-      role: payload.accountRole || 'customer',
+      role: 'customer',
       kvkkAccepted: payload.kvkkAccepted,
       createdAtIso: nowIso,
       lastLoginAtIso: nowIso,
@@ -359,7 +359,7 @@ export async function registerMobileAccount(
     email: normalizedEmail,
     fullName: cleanProfile.fullName,
     provider: payload.provider,
-    role: payload.accountRole || existing?.user.role || 'customer',
+    role: existing?.user.role === 'tenant_owner' ? 'tenant_owner' : 'customer',
     kvkkAccepted: true,
     createdAtIso: existing?.user.createdAtIso || nowIso,
     lastLoginAtIso: nowIso,
@@ -525,6 +525,18 @@ export async function continueMobileWithSocialProvider(input: {
       return {
         success: false,
         errorMessage: error.message || 'Sosyal giriş başlatılamadı.',
+      };
+    }
+  } else {
+    const isLocalHost =
+      typeof window !== 'undefined' &&
+      (['localhost', '127.0.0.1'].includes(window.location.hostname) ||
+        Boolean((window as any).Capacitor?.isNativePlatform?.()));
+    if (!isLocalHost) {
+      return {
+        success: false,
+        errorMessage:
+          'Uzak sunucuda sosyal giriş için doğrulanmış OAuth oturumu gereklidir.',
       };
     }
   }

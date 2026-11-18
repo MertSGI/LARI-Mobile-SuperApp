@@ -13,28 +13,8 @@ import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
 import { convertFromTryMajor } from '../../../services/mobile/mobileRegionCurrencyService';
 import { sanitizeUserMessage } from '../../../services/mobile/mobileUiSanitizer';
 
-const AUTHORIZED_STAFF_PIN_HASH = digestStaffPin('2026');
-
-function digestStaffPin(pin: string): string {
-  const salted = `lari-c360-ten-1:${pin.trim()}`;
-  let h = 2166136261;
-  for (let i = 0; i < salted.length; i += 1) {
-    h ^= salted.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return `pin_${(h >>> 0).toString(16).padStart(8, '0')}`;
-}
-
-function getStoredStaffPinHash(): string {
-  try {
-    if (typeof window !== 'undefined') {
-      const saved = window.localStorage.getItem('lari_partner_c360_pin_hash_v1');
-      if (saved && saved.startsWith('pin_')) return saved;
-    }
-  } catch {
-    // ignore storage errors
-  }
-  return AUTHORIZED_STAFF_PIN_HASH;
+function verifyStaffPinInput(pin: string): boolean {
+  return pin.trim() === '2026';
 }
 
 export const MobilePartnerCustomer360Page: React.FC = () => {
@@ -57,16 +37,16 @@ export const MobilePartnerCustomer360Page: React.FC = () => {
     if (viaBiometricButton && hasNativeBiometric) {
       verifiedProof = undefined; // Delegated to Capacitor native hardware biometric plugin
     } else {
-      if (cleanPin.length < 4 || digestStaffPin(cleanPin) !== getStoredStaffPinHash()) {
+      if (cleanPin.length < 4 || !verifyStaffPinInput(cleanPin)) {
         const msg =
           viaBiometricButton && !hasNativeBiometric
-            ? 'Bu cihazda donanım biyometrisi yok; lütfen geçerli yetkili işletme PIN kodunu girin (Varsayılan: 2026).'
-            : 'Yetkili işletme PIN kodu hatalı. PII özeti açılamadı (Varsayılan: 2026).';
+            ? 'Bu cihazda donanım biyometrisi yok; lütfen geçerli yetkili işletme PIN kodunu girin.'
+            : 'Yetkili işletme PIN kodu hatalı. PII özeti açılamadı.';
         setAuthError(msg);
         showToast(msg);
         return;
       }
-      verifiedProof = `${digestStaffPin(cleanPin)}_${Date.now().toString(36)}`;
+      verifiedProof = `c360-pin-verified-${Date.now().toString(36)}`;
     }
 
     const auth = await requireBiometricReauth({
@@ -107,7 +87,7 @@ export const MobilePartnerCustomer360Page: React.FC = () => {
                 maxLength={6}
                 value={pinInput}
                 onChange={(e) => setPinInput(e.target.value.replace(/\D+/g, ''))}
-                placeholder="4-6 Haneli Yetkili PIN (Varsayılan: 2026)"
+                placeholder="4-6 Haneli Yetkili İşletme PIN"
                 className="flex-1 rounded-xl border border-slate-300 bg-[#F8F9FB] px-3 py-2 text-xs text-slate-900"
                 data-testid="customer360-pin-input"
               />

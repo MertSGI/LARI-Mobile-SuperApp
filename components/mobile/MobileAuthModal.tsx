@@ -227,7 +227,7 @@ export const MobileAuthModal: React.FC<MobileAuthModalProps> = ({
       password: regProvider === 'email' ? regPassword : undefined,
       passwordConfirm: regProvider === 'email' ? regPasswordConfirm : undefined,
       kvkkAccepted,
-      accountRole,
+      accountRole: 'customer',
     });
     setSubmitting(false);
 
@@ -245,7 +245,7 @@ export const MobileAuthModal: React.FC<MobileAuthModalProps> = ({
       )
     );
     onAuthenticated?.({
-      role: res.user?.role || accountRole,
+      role: 'customer',
       isNewPartnerSignup: accountRole === 'tenant_owner',
     });
   };
