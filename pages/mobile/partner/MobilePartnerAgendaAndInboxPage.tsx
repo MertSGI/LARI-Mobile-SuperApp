@@ -33,6 +33,7 @@ import { Role } from '../../../types';
 import { sanitizeUserMessage } from '../../../services/mobile/mobileUiSanitizer';
 import {
   convertFromTryMajor,
+  getCurrencySymbol,
   getStorefrontEditLockStatus,
   sanitizePhoneDigits,
   SupportedCurrency,
@@ -297,7 +298,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     },
   ]);
   const [activeManagementTab, setActiveManagementTab] =
-    useState<PartnerManagementTab>('agenda');
+    useState<PartnerManagementTab>(initialTabFocus === 'inbox' ? 'storefront' : 'agenda');
   const [isAgendaAddOpen, setIsAgendaAddOpen] = useState(false);
   const inboxFocusRef = useRef<HTMLDivElement | null>(null);
   const [newAgendaCustomer, setNewAgendaCustomer] = useState('');
@@ -348,7 +349,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
   const [storefrontNowMs, setStorefrontNowMs] = useState(() => Date.now());
 
   useEffect(() => {
-    setActiveManagementTab('agenda');
+    setActiveManagementTab(initialTabFocus === 'inbox' ? 'storefront' : 'agenda');
     if (initialTabFocus !== 'inbox') return;
 
     const animationFrame = window.requestAnimationFrame(() => {
@@ -359,7 +360,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
 
   useEffect(() => {
     if (partnerQuickAddTick <= 0) return;
-    setActiveManagementTab('agenda');
+    setActiveManagementTab(initialTabFocus === 'inbox' ? 'storefront' : 'agenda');
     setIsAgendaAddOpen(true);
   }, [partnerQuickAddTick]);
 
@@ -403,7 +404,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
     storefrontNowMs
   );
   const formatPartnerMoney = (amountTry: number) =>
-    `${convertFromTryMajor(amountTry, selectedCurrency).toLocaleString('tr-TR')} ${selectedCurrency}`;
+    `${convertFromTryMajor(amountTry, selectedCurrency).toLocaleString('tr-TR')} ${getCurrencySymbol(selectedCurrency)}`;
   const isInboxFocus = initialTabFocus === 'inbox';
 
   if (!access.allowed) {
@@ -872,7 +873,11 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
           <div className="flex min-w-0 items-center gap-2">
             <ClipboardList className="h-4 w-4 shrink-0 text-[#5B5FEF]" />
             <div>
-              <h2 className="text-sm font-black">İşletme Yönetim Merkezi</h2>
+              <h2 className="text-sm font-black">
+                {activeManagementTab === 'agenda'
+                  ? 'Cep Ajanda & Randevu Talepleri'
+                  : 'İşletme Ayarları & Sosyal Medya Stüdyosu'}
+              </h2>
               <p className="text-[10px] text-slate-500">
                 Ajanda, katalog, ekip ve doğrudan mağaza tek merkezde
               </p>
@@ -893,7 +898,7 @@ export const MobilePartnerAgendaAndInboxPage: React.FC<
               data-testid="partner-currency-select"
             >
               {(['TRY', 'USD', 'EUR', 'GBP'] as SupportedCurrency[]).map((currency) => (
-                <option key={currency} value={currency}>{currency}</option>
+                <option key={currency} value={currency}>{getCurrencySymbol(currency)} {currency}</option>
               ))}
             </select>
           </label>

@@ -152,7 +152,7 @@ export const MobileSuperAppContent: React.FC = () => {
     string | undefined
   >(undefined);
 
-  const tenantId = currentUser?.tenantId || 'ten-atelier-nisantasi';
+  const tenantId = mobileAuthUser?.tenantId || currentUser?.tenantId || 'ten-atelier-nisantasi';
   const tenantSlug =
     initialSlugParam ||
     (location.pathname.startsWith('/m/storefront/')
@@ -441,7 +441,7 @@ export const MobileSuperAppContent: React.FC = () => {
                   onClick={() => openAuthModal('login')}
                   className="min-h-11 px-5 rounded-xl bg-[#4F46E5] text-white text-xs font-black"
                 >
-                  Giriş Yap / Demo İncele
+                  Giriş Yap veya Üye Ol
                 </button>
               )}
             </div>
@@ -546,7 +546,18 @@ export const MobileSuperAppContent: React.FC = () => {
           setActiveTabId(shellState.effectiveMode === 'b2b_partner' ? 'partner_inbox' : 'wallet');
         }}
         onBrandHeaderClick={() => {
-          setActiveTabId(shellState.effectiveMode === 'b2b_partner' ? 'partner_switch' : 'profile');
+          setQuickBookCarouselOpen(false);
+          setBookingListing(null);
+          setActiveTabId(
+            shellState.effectiveMode === 'b2b_partner'
+              ? 'partner_agenda'
+              : tenantSlug
+                ? 'storefront'
+                : 'explore'
+          );
+          if (typeof window !== 'undefined') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
         }}
         businessDisplayName={
           tenantSlug ? `Mağaza: ${tenantSlug}` : 'LARİ Super-App'
@@ -563,7 +574,7 @@ export const MobileSuperAppContent: React.FC = () => {
                 ) {
                   if (isGuestSession) {
                     openAuthModal('login');
-                    showToast('Sağlık Turizmi VIP konsiyerjini görmek için giriş yapın veya demo hesabı seçin.');
+                    showToast('Sağlık Turizmi VIP konsiyerjini görüntülemek için lütfen giriş yapın.');
                   } else {
                     showToast('Sağlık Turizmi konsiyerji yalnızca davetli VIP hastalar için aktiftir.');
                   }

@@ -15,6 +15,8 @@ export interface MobileAuthUser {
   fullName: string;
   provider: MobileAuthProvider;
   role: MobileAuthAccountRole;
+  tenantId?: string;
+  defaultPlanId?: 'baslangic' | 'profesyonel' | 'kurumsal';
   kvkkAccepted: boolean;
   createdAtIso: string;
   lastLoginAtIso: string;
@@ -61,18 +63,40 @@ export const SOCIAL_QUICK_PRESETS: Array<{
   label: string;
   email: string;
   fullName: string;
+  profile: MobileUserProfile;
 }> = [
   {
     provider: 'google',
-    label: 'Google (Gmail)',
+    label: 'Google Hesabı',
+    email: 'mert@randevulari.com',
+    fullName: 'Mert Özçelikbaş',
+    profile: { ...DEFAULT_USER_PROFILE },
+  },
+  {
+    provider: 'google',
+    label: 'Google Hesabı',
     email: 'ayse.kaya@gmail.com',
     fullName: 'Ayşe Kaya',
+    profile: {
+      ...DEFAULT_USER_PROFILE,
+      fullName: 'Ayşe Kaya',
+      email: 'ayse.kaya@gmail.com',
+      phoneDigits: '5324441122',
+      gender: 'female',
+    },
   },
   {
     provider: 'apple',
-    label: 'Apple (iCloud)',
+    label: 'Apple ID',
     email: 'mert.oz@icloud.com',
-    fullName: 'Mert Öz',
+    fullName: 'Mert Özçelikbaş',
+    profile: {
+      ...DEFAULT_USER_PROFILE,
+      fullName: 'Mert Özçelikbaş',
+      email: 'mert.oz@icloud.com',
+      phoneDigits: '5325550140',
+      gender: 'male',
+    },
   },
 ];
 
@@ -211,10 +235,7 @@ function saveStoredAccounts(accounts: MobileStoredAccount[]): void {
   safeWriteStorage(MOBILE_AUTH_STORAGE_KEYS.ACCOUNTS, JSON.stringify(accounts));
 }
 
-function seedBuiltinAccountsIfMissing(): MobileStoredAccount[] {
-  const existing = loadStoredAccounts();
-  if (existing.length > 0) return existing;
-
+function getBuiltinAccounts(): MobileStoredAccount[] {
   const now = new Date().toISOString();
   const demoCustomer: MobileStoredAccount = {
     user: {
@@ -236,6 +257,8 @@ function seedBuiltinAccountsIfMissing(): MobileStoredAccount[] {
       fullName: 'Merve Yılmaz',
       provider: 'email',
       role: 'tenant_owner',
+      tenantId: 'ten-atelier-nisantasi',
+      defaultPlanId: 'baslangic',
       kvkkAccepted: true,
       createdAtIso: now,
       lastLoginAtIso: now,
@@ -248,7 +271,64 @@ function seedBuiltinAccountsIfMissing(): MobileStoredAccount[] {
       phoneDigits: '5334440199',
     },
   };
-  return [demoCustomer, demoPartner];
+  const demoClinicPartner: MobileStoredAccount = {
+    user: {
+      userId: 'usr-lari-clinic-partner',
+      email: 'klinik@randevulari.com',
+      fullName: 'Dr. Ece Aksoy',
+      provider: 'email',
+      role: 'tenant_owner',
+      tenantId: 'ten-dent-kadikoy',
+      defaultPlanId: 'kurumsal',
+      kvkkAccepted: true,
+      createdAtIso: now,
+      lastLoginAtIso: now,
+    },
+    profile: {
+      ...DEFAULT_USER_PROFILE,
+      fullName: 'Dr. Ece Aksoy',
+      email: 'klinik@randevulari.com',
+      gender: 'female',
+      district: 'Kadıköy',
+      phoneDigits: '5327770210',
+      interestedSectors: ['dental_clinic', 'aesthetic_clinic'],
+    },
+  };
+  const demoAutoPartner: MobileStoredAccount = {
+    user: {
+      userId: 'usr-lari-auto-partner',
+      email: 'otoservis@randevulari.com',
+      fullName: 'Kemal Usta',
+      provider: 'email',
+      role: 'tenant_owner',
+      tenantId: 'ten-auto-maslak',
+      defaultPlanId: 'profesyonel',
+      kvkkAccepted: true,
+      createdAtIso: now,
+      lastLoginAtIso: now,
+    },
+    profile: {
+      ...DEFAULT_USER_PROFILE,
+      fullName: 'Kemal Usta',
+      email: 'otoservis@randevulari.com',
+      gender: 'male',
+      district: 'Nişantaşı',
+      phoneDigits: '5328880340',
+      interestedSectors: ['auto_service'],
+    },
+  };
+  return [demoCustomer, demoPartner, demoClinicPartner, demoAutoPartner];
+}
+
+function seedBuiltinAccountsIfMissing(): MobileStoredAccount[] {
+  const existing = loadStoredAccounts();
+  const builtins = getBuiltinAccounts();
+  if (existing.length === 0) return builtins;
+  const existingEmails = new Set(existing.map((acc) => normalizeEmail(acc.user.email)));
+  return [
+    ...existing,
+    ...builtins.filter((acc) => !existingEmails.has(normalizeEmail(acc.user.email))),
+  ];
 }
 
 export function getActiveMobileAuthUser(): MobileAuthUser | null {
@@ -526,7 +606,14 @@ export async function loginMobileWithEmail(input: {
   const builtinMatch = builtins.find(
     (acc) => normalizeEmail(acc.user.email) === normalizedEmail
   );
-  if (builtinMatch && (input.password === 'lari123' || input.password === 'admin123')) {
+  const ACCEPTED_BUILTIN_PASSWORDS = new Set([
+    'Lari2026!',
+    'lari2026!',
+    'lari2026',
+    'lari123',
+    'admin123',
+  ]);
+  if (builtinMatch && ACCEPTED_BUILTIN_PASSWORDS.has(input.password.trim())) {
     const updatedUser: MobileAuthUser = {
       ...builtinMatch.user,
       lastLoginAtIso: new Date().toISOString(),
@@ -550,15 +637,16 @@ export async function continueMobileWithSocialProvider(input: {
   provider: 'google' | 'apple';
   email: string;
   fullName?: string;
+  instantOAuthConnect?: boolean;
 }): Promise<MobileAuthActionResult> {
   const normalizedEmail = normalizeEmail(input.email);
   if (!EMAIL_REGEX.test(normalizedEmail)) {
     return {
       success: false,
       errors: {
-        socialEmail: 'Geçerli bir Gmail / e-posta adresi girin (örn: ad@gmail.com).',
+        socialEmail: 'Geçerli bir e-posta adresi seçin veya girin.',
       },
-      errorMessage: 'Lütfen geçerli bir hesap e-postası girin.',
+      errorMessage: 'Lütfen geçerli bir hesap seçin.',
     };
   }
 
@@ -620,6 +708,53 @@ export async function continueMobileWithSocialProvider(input: {
       success: true,
       user: updatedUser,
       profile: existing.profile,
+    };
+  }
+
+  const presetMatch = SOCIAL_QUICK_PRESETS.find(
+    (item) =>
+      item.provider === input.provider && normalizeEmail(item.email) === normalizedEmail
+  );
+  if (input.instantOAuthConnect || presetMatch) {
+    const nowIso = new Date().toISOString();
+    const resolvedFullName =
+      (input.fullName || '').trim() ||
+      presetMatch?.fullName ||
+      deriveNameFromEmail(normalizedEmail);
+    const resolvedProfile: MobileUserProfile = presetMatch
+      ? {
+          ...presetMatch.profile,
+          fullName: resolvedFullName,
+          email: normalizedEmail,
+        }
+      : {
+          ...DEFAULT_USER_PROFILE,
+          fullName: resolvedFullName,
+          email: normalizedEmail,
+        };
+    const isBuiltinCustomer = normalizedEmail === normalizeEmail(DEFAULT_USER_PROFILE.email);
+    const oauthUser: MobileAuthUser = {
+      userId: isBuiltinCustomer
+        ? 'usr-lari-mert'
+        : `usr-oauth-${input.provider}-${Date.now().toString(36)}`,
+      email: normalizedEmail,
+      fullName: resolvedFullName,
+      provider: input.provider,
+      role: 'customer',
+      kvkkAccepted: true,
+      createdAtIso: nowIso,
+      lastLoginAtIso: nowIso,
+    };
+    const nextAccounts = [
+      { user: oauthUser, profile: resolvedProfile },
+      ...stored.filter((acc) => normalizeEmail(acc.user.email) !== normalizedEmail),
+    ];
+    saveStoredAccounts(nextAccounts);
+    persistActiveAuthSession(oauthUser, resolvedProfile);
+    return {
+      success: true,
+      user: oauthUser,
+      profile: resolvedProfile,
     };
   }
 

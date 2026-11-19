@@ -78,6 +78,8 @@ async function run() {
     browser = await chromium.launch({ headless: true });
 
     const viewports = [
+      { name: 'Xiaomi Redmi Note 8 Pro', width: 393, height: 851 },
+      { name: 'Xiaomi Redmi Note 8 Pro Compact', width: 360, height: 780 },
       { name: 'iPhone 15 Pro', width: 393, height: 852 },
       { name: 'Pixel 7', width: 412, height: 915 },
     ];
@@ -129,7 +131,31 @@ async function run() {
         state: 'detached',
       });
 
-      // Search clear affordance + expanded real-photo category catalog
+      // Search clear affordance + Xiaomi Redmi Note 8 Pro geometry & overlap checks
+      const searchInputBox = await page.locator('[data-testid="explore-search-input"]').boundingBox();
+      const voiceBtnBox = await page.locator('[data-testid="explore-voice-search-btn"]').boundingBox();
+      const filterBtnBox = await page.locator('[data-testid="explore-filter-drawer-btn"]').boundingBox();
+      const mapToggleBox = await page.locator('[data-testid="explore-radar-map-toggle"]').boundingBox();
+      const pinsScrollBox = await page.locator('[data-testid="radar-map-pins-scroll"]').boundingBox();
+      const gpsBtnBox = await page.locator('[data-testid="explore-gps-btn"]').boundingBox();
+      assert.ok(searchInputBox && voiceBtnBox && filterBtnBox && mapToggleBox && pinsScrollBox && gpsBtnBox);
+      assert.ok(
+        searchInputBox.x + searchInputBox.width <= voiceBtnBox.x + 1,
+        `Search input overlaps voice button on ${vp.name}`
+      );
+      assert.ok(
+        Math.abs(filterBtnBox.width - filterBtnBox.height) <= 2 && filterBtnBox.x + filterBtnBox.width <= vp.width,
+        `Filter button geometry invalid on ${vp.name}`
+      );
+      assert.ok(
+        Math.abs(mapToggleBox.width - mapToggleBox.height) <= 2 && mapToggleBox.x + mapToggleBox.width <= vp.width,
+        `Map toggle geometry invalid on ${vp.name}`
+      );
+      assert.ok(
+        pinsScrollBox.x + pinsScrollBox.width <= gpsBtnBox.x + 1,
+        `District pins container overlaps GPS button on ${vp.name}`
+      );
+
       await page.fill('[data-testid="explore-search-input"]', 'Nişantaşı');
       await page.click('[data-testid="explore-search-clear-btn"]');
       assert.equal(await page.inputValue('[data-testid="explore-search-input"]'), '');
@@ -261,7 +287,11 @@ async function run() {
       await page.click('[data-testid="wallet-subtab-loyalty"]');
       await page.waitForSelector('[data-testid="wallet-stamp-card"]');
 
-      // C) Tap 5th Floating Avatar Tab (Profile) -> Test Panel Boundaries, Dark/Light toggle & Switch to HT Patient Concierge + VIP QR
+      // C) Tap 5th Floating Avatar Tab (Profile) -> Test Brand Logo Return Home, Panel Boundaries, Dark/Light toggle & Switch to HT Patient Concierge + VIP QR
+      await page.click('[data-testid="mobile-tab-profile"]');
+      await page.waitForSelector('[data-testid="mobile-profile-settings-page"]');
+      await page.click('[data-testid="header-brand-center-btn"]');
+      await page.waitForSelector('[data-testid="mobile-explore-marketplace-page"]');
       await page.click('[data-testid="mobile-tab-profile"]');
       await page.waitForSelector('[data-testid="mobile-profile-settings-page"]');
       await page.waitForSelector('[data-testid="profile-booking-history-card"]');
@@ -314,7 +344,7 @@ async function run() {
         .locator('[data-testid^="partner-catalog-item-"]')
         .filter({ hasText: 'E2E VIP Bakım' });
       await addedCatalogItem.waitFor();
-      assert.match(await addedCatalogItem.innerText(), /4\.200 TRY/);
+      assert.match(await addedCatalogItem.innerText(), /4\.200 ₺/);
       const addedCatalogTestId = await addedCatalogItem.getAttribute('data-testid');
       assert.ok(addedCatalogTestId);
       const addedCatalogRow = page.locator(`[data-testid="${addedCatalogTestId}"]`);
@@ -325,7 +355,7 @@ async function run() {
       await addedCatalogRow.locator('[data-testid^="partner-catalog-edit-price-"]').fill('4500');
       await addedCatalogRow.locator('[data-testid^="partner-catalog-save-"]').click();
       assert.match(await addedCatalogRow.innerText(), /E2E VIP Bakım Güncel/);
-      assert.match(await addedCatalogRow.innerText(), /4\.500 TRY/);
+      assert.match(await addedCatalogRow.innerText(), /4\.500 ₺/);
       await addedCatalogRow.locator('[data-testid^="partner-catalog-delete-"]').click();
       await addedCatalogRow.waitFor({ state: 'detached' });
 
@@ -378,7 +408,7 @@ async function run() {
       );
       assert.match(
         await page.locator('[data-testid="partner-management-staff-reports-panel"]').innerText(),
-        /798\.500 TRY/
+        /798\.500 ₺/
       );
 
       await page.click('[data-testid="partner-management-tab-storefront"]');
@@ -438,6 +468,21 @@ async function run() {
       await addedInventoryItem.waitFor({ state: 'detached' });
 
       assert.equal(await page.locator('[data-testid="partner-admit-ht-qr-btn"]').count(), 0);
+      assert.equal(
+        await page.locator('input[placeholder*="JSON"]').count(),
+        0,
+        `Raw JSON QR paste input must be removed on ${vp.name}`
+      );
+      await page.click('[data-testid="partner-open-qr-camera-btn"]');
+      await page.waitForSelector('[data-testid="partner-qr-camera-scanner-modal"]');
+      await page.click('[data-testid="partner-close-qr-camera-btn"]');
+      await page.waitForSelector('[data-testid="partner-qr-camera-scanner-modal"]', { state: 'detached' });
+
+      assert.equal(
+        await page.locator('[data-testid="partner-voice-transcript-input"]').count(),
+        0,
+        `Voice transcript input must stay hidden until upgraded on ${vp.name}`
+      );
       await page.click('[data-testid="partner-voice-match-btn"]');
       await page.waitForSelector('[data-testid="partner-voice-upgrade-gate"]');
 
@@ -512,7 +557,7 @@ async function run() {
       await page.click('[data-testid="partner-funnel-preview-continue-btn"]');
       await page.waitForSelector('[data-testid="partner-funnel-step-pricing"]');
       const starterPlan = page.locator('[data-testid="partner-funnel-plan-baslangic"]');
-      assert.match(await starterPlan.innerText(), /1\.490 TRY/);
+      assert.match(await starterPlan.innerText(), /1\.490 ₺/);
       assert.match(await starterPlan.innerText(), /14 Gün Ücretsiz Deneme/);
       await starterPlan.click();
       await page.fill('[data-testid="partner-funnel-owner-name-input"]', 'E2E İşletme Sahibi');
@@ -607,8 +652,8 @@ async function run() {
       const walletLoyaltyText = await page
         .locator('[data-testid="wallet-loyalty-panel"]')
         .innerText();
-      assert.match(walletLoyaltyText, /\bUSD\b/);
-      assert.doesNotMatch(walletLoyaltyText, /\bTRY\b/);
+      assert.match(walletLoyaltyText, /\$/);
+      assert.doesNotMatch(walletLoyaltyText, /\b(?:TRY|USD)\b/);
 
       // G) White-Label Storefront Lock (/m?slug=atelier-nisantasi)
       await page.goto(`${url}/#/m?slug=atelier-nisantasi`, { waitUntil: 'networkidle' });
@@ -632,22 +677,31 @@ async function run() {
       await page.waitForSelector('[data-testid="profile-open-login-btn"]');
       assert.equal(await page.locator('[data-testid="profile-logout-btn"]').count(), 0);
 
-      // Google (Gmail) sign-in -> requires completing mandatory LARİ profile fields
+      // Google (Gmail) sign-in -> Verify zero leaked demo credentials + OAuth 2.0 instant & custom connect
       await page.click('[data-testid="profile-open-login-btn"]');
       await page.waitForSelector('[data-testid="mobile-auth-modal"]');
+      assert.equal(
+        await page.locator('[data-testid="auth-quick-demo-customer-btn"]').count(),
+        0,
+        `Demo credential buttons must not appear in login UI on ${vp.name}`
+      );
+      assert.equal(
+        (await page.locator('[data-testid="mobile-auth-modal"]').innerText()).includes('lari123'),
+        false,
+        `Demo password must not be leaked in login UI on ${vp.name}`
+      );
       await page.click('[data-testid="auth-google-btn"]');
+      await page.waitForSelector('[data-testid="auth-oauth-account-list"]');
       await page.fill('[data-testid="auth-social-name-input"]', 'Zeynep Kaya');
       await page.fill('[data-testid="auth-social-email-input"]', 'zeynep.kaya@gmail.com');
       await page.click('[data-testid="auth-social-continue-btn"]');
       await page.waitForSelector('[data-testid="auth-register-form"]');
 
-      // Missing mandatory fields must block completion
+      // Missing mandatory phone & KVKK must block completion (age & gender are optional)
       await page.click('[data-testid="auth-register-submit-btn"]');
       await page.waitForSelector('[data-testid="mobile-auth-modal"]');
 
       await page.fill('[data-testid="auth-reg-phone-input"]', '5321112233');
-      await page.fill('[data-testid="auth-reg-age-input"]', '29');
-      await page.selectOption('[data-testid="auth-reg-gender-select"]', 'female');
       await page.check('[data-testid="auth-reg-kvkk-checkbox"]');
       await page.click('[data-testid="auth-register-submit-btn"]');
       await page.waitForSelector('[data-testid="mobile-auth-modal"]', { state: 'detached' });

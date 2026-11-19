@@ -21,7 +21,7 @@
    - **Alt Navigasyon Barı:** Instagram esintili yüzen buzlu cam pill dock (`MobileAppShell.tsx`), ikon-only + 5. slotta kullanıcı avatarı (`MÖ`), aşağı kaydırınca gizlenen / yukarı veya durunca açılan yapı. Tüm ekranlarda alt dock çakışmasını önlemek için `pb-28` (`112px`) alt pay bırakılır.
    - **Kart Sistemi & Bütünlük:** `rounded-3xl`, `border-2`, belirgin kurumsal çerçeveler (`#4F46E5`, `#1D1352 → #3B23C4` mor degrade, `#16CFD1 → #15B89B` teal vurgu). Bütün sayfalarda kart ve tipografi dili tutarlı tutulur.
    - **Tema:** Güneş (Açık Mod — varsayılan) & Ay (Koyu Mod) — Profil panelinde tek akıllı toggle butonuyla yönetilir (üst bardan tema butonu kaldırılmıştır).
-   - **Ücret Formatı:** Binlik ayırıcılar daima `tr-TR` noktalı gösterilir (`4.200 TRY`, `3.900 TRY`, `1.490 TRY` — asla `4200` değil).
+   - **Ücret Formatı:** Binlik ayırıcılar daima `tr-TR` noktalı ve para birimi simgesiyle gösterilir (`4.200 ₺`, `120 €`, `130 $`, `105 £`).
 3. **Rol İzolasyonu & Yetki Kuralları:**
    - Varsayılan açılış: Müşteri hesabı müşteri modunda açılır; Partner ile giriş yapıldıysa Partner modunda açılır.
    - Partner olmayan müşterilerde **Partner / İşletme Modu** butonu görünür ama **soluk ve kilitlidir** (`opacity-45` + kilit ikonu); tıklandığında Partner Satış/Önizleme/Kurulum hunisi açılır.
@@ -45,6 +45,15 @@
 * **v0.9.0 (`v0.9.0-partner-crud`):** Partner tam CRUD (Ajanda walk-in ekleme/silme, talep temizleme, katalog düzenleme/silme, personel ekleme/silme, POS stok `+/-/silme`).
 * **v1.0.0 (`v1.0.0-story-analytics-gallery`):** Soft hikayeler gradyan zemini, hikaye içi sağa/sola dokunma geçişi, Günlük/Haftalık/Aylık/Son 3 Aylık ciro analizi, düzenlenebilir çalışma saatleri (`input[type="time"]`), işletme fotoğrafı yükleme/silme + Vitrin & Topluluk Akışı senkronu, hızlı kampanya/kupon yönetimi.
 * **v1.1.0 (`v1.1.0-partner-ecosystem`):** Rezervasyon iptal kuralları & *"Emin misiniz?"* onay modalı; 4 adımlı Partner Satış, Canlı İşletme Önizleme, `planService` senkronlu Aylık/Yıllık Abonelik Paketi Seçimi & Hızlı Kurulum Sihirbazı (`MobilePartnerOnboardingFunnel.tsx`); Ana Sayfa Partner Davet Kartı.
+* **v1.2.0 – v1.4.0 (`v1.4.0-lari-core-bridge`):** Mobil Giriş/Üyelik modalı (`MobileAuthModal.tsx`), kullanıcı bazlı oturum izolasyonu, ayrı `MobileSocialFeedPage.tsx`, çoklu para birimi (`TRY/USD/EUR/GBP`), `mobileCoreBridgeService.ts` ile `repositoryFactory` / `planService` / `reportingService` köprüleri.
+* **v1.5.0 (`v1.5.0-ux-oauth-xiaomi`):**
+  - Google & Apple OAuth 2.0 Tek Dokunuş Hesap Bağlama Paneli (manuel Gmail yazma kutusu kaldırıldı; Yaş/Cinsiyet kayıt zorunluluğundan çıkarıldı).
+  - Arayüzdeki tüm demo şifre/hesap ve yerel önizleme kutuları kaldırıldı; 4 gizli kurumsal hesap (`mert@randevulari.com`, `partner@randevulari.com`, `klinik@randevulari.com`, `otoservis@randevulari.com` — şifre: `Lari2026!` / `lari123`) arka planda tanımlandı.
+  - Üst orta LARİ logosu profil yerine Ana Sayfaya (`explore` / `partner_agenda`) ve `scrollTo(0)` davranışına bağlandı; B2C sosyal akış ikonu `Flame` yerine `Compass` yapıldı.
+  - Partner alt barındaki 1. buton (`partner_agenda`) **Cep Ajanda & Randevu Talepleri**, 2. buton (`partner_inbox` / `Store`) ise **İşletme Ayarları & Sosyal Medya Stüdyosu** olarak ayrıştırıldı.
+  - Partner POS ekranında JSON yapıştırma kutusu kaldırılıp canlı kamera QR okuyucu (`PartnerQrCameraScannerModal.tsx`) eklendi; Sesli Katalog Eşleştirme paket yükseltme gerektiğinde aktif inputları gizleyip **Özellik Önizleme & Paket Yükseltme Kartı** açacak şekilde güncellendi.
+  - Tüm fiyat gösterimleri para birimi simgelerine (`₺`, `$`, `€`, `£`) geçirildi.
+  - Xiaomi Redmi Note 8 Pro (`393x851` & `360x780`) arama/mikrofon ve harita/GPS çakışmaları giderildi (`.no-scrollbar`, `MainActivity.java` `setTextZoom(100)`, `AndroidManifest.xml` `RECORD_AUDIO`).
 
 ---
 

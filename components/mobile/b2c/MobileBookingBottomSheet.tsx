@@ -24,7 +24,10 @@ import {
   DailyBusinessHoursKey,
 } from '../../../contexts/MobileAppSessionContext';
 import { sanitizeUserMessage } from '../../../services/mobile/mobileUiSanitizer';
-import { convertFromTryMajor } from '../../../services/mobile/mobileRegionCurrencyService';
+import {
+  convertFromTryMajor,
+  getCurrencySymbol,
+} from '../../../services/mobile/mobileRegionCurrencyService';
 
 export interface MobileBookingBottomSheetProps {
   listing: MobileDiscoveryListingItem;
@@ -108,6 +111,7 @@ export const MobileBookingBottomSheet: React.FC<
     themeMode,
   } = useMobileAppSession();
   const isDark = themeMode === 'dark';
+  const currencySymbol = getCurrencySymbol(selectedCurrency);
 
   const todayIso = useMemo(() => toLocalIsoDate(new Date()), []);
   const [selectedDate, setSelectedDate] = useState<string>(todayIso);
@@ -346,7 +350,7 @@ export const MobileBookingBottomSheet: React.FC<
               </p>
             </div>
             <span className="font-black text-[#4F46E5] text-base shrink-0">
-              {displayedPriceMajor.toLocaleString('tr-TR')} {selectedCurrency}
+              {displayedPriceMajor.toLocaleString('tr-TR')} {currencySymbol}
             </span>
           </div>
         )}
@@ -665,7 +669,7 @@ export const MobileBookingBottomSheet: React.FC<
                   ? 'Seçili Gün Kapalı / Uygun Saat Yok'
                   : !availableSlots.includes(selectedSlot)
                     ? 'Lütfen Müsait Bir Saat Seçin'
-                    : `Hemen Randevu Al (${displayedPriceMajor.toLocaleString('tr-TR')} ${selectedCurrency})`}
+                    : `Hemen Randevu Al (${displayedPriceMajor.toLocaleString('tr-TR')} ${currencySymbol})`}
           </button>
 
           <button

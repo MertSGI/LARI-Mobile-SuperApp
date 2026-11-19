@@ -42,6 +42,7 @@ import {
   convertFromTryMajor,
   formatPhoneDisplay,
   getCountryConfig,
+  getCurrencySymbol,
   resolveDefaultCurrencyForLocation,
   sanitizePhoneDigits,
   validateMobileUserProfile,
@@ -721,7 +722,11 @@ export const MobileProfileSettingsPage: React.FC<
                         ? convertFromTryMajor(apt.priceMajor, selectedCurrency)
                         : apt.priceMajor
                       ).toLocaleString('tr-TR')}{' '}
-                      {apt.currency === 'TRY' ? selectedCurrency : apt.currency}
+                      {getCurrencySymbol(
+                        (apt.currency === 'TRY'
+                          ? selectedCurrency
+                          : apt.currency) as SupportedCurrency
+                      )}
                     </p>
                   </div>
                 </div>
@@ -1021,7 +1026,9 @@ export const MobileProfileSettingsPage: React.FC<
                   className={`${inputSurface} w-full rounded-xl px-3 py-2.5 text-sm font-medium`}
                 >
                   {(['TRY', 'USD', 'EUR', 'GBP'] as SupportedCurrency[]).map((currency) => (
-                    <option key={currency} value={currency}>{currency}</option>
+                    <option key={currency} value={currency}>
+                      {getCurrencySymbol(currency)}
+                    </option>
                   ))}
                 </select>
                 <p className="mt-1 text-[10px] leading-relaxed text-slate-500">

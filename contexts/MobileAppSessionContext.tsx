@@ -468,6 +468,7 @@ export interface MobileAppSessionValue {
     provider: 'google' | 'apple';
     email: string;
     fullName?: string;
+    instantOAuthConnect?: boolean;
   }) => Promise<MobileAuthActionResult>;
   logoutMobileSession: () => Promise<void>;
   storefrontCustomization: PartnerStorefrontCustomization;
@@ -618,7 +619,9 @@ function isDemoAccountUser(user: MobileAuthUser | null): boolean {
     user.userId === 'usr-lari-mert' ||
     user.userId === 'usr-lari-partner' ||
     user.email.trim().toLowerCase() === 'mert@randevulari.com' ||
-    user.email.trim().toLowerCase() === 'partner@randevulari.com'
+    user.email.trim().toLowerCase() === 'partner@randevulari.com' ||
+    user.email.trim().toLowerCase() === 'klinik@randevulari.com' ||
+    user.email.trim().toLowerCase() === 'otoservis@randevulari.com'
   );
 }
 
@@ -1380,6 +1383,35 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
       saveUserVaultForScope(nextScope, nextVault);
       hydrateSessionVault(nextVault);
       setMobileAuthUser(result.user);
+      if (result.user.email === 'klinik@randevulari.com') {
+        setPartnerSubscription({
+          planId: 'kurumsal',
+          planName: 'Kurumsal & Sağlık Turizmi',
+          billingPeriod: 'annual',
+          businessName: 'LARİ Dent & Estetik Kliniği',
+          category: 'Diş & Klinik',
+          city: 'İstanbul',
+          district: 'Kadıköy',
+          ownerName: 'Dr. Ece Aksoy',
+          trialDays: 14,
+          activatedAtIso: new Date().toISOString(),
+        });
+      } else if (result.user.email === 'otoservis@randevulari.com') {
+        setPartnerSubscription({
+          planId: 'profesyonel',
+          planName: 'Profesyonel Paket',
+          billingPeriod: 'annual',
+          businessName: 'Maslak Auto Studio • Bakım & Servis',
+          category: 'Oto Bakım & Servis',
+          city: 'İstanbul',
+          district: 'Maslak',
+          ownerName: 'Kemal Usta',
+          trialDays: 14,
+          activatedAtIso: new Date().toISOString(),
+        });
+      } else if (result.user.email === 'partner@randevulari.com') {
+        setPartnerSubscription(null);
+      }
       setIsExplicitlySignedOut(false);
       if (result.profile) {
         updateUserProfile(result.profile);
@@ -1416,7 +1448,7 @@ export const MobileAppSessionProvider: React.FC<React.PropsWithChildren> = ({
   );
 
   const continueWithSocial = useCallback(
-    async (input: { provider: 'google' | 'apple'; email: string; fullName?: string }) => {
+    async (input: { provider: 'google' | 'apple'; email: string; fullName?: string; instantOAuthConnect?: boolean }) => {
       const result = await continueMobileWithSocialProvider(input);
       applyAuthenticatedSession(result, 'Hoş geldiniz');
       return result;

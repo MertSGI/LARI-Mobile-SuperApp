@@ -28,6 +28,7 @@ import {
 import { mobileCoreBridgeService } from '../../../services/mobile/mobileCoreBridgeService';
 import {
   convertFromTryMajor,
+  getCurrencySymbol,
   validateMobileUserProfile,
 } from '../../../services/mobile/mobileRegionCurrencyService';
 import {
@@ -323,6 +324,7 @@ export const MobileExploreMarketplacePage: React.FC<
   const showGuestAuthBanner = isExplicitlySignedOut && !mobileAuthUser;
   const isProfileIncomplete = !validateMobileUserProfile(userProfile).valid;
   const isDark = themeMode === 'dark';
+  const currencySymbol = getCurrencySymbol(selectedCurrency);
 
   const [vertical, setVertical] = useState<LariBusinessVertical | 'all'>('all');
   const [queryText, setQueryText] = useState('');
@@ -577,7 +579,7 @@ export const MobileExploreMarketplacePage: React.FC<
           {/* Search + Business Filters + Map Toggle */}
           <div className="flex items-center gap-2">
             <div
-              className={`flex-1 min-w-0 flex items-center gap-2 rounded-2xl border-2 px-3 min-h-[46px] ${
+              className={`flex-1 min-w-0 flex items-center gap-1.5 rounded-2xl border-2 pl-3 pr-1.5 h-12 ${
                 isDark
                   ? 'bg-slate-900 border-slate-700 text-white'
                   : 'bg-white border-slate-300 text-slate-900'
@@ -590,10 +592,10 @@ export const MobileExploreMarketplacePage: React.FC<
                 onChange={(e) => setQueryText(e.target.value)}
                 placeholder={
                   language === 'tr'
-                    ? 'Salon, klinik, oto servis veya işlem...'
-                    : 'Search salon, clinic, auto service...'
+                    ? 'Salon, klinik, oto servis...'
+                    : 'Search salon, clinic, auto...'
                 }
-                className="flex-1 min-w-0 bg-transparent text-sm font-medium outline-none placeholder-slate-400"
+                className="flex-1 min-w-0 w-full bg-transparent text-sm font-medium outline-none placeholder-slate-400 truncate"
                 data-testid="explore-search-input"
               />
               {queryText && (
@@ -601,7 +603,7 @@ export const MobileExploreMarketplacePage: React.FC<
                   type="button"
                   onClick={() => setQueryText('')}
                   aria-label="Aramayı temizle"
-                  className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
                   data-testid="explore-search-clear-btn"
                 >
                   <X className="h-4 w-4" />
@@ -612,7 +614,7 @@ export const MobileExploreMarketplacePage: React.FC<
                 aria-label={isListening ? 'Sesli aramayı durdur' : 'Sesli aramayı başlat'}
                 aria-pressed={isListening}
                 onClick={() => void handleVoiceSearch()}
-                className={`relative flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-xl transition ${
+                className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition ${
                   isListening
                     ? 'animate-pulse bg-rose-500 text-white ring-4 ring-rose-200 dark:ring-rose-900'
                     : 'bg-[#EEF2FF] text-[#4F46E5] hover:bg-indigo-100'
@@ -627,7 +629,7 @@ export const MobileExploreMarketplacePage: React.FC<
               type="button"
               onClick={() => setFilterDrawerOpen(true)}
               aria-label="Filtreleri aç"
-              className={`relative h-[46px] w-[46px] shrink-0 justify-center p-0 rounded-2xl border-2 flex items-center ${
+              className={`relative h-12 w-12 shrink-0 justify-center p-0 rounded-2xl border-2 flex items-center ${
                 activeFilterCount > 0
                   ? 'bg-[#4F46E5] text-white border-[#4338CA]'
                   : isDark
@@ -648,7 +650,7 @@ export const MobileExploreMarketplacePage: React.FC<
               type="button"
               onClick={() => setShowRadarMap((v) => !v)}
               aria-label={showRadarMap ? 'Haritayı gizle' : 'Haritayı göster'}
-              className={`h-[46px] w-[46px] shrink-0 justify-center p-0 rounded-2xl border-2 flex items-center ${
+              className={`h-12 w-12 shrink-0 justify-center p-0 rounded-2xl border-2 flex items-center ${
                 showRadarMap
                   ? 'bg-[#EEF2FF] text-[#4338CA] border-[#4F46E5]'
                   : isDark
@@ -788,38 +790,53 @@ export const MobileExploreMarketplacePage: React.FC<
               data-testid="interactive-radar-map-card"
             >
               {/* Google Maps Venue Selector Bar */}
-              <div className="p-3 border-b-2 border-slate-200 dark:border-slate-700 flex items-center">
-                <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto no-scrollbar pr-2">
-                  {orderedMapPins.map((pin) => {
-                    const isSelectedPin = pinnedItem.slug === pin.slug;
-                    return (
-                      <button
-                        key={pin.slug}
-                        type="button"
-                        onClick={() => setSelectedMapPinSlug(pin.slug)}
-                        className={`min-h-[44px] px-3 py-1.5 rounded-xl text-xs font-bold border-2 whitespace-nowrap transition flex items-center gap-1 ${
-                          isSelectedPin
-                            ? 'bg-[#4F46E5] text-white border-[#4338CA]'
-                            : isDark
-                              ? 'bg-slate-800 text-slate-200 border-slate-700'
-                              : 'bg-[#F8FAFC] text-slate-800 border-slate-300'
-                        }`}
-                        data-testid={`radar-map-pin-${pin.slug}`}
-                      >
-                        <MapPin className="w-3.5 h-3.5 shrink-0" />
-                        <span>{pin.district}</span>
-                        {pin.isSponsored ? (
-                          <Star className="h-3 w-3 fill-amber-300 text-amber-300" />
-                        ) : null}
-                      </button>
-                    );
-                  })}
+              <div className="p-2.5 border-b-2 border-slate-200 dark:border-slate-700 flex items-center gap-2">
+                <div className="relative flex-1 min-w-0">
+                  <div
+                    className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pr-5"
+                    data-testid="radar-map-pins-scroll"
+                  >
+                    {orderedMapPins.map((pin) => {
+                      const isSelectedPin = pinnedItem.slug === pin.slug;
+                      return (
+                        <button
+                          key={pin.slug}
+                          type="button"
+                          onClick={() => setSelectedMapPinSlug(pin.slug)}
+                          className={`h-9 px-2.5 rounded-xl text-xs font-bold border-2 whitespace-nowrap shrink-0 transition flex items-center gap-1 ${
+                            isSelectedPin
+                              ? 'bg-[#4F46E5] text-white border-[#4338CA]'
+                              : isDark
+                                ? 'bg-slate-800 text-slate-200 border-slate-700'
+                                : 'bg-[#F8FAFC] text-slate-800 border-slate-300'
+                          }`}
+                          data-testid={`radar-map-pin-${pin.slug}`}
+                        >
+                          <MapPin className="w-3.5 h-3.5 shrink-0" />
+                          <span>{pin.district}</span>
+                          {pin.isSponsored ? (
+                            <Star className="h-3 w-3 fill-amber-300 text-amber-300 shrink-0" />
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div
+                    className={`pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l ${
+                      isDark ? 'from-slate-900 to-transparent' : 'from-white to-transparent'
+                    }`}
+                    aria-hidden="true"
+                  />
                 </div>
-                <div className="shrink-0 pl-2.5 ml-1 border-l-2 border-slate-200 dark:border-slate-700">
+                <div
+                  className={`shrink-0 z-10 pl-2 border-l-2 border-slate-200 dark:border-slate-700 ${
+                    isDark ? 'bg-slate-900' : 'bg-white'
+                  }`}
+                >
                   <button
                     type="button"
                     onClick={() => setGpsEnabled((prev) => !prev)}
-                    className={`min-h-[44px] px-2.5 py-1.5 rounded-xl text-xs font-bold border-2 flex items-center gap-1 shrink-0 ${
+                    className={`h-9 px-2.5 rounded-xl text-xs font-bold border-2 flex items-center gap-1 shrink-0 ${
                       gpsEnabled
                         ? 'bg-[#4F46E5] text-white border-[#4338CA]'
                         : isDark
@@ -870,7 +887,7 @@ export const MobileExploreMarketplacePage: React.FC<
                       pinnedItem.popularServices[0]?.priceMajor || 0,
                       selectedCurrency
                     ).toLocaleString('tr-TR')}{' '}
-                    {selectedCurrency}
+                    {currencySymbol}
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -1018,7 +1035,7 @@ export const MobileExploreMarketplacePage: React.FC<
                         item.popularServices[0].priceMajor,
                         selectedCurrency
                       ).toLocaleString('tr-TR')}{' '}
-                      {selectedCurrency}
+                      {currencySymbol}
                     </span>
                   </div>
                 )}
@@ -1071,7 +1088,9 @@ export const MobileExploreMarketplacePage: React.FC<
           <div className="relative">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-white/80 px-3 py-1 text-[10px] font-black tracking-wider text-[#4338CA] dark:border-indigo-700 dark:bg-slate-900/70 dark:text-indigo-300">
               <Store className="h-3.5 w-3.5" />
-              90 GÜN ÜCRETSİZ DENEME • BAŞLANGIÇ 999 TRY
+              90 GÜN ÜCRETSİZ DENEME • BAŞLANGIÇ{' '}
+              {convertFromTryMajor(999, selectedCurrency).toLocaleString('tr-TR')}{' '}
+              {currencySymbol}
             </span>
             <h2 className="mt-3 text-xl font-black leading-tight">
               90 Gün Ücretsiz Deneyin: İşletmenizi 2 Dakikada LARİ’ye Taşıyın

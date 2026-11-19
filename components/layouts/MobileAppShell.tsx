@@ -60,7 +60,7 @@ function renderDockIcon(tab: MobileTabDescriptor, isActive: boolean, isDark: boo
     return <Home className={cls} />;
   }
   if (tab.id === 'social_feed') {
-    return <Flame className={cls} />;
+    return <Compass className={cls} />;
   }
   if (tab.id === 'storefront') {
     return <Store className={cls} />;

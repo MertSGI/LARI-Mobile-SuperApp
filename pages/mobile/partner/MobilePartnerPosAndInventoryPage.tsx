@@ -2,7 +2,9 @@ import React, { useMemo, useState } from 'react';
 import {
   Barcode,
   BookPlus,
+  Camera,
   CheckCircle2,
+  Lock,
   Minus,
   Mic,
   MicOff,
@@ -43,10 +45,12 @@ import {
   VoiceMatchedLine,
 } from '../../../services/mobile/voiceCatalogMatcherService';
 import LariQrCodeSvg from '../../../components/mobile/LariQrCodeSvg';
+import PartnerQrCameraScannerModal from '../../../components/mobile/partner/PartnerQrCameraScannerModal';
 import { sanitizeUserMessage } from '../../../services/mobile/mobileUiSanitizer';
 import {
   convertFromTryMajor,
   convertToTryMajor,
+  getCurrencySymbol,
 } from '../../../services/mobile/mobileRegionCurrencyService';
 import { resolvePartnerFeatureEntitlements } from '../../../services/mobile/mobilePackageEntitlementService';
 import { MobilePersonaType } from '../../../services/mobile/mobileShellPolicyService';
@@ -313,7 +317,8 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
   });
 
   const access = verifyPartnerMobileAccess(userRole, tenantId, tenantId);
-  const [qrInputRaw, setQrInputRaw] = useState('');
+  const currencySymbol = getCurrencySymbol(selectedCurrency);
+  const [qrCameraOpen, setQrCameraOpen] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState(
     'Soft balayage, bir adet keratin bakım ve iki adet serum'
   );
@@ -433,12 +438,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
               appointmentId: 'apt-burak-1430',
             }
     );
-    setQrInputRaw(sampleQr.rawPayload);
     admitCustomerByQr(sampleQr.rawPayload, tenantId);
-  };
-
-  const handleVerifyPastedQr = () => {
-    admitCustomerByQr(qrInputRaw, tenantId);
   };
 
   const handleVoiceCatalogMatch = (textOverride?: string) => {
@@ -545,7 +545,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
     const paymentQr = createMobileQrArtifact({
       kind: 'payment_checkout',
       titleTr: 'Randevu Sonu Fiyat Dökümü & Ödeme QR',
-      subtitleTr: `${liveBreakdown.customerName} • ${displayGrand.toLocaleString('tr-TR')} ${selectedCurrency}`,
+      subtitleTr: `${liveBreakdown.customerName} • ${displayGrand.toLocaleString('tr-TR')} ${currencySymbol}`,
       tenantId,
       customerName: liveBreakdown.customerName,
       appointmentId: liveBreakdown.appointmentId,
@@ -683,7 +683,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
     const tipDisp = Math.round(res.tipMinorUnits / 100);
     const commDisp = Math.round(res.staffCommissionMinor / 100);
     setCheckoutStatus(
-      `${sanitizeUserMessage(res.reasonCode, 'Tahsilat durumu güncellendi.')} • Tahsilat: ${totalDisp.toLocaleString('tr-TR')} ${selectedCurrency} • Bahşiş: ${tipDisp.toLocaleString('tr-TR')} ${selectedCurrency} • Prim: ${commDisp.toLocaleString('tr-TR')} ${selectedCurrency}`
+      `${sanitizeUserMessage(res.reasonCode, 'Tahsilat durumu güncellendi.')} • Tahsilat: ${totalDisp.toLocaleString('tr-TR')} ${currencySymbol} • Bahşiş: ${tipDisp.toLocaleString('tr-TR')} ${currencySymbol} • Prim: ${commDisp.toLocaleString('tr-TR')} ${currencySymbol}`
     );
   };
 
@@ -722,6 +722,17 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
           Sağlık turizmi hastası veya çok seanslı paket müşterisinin QR kodunu okutarak kabul edin; paket hakkı otomatik düşülür.
         </p>
 
+        <button
+          type="button"
+          onClick={() => setQrCameraOpen(true)}
+          style={{ minHeight: '48px' }}
+          className="w-full rounded-2xl bg-gradient-to-r from-[#1D1352] via-[#2C1A88] to-[#3B23C4] hover:opacity-95 text-white text-xs font-black px-4 py-3 flex items-center justify-center gap-2 shadow-sm transition active:scale-[0.99]"
+          data-testid="partner-open-qr-camera-btn"
+        >
+          <Camera className="w-4 h-4 text-[#16CFD1]" />
+          <span>Kamerayla Müşteri QR Okut & Kabul Et</span>
+        </button>
+
         <div
           className={`grid gap-2 ${
             entitlements.healthTourismQrEnabled ? 'grid-cols-3' : 'grid-cols-2'
@@ -758,22 +769,14 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
           </button>
         </div>
 
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={qrInputRaw}
-            onChange={(e) => setQrInputRaw(e.target.value)}
-            placeholder="Müşteriden kopyalanan QR Payload JSON yapıştırın..."
-            className={`flex-1 rounded-xl px-3 py-2 text-xs font-mono ${innerSurface}`}
-          />
-          <button
-            type="button"
-            onClick={handleVerifyPastedQr}
-            className="px-3.5 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold shrink-0"
-          >
-            Doğrula
-          </button>
-        </div>
+        <PartnerQrCameraScannerModal
+          open={qrCameraOpen}
+          isDark={isDark}
+          healthTourismQrEnabled={entitlements.healthTourismQrEnabled}
+          onClose={() => setQrCameraOpen(false)}
+          onQrDetected={(rawPayload) => admitCustomerByQr(rawPayload, tenantId)}
+          onQuickCameraScan={(kind) => handleSimulatePatientQrScan(kind)}
+        />
 
         {admittedPatientSession && (
           <div
@@ -831,80 +834,147 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
           Kabul edilen müşteriye uygulanan işlemleri sesle söyleyin; sistem işletme kataloğunuzla otomatik eşleştirip fiyat dökümüne ekler.
         </p>
 
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={voiceTranscript}
-            onChange={(e) => setVoiceTranscript(e.target.value)}
-            placeholder="Örn: Zirkonyum kron 2 diş ve panoramik röntgen yapıldı..."
-            className={`flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold ${innerSurface}`}
-            data-testid="partner-voice-transcript-input"
-          />
-          <button
-            type="button"
-            onClick={handleStartMicrophone}
-            style={{ minHeight: '44px' }}
-            className={`px-3.5 rounded-xl text-xs font-black flex items-center gap-1.5 shrink-0 ${
-              isListeningVoice
-                ? 'bg-rose-600 text-white animate-pulse'
-                : 'bg-[#4F46E5] hover:bg-[#4338CA] text-white'
-            }`}
-            data-testid="partner-voice-match-btn"
-          >
-            {isListeningVoice ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-            {isListeningVoice ? 'Dinleniyor...' : 'Sesle Eşle'}
-          </button>
-        </div>
+        {entitlements.voiceCatalogMatchEnabled ? (
+          <>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={voiceTranscript}
+                onChange={(e) => setVoiceTranscript(e.target.value)}
+                placeholder="Örn: Zirkonyum kron 2 diş ve panoramik röntgen yapıldı..."
+                className={`flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold ${innerSurface}`}
+                data-testid="partner-voice-transcript-input"
+              />
+              <button
+                type="button"
+                onClick={handleStartMicrophone}
+                style={{ minHeight: '44px' }}
+                className={`px-3.5 rounded-xl text-xs font-black flex items-center gap-1.5 shrink-0 ${
+                  isListeningVoice
+                    ? 'bg-rose-600 text-white animate-pulse'
+                    : 'bg-[#4F46E5] hover:bg-[#4338CA] text-white'
+                }`}
+                data-testid="partner-voice-match-btn"
+              >
+                {isListeningVoice ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                {isListeningVoice ? 'Dinleniyor...' : 'Sesle Eşle'}
+              </button>
+            </div>
 
-        {/* Instant Spoken Command Examples across Industries */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-          {[
-            {
-              label: 'Kuaför: Balayage + 2 Serum',
-              text: 'Soft balayage, iki adet serum ve keratin bakım uygulandı',
-            },
-            {
-              label: 'Klinik/HT: 2 Zirkonyum + Röntgen',
-              text: '2 adet zirkonyum kron ve panoramik röntgen çekildi',
-            },
-            {
-              label: 'Oto Servis: Periyodik + Balata',
-              text: 'Periyodik yağ bakımı ve ön fren balata değişimi yapıldı',
-            },
-          ].map((preset) => (
-            <button
-              key={preset.label}
-              type="button"
-              onClick={() => {
-                setVoiceTranscript(preset.text);
-                handleVoiceCatalogMatch(preset.text);
-              }}
-              className={`px-2.5 py-1.5 rounded-xl border-2 text-[11px] font-bold whitespace-nowrap ${innerSurface}`}
-            >
-              <Sparkles className="w-3 h-3 inline mr-1 text-[#4F46E5]" />
-              {preset.label}
-            </button>
-          ))}
-        </div>
-
-        {voiceUpgradePromptVisible ? (
-          <div
-            className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-3 text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100"
-            data-testid="partner-voice-upgrade-gate"
-          >
-            <p className="text-xs font-black">
-              Sesli Söylemede Katalog Eşleştirme yalnızca Klinik ve Sağlık Turizmi
-              paketlerinde aktiftir.
-            </p>
+            {/* Instant Spoken Command Examples across Industries */}
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+              {[
+                {
+                  label: 'Kuaför: Balayage + 2 Serum',
+                  text: 'Soft balayage, iki adet serum ve keratin bakım uygulandı',
+                },
+                {
+                  label: 'Klinik/HT: 2 Zirkonyum + Röntgen',
+                  text: '2 adet zirkonyum kron ve panoramik röntgen çekildi',
+                },
+                {
+                  label: 'Oto Servis: Periyodik + Balata',
+                  text: 'Periyodik yağ bakımı ve ön fren balata değişimi yapıldı',
+                },
+              ].map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => {
+                    setVoiceTranscript(preset.text);
+                    handleVoiceCatalogMatch(preset.text);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-xl border-2 text-[11px] font-bold whitespace-nowrap ${innerSurface}`}
+                >
+                  <Sparkles className="w-3 h-3 inline mr-1 text-[#4F46E5]" />
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="space-y-2.5">
             <button
               type="button"
-              onClick={onRequestPlanUpgrade}
-              className="mt-3 min-h-10 w-full rounded-xl bg-amber-700 px-3 text-xs font-black text-white"
+              onClick={() => setVoiceUpgradePromptVisible((prev) => !prev)}
+              style={{ minHeight: '46px' }}
+              className={`w-full rounded-2xl border-2 px-3.5 py-2.5 text-left transition flex items-center justify-between gap-2 ${
+                isDark
+                  ? 'border-indigo-500/40 bg-slate-800/90 text-indigo-100'
+                  : 'border-indigo-200 bg-[#EEF2FF]/80 text-[#312E81]'
+              }`}
+              data-testid="partner-voice-match-btn"
             >
-              Paketini Yükselt
+              <span className="flex items-center gap-2 min-w-0">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#4F46E5] text-white">
+                  <Mic className="w-4 h-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-xs font-black truncate">
+                    Sesli Söylem Özelliğini İncele
+                  </span>
+                  <span className="block text-[11px] opacity-80 truncate">
+                    Konuşarak katalog kalemi ve fiyat dökümü oluşturma önizlemesi
+                  </span>
+                </span>
+              </span>
+              <span className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-amber-100 border border-amber-300 px-2 py-1 text-[10px] font-black text-amber-900">
+                <Lock className="w-3 h-3" />
+                Yükselt
+              </span>
             </button>
+
+            {voiceUpgradePromptVisible ? (
+              <div
+                className="rounded-2xl border-2 border-amber-300 bg-amber-50/95 p-3.5 space-y-3 text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100"
+                data-testid="partner-voice-upgrade-gate"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-200/80 px-2 py-0.5 text-[10px] font-black text-amber-900">
+                      <Sparkles className="w-3 h-3" />
+                      ÖZELLİK ÖNİZLEMESİ
+                    </span>
+                    <p className="mt-1 text-xs font-black">
+                      Sesli Söylemde Katalog Eşleştirme Nasıl Çalışır?
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-amber-300/80 bg-white/90 dark:bg-slate-900/90 p-2.5 space-y-2 text-[11px]">
+                  <p className="font-bold text-slate-700 dark:text-slate-200">
+                    🎙️ Örnek Sesli Komut:{' '}
+                    <span className="italic text-[#4F46E5]">
+                      &ldquo;Soft balayage, 2 adet serum ve keratin bakım uygulandı&rdquo;
+                    </span>
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className="rounded-lg bg-[#EEF2FF] px-2 py-0.5 font-black text-[#4338CA]">
+                      ✓ 1x Soft Balayage
+                    </span>
+                    <span className="rounded-lg bg-[#EEF2FF] px-2 py-0.5 font-black text-[#4338CA]">
+                      ✓ 2x Onarıcı Serum
+                    </span>
+                    <span className="rounded-lg bg-emerald-50 px-2 py-0.5 font-black text-emerald-700">
+                      ✓ 1x Keratin (Paket Kapsamı)
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-xs font-semibold leading-relaxed">
+                  Sesli Söylemde Katalog Eşleştirme özelliği <strong>Klinik ve Sağlık Turizmi (PRO)</strong> paketlerinde aktiftir.
+                </p>
+                <button
+                  type="button"
+                  onClick={onRequestPlanUpgrade}
+                  className="min-h-10 w-full rounded-xl bg-amber-700 hover:bg-amber-800 px-3 text-xs font-black text-white transition"
+                >
+                  Paketini Yükselt & Özelliği Aktif Et
+                </button>
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        )}
 
         {/* Matched Live Folio Items + Price Breakdown */}
         <div
@@ -931,14 +1001,14 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
                 <p className="text-[11px] text-slate-500">
                   {fl.coveredByPackage
                     ? 'Paket Kapsamında Düşüldü (Ücretsiz)'
-                    : `${convertFromTryMajor(fl.catalogItem.unitPriceMajor, selectedCurrency).toLocaleString('tr-TR')} ${selectedCurrency}/br + KDV`}
+                    : `${convertFromTryMajor(fl.catalogItem.unitPriceMajor, selectedCurrency).toLocaleString('tr-TR')} ${currencySymbol}/br + KDV`}
                 </p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 <span className="font-black">
                   {fl.coveredByPackage
-                    ? `0 ${selectedCurrency}`
-                    : `${convertFromTryMajor(fl.catalogItem.unitPriceMajor * fl.quantity, selectedCurrency).toLocaleString('tr-TR')} ${selectedCurrency}`}
+                    ? `0 ${currencySymbol}`
+                    : `${convertFromTryMajor(fl.catalogItem.unitPriceMajor * fl.quantity, selectedCurrency).toLocaleString('tr-TR')} ${currencySymbol}`}
                 </span>
                 <button
                   type="button"
@@ -964,8 +1034,8 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
               </span>
               <span className="font-black text-[#4F46E5]">
                 {liveBreakdown.optionalTipMajor === 0
-                  ? `Bahşiş Yok (0 ${selectedCurrency})`
-                  : `+${convertFromTryMajor(liveBreakdown.optionalTipMajor, selectedCurrency).toLocaleString('tr-TR')} ${selectedCurrency}`}
+                  ? `Bahşiş Yok (0 ${currencySymbol})`
+                  : `+${convertFromTryMajor(liveBreakdown.optionalTipMajor, selectedCurrency).toLocaleString('tr-TR')} ${currencySymbol}`}
               </span>
             </div>
             <div className="grid grid-cols-4 gap-1.5">
@@ -993,7 +1063,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
               <span>Ara Toplam (Paket Öncesi)</span>
               <span>
                 {convertFromTryMajor(liveBreakdown.grossSubtotalMajor, selectedCurrency).toLocaleString('tr-TR')}{' '}
-                {selectedCurrency}
+                {currencySymbol}
               </span>
             </div>
             {liveBreakdown.packageDiscountMajor > 0 && (
@@ -1001,7 +1071,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
                 <span>Paket / HT Hakkı Düşümü</span>
                 <span>
                   -{convertFromTryMajor(liveBreakdown.packageDiscountMajor, selectedCurrency).toLocaleString('tr-TR')}{' '}
-                  {selectedCurrency}
+                  {currencySymbol}
                 </span>
               </div>
             )}
@@ -1009,14 +1079,14 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
               <span>KDV Toplamı</span>
               <span>
                 {convertFromTryMajor(liveBreakdown.taxTotalMajor, selectedCurrency).toLocaleString('tr-TR')}{' '}
-                {selectedCurrency}
+                {currencySymbol}
               </span>
             </div>
             <div className="flex justify-between text-base font-black pt-1">
               <span>Ödenecek Genel Toplam</span>
               <span className="text-[#4F46E5]">
                 {convertFromTryMajor(liveBreakdown.grandTotalMajor, selectedCurrency).toLocaleString('tr-TR')}{' '}
-                {selectedCurrency}
+                {currencySymbol}
               </span>
             </div>
           </div>
@@ -1105,7 +1175,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
               {convertFromTryMajor(catItem.unitPriceMajor, selectedCurrency).toLocaleString(
                 'tr-TR'
               )}{' '}
-              {selectedCurrency})
+              {currencySymbol})
             </button>
           ))}
         </div>
@@ -1122,7 +1192,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
             type="number"
             value={newItemPrice}
             onChange={(e) => setNewItemPrice(e.target.value)}
-            placeholder={selectedCurrency}
+            placeholder={currencySymbol}
             className={`rounded-xl px-3 py-2 text-xs font-bold ${innerSurface}`}
           />
         </div>
@@ -1168,7 +1238,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
               min="1"
               value={newInventoryPrice}
               onChange={(event) => setNewInventoryPrice(event.target.value)}
-              placeholder={`Fiyat (${selectedCurrency})`}
+              placeholder={`Fiyat (${currencySymbol})`}
               aria-label="Yeni stok ürünü fiyatı"
               className={`min-h-10 rounded-xl px-3 text-xs font-medium ${innerSurface}`}
               data-testid="partner-inventory-price-input"
@@ -1209,7 +1279,7 @@ export const MobilePartnerPosAndInventoryPage: React.FC<
                       {convertFromTryMajor(item.unitPriceMajor, selectedCurrency).toLocaleString(
                         'tr-TR'
                       )}{' '}
-                      {selectedCurrency} • Stok: {stock}
+                      {currencySymbol} • Stok: {stock}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">

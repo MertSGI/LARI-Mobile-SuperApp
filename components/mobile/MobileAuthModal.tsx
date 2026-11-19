@@ -37,8 +37,6 @@ interface MobileAuthModalProps {
 
 type AuthViewMode = 'login' | 'register' | 'complete_social' | 'forgot_password';
 
-const IS_LOCAL_DATA_MODE = (import.meta as any).env.VITE_DATA_MODE === 'local';
-
 function createEmptyRegistrationProfile(): MobileUserProfile {
   return {
     fullName: '',
@@ -186,13 +184,19 @@ export const MobileAuthModal: React.FC<MobileAuthModalProps> = ({
   const handleSocialAttempt = async (
     provider: 'google' | 'apple',
     email: string,
-    fullName?: string
+    fullName?: string,
+    instantOAuthConnect = false
   ) => {
     setSubmitting(true);
     setErrors({});
     setFormBannerError(null);
 
-    const res = await continueWithSocial({ provider, email, fullName });
+    const res = await continueWithSocial({
+      provider,
+      email,
+      fullName,
+      instantOAuthConnect,
+    });
     setSubmitting(false);
 
     if (res.success && res.user) {
@@ -209,7 +213,7 @@ export const MobileAuthModal: React.FC<MobileAuthModalProps> = ({
       }));
       setSocialPickerProvider(null);
       setViewMode('complete_social');
-      showToast('Hesabınız doğrulandı! Devam etmek için eksik bilgilerinizi tamamlayın.');
+      showToast('Hesabınız bağlandı! Devam etmek için iletişim bilgilerinizi tamamlayın.');
       return;
     }
 
@@ -265,95 +269,163 @@ export const MobileAuthModal: React.FC<MobileAuthModalProps> = ({
     setSocialNameInput(preset?.fullName || '');
   };
 
-  const renderSocialButtons = (verb: string) => (
-    <div className="space-y-2.5">
-      <div className="grid grid-cols-1 gap-2">
-        <button
-          type="button"
-          onClick={() => openSocialFlow('google')}
-          className={`flex min-h-12 w-full items-center justify-center gap-2.5 rounded-2xl border-2 px-4 py-2.5 text-sm font-black transition active:scale-[0.99] ${
-            socialPickerProvider === 'google'
-              ? 'border-[#4F46E5] bg-[#EEF2FF] text-[#312E81]'
-              : isDark
-                ? 'border-slate-700 bg-slate-800 text-white hover:border-slate-600'
-                : 'border-slate-300 bg-white text-slate-900 hover:bg-slate-50'
-          }`}
-          data-testid="auth-google-btn"
-        >
-          <GoogleLogoSvg />
-          <span>Google (Gmail) ile {verb}</span>
-        </button>
+  const renderSocialButtons = (verb: string) => {
+    const providerAccounts = SOCIAL_QUICK_PRESETS.filter(
+      (item) => item.provider === socialPickerProvider
+    );
 
-        <button
-          type="button"
-          onClick={() => openSocialFlow('apple')}
-          className={`flex min-h-12 w-full items-center justify-center gap-2.5 rounded-2xl border-2 px-4 py-2.5 text-sm font-black transition active:scale-[0.99] ${
-            socialPickerProvider === 'apple'
-              ? 'border-[#4F46E5] bg-[#EEF2FF] text-[#312E81]'
-              : isDark
-                ? 'border-slate-700 bg-slate-950 text-white hover:border-slate-600'
-                : 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800'
-          }`}
-          data-testid="auth-apple-btn"
-        >
-          <AppleLogoSvg />
-          <span>Apple ile {verb}</span>
-        </button>
-      </div>
-
-      {socialPickerProvider && (
-        <div
-          className={`rounded-2xl border-2 p-3.5 space-y-2.5 ${
-            isDark ? 'border-indigo-500/40 bg-slate-800/90' : 'border-indigo-200 bg-[#EEF2FF]/70'
-          }`}
-          data-testid="auth-social-email-panel"
-        >
-          <p className="text-xs font-black text-[#4338CA] dark:text-indigo-300">
-            {socialPickerProvider === 'google'
-              ? 'Google / Gmail Hesabınızı Seçin veya Yazın'
-              : 'Apple / iCloud Hesabınızı Seçin veya Yazın'}
-          </p>
-          <input
-            type="text"
-            value={socialNameInput}
-            onChange={(e) => setSocialNameInput(e.target.value)}
-            placeholder="Ad Soyad"
-            className={fieldClass('socialName')}
-            data-testid="auth-social-name-input"
-          />
-          <input
-            type="email"
-            value={socialEmailInput}
-            onChange={(e) => {
-              setSocialEmailInput(e.target.value);
-              clearFieldError('socialEmail');
-            }}
-            placeholder={
-              socialPickerProvider === 'google' ? 'adiniz@gmail.com' : 'adiniz@icloud.com'
-            }
-            className={fieldClass('socialEmail')}
-            data-testid="auth-social-email-input"
-          />
-          {errors.socialEmail && (
-            <p className="text-[11px] font-bold text-rose-600">{errors.socialEmail}</p>
-          )}
+    return (
+      <div className="space-y-2.5">
+        <div className="grid grid-cols-1 gap-2">
           <button
             type="button"
-            disabled={submitting}
-            onClick={() =>
-              void handleSocialAttempt(socialPickerProvider, socialEmailInput, socialNameInput)
-            }
-            className="w-full min-h-11 rounded-xl bg-[#4F46E5] hover:bg-[#4338CA] text-white text-sm font-black transition disabled:opacity-60"
-            data-testid="auth-social-continue-btn"
+            onClick={() => openSocialFlow('google')}
+            className={`flex min-h-12 w-full items-center justify-center gap-2.5 rounded-2xl border-2 px-4 py-2.5 text-sm font-black transition active:scale-[0.99] ${
+              socialPickerProvider === 'google'
+                ? 'border-[#4F46E5] bg-[#EEF2FF] text-[#312E81]'
+                : isDark
+                  ? 'border-slate-700 bg-slate-800 text-white hover:border-slate-600'
+                  : 'border-slate-300 bg-white text-slate-900 hover:bg-slate-50'
+            }`}
+            data-testid="auth-google-btn"
           >
-            {submitting
-              ? 'Doğrulanıyor...'
-              : `${socialPickerProvider === 'google' ? 'Gmail' : 'Apple'} ile Devam Et`}
+            <GoogleLogoSvg />
+            <span>Google Hesabı ile {verb}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => openSocialFlow('apple')}
+            className={`flex min-h-12 w-full items-center justify-center gap-2.5 rounded-2xl border-2 px-4 py-2.5 text-sm font-black transition active:scale-[0.99] ${
+              socialPickerProvider === 'apple'
+                ? 'border-[#4F46E5] bg-[#EEF2FF] text-[#312E81]'
+                : isDark
+                  ? 'border-slate-700 bg-slate-950 text-white hover:border-slate-600'
+                  : 'border-slate-900 bg-slate-900 text-white hover:bg-slate-800'
+            }`}
+            data-testid="auth-apple-btn"
+          >
+            <AppleLogoSvg />
+            <span>Apple Hesabı ile {verb}</span>
           </button>
         </div>
-      )}
-    </div>
-  );
+
+        {socialPickerProvider && (
+          <div
+            className={`rounded-2xl border-2 p-3.5 space-y-3 ${
+              isDark ? 'border-indigo-500/40 bg-slate-800/90' : 'border-indigo-200 bg-[#EEF2FF]/70'
+            }`}
+            data-testid="auth-social-email-panel"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                {socialPickerProvider === 'google' ? <GoogleLogoSvg /> : <AppleLogoSvg />}
+                <div>
+                  <p className="text-xs font-black text-[#4338CA] dark:text-indigo-300">
+                    {socialPickerProvider === 'google'
+                      ? 'Google OAuth 2.0 • Hesap Bağlantısı'
+                      : 'Apple ID • Tek Dokunuşla Bağlantı'}
+                  </p>
+                  <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                    Cihazınızdaki bağlı hesaba dokunarak şifresiz devam edin
+                  </p>
+                </div>
+              </div>
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800">
+                OAuth 2.0
+              </span>
+            </div>
+
+            <div className="space-y-1.5" data-testid="auth-oauth-account-list">
+              {providerAccounts.map((acc) => (
+                <button
+                  key={acc.email}
+                  type="button"
+                  disabled={submitting}
+                  onClick={() =>
+                    void handleSocialAttempt(
+                      socialPickerProvider,
+                      acc.email,
+                      acc.fullName,
+                      true
+                    )
+                  }
+                  className={`flex w-full items-center justify-between gap-2.5 rounded-xl border-2 p-2.5 text-left transition active:scale-[0.99] ${
+                    isDark
+                      ? 'border-slate-700 bg-slate-900 hover:border-indigo-400'
+                      : 'border-indigo-200 bg-white hover:border-[#4F46E5]'
+                  }`}
+                  data-testid={`auth-oauth-account-${acc.email}`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#4F46E5] text-xs font-black text-white">
+                      {acc.fullName
+                        .split(' ')
+                        .map((n) => n[0])
+                        .join('')
+                        .slice(0, 2)}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-black">{acc.fullName}</p>
+                      <p className="truncate text-[11px] font-semibold text-slate-500">
+                        {acc.email}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="shrink-0 rounded-lg bg-[#EEF2FF] px-2.5 py-1 text-[11px] font-black text-[#4338CA]">
+                    Tek Dokunuşla Bağlan
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className="border-t border-indigo-200/70 dark:border-slate-700 pt-2.5 space-y-2">
+              <p className="text-[11px] font-bold text-slate-500">
+                veya farklı bir {socialPickerProvider === 'google' ? 'Google' : 'Apple'} hesabı bağlayın:
+              </p>
+              <input
+                type="text"
+                value={socialNameInput}
+                onChange={(e) => setSocialNameInput(e.target.value)}
+                placeholder="Ad Soyad"
+                className={fieldClass('socialName')}
+                data-testid="auth-social-name-input"
+              />
+              <input
+                type="email"
+                value={socialEmailInput}
+                onChange={(e) => {
+                  setSocialEmailInput(e.target.value);
+                  clearFieldError('socialEmail');
+                }}
+                placeholder={
+                  socialPickerProvider === 'google' ? 'hesabiniz@gmail.com' : 'hesabiniz@icloud.com'
+                }
+                className={fieldClass('socialEmail')}
+                data-testid="auth-social-email-input"
+              />
+              {errors.socialEmail && (
+                <p className="text-[11px] font-bold text-rose-600">{errors.socialEmail}</p>
+              )}
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() =>
+                  void handleSocialAttempt(socialPickerProvider, socialEmailInput, socialNameInput)
+                }
+                className="w-full min-h-11 rounded-xl bg-[#4F46E5] hover:bg-[#4338CA] text-white text-sm font-black transition disabled:opacity-60"
+                data-testid="auth-social-continue-btn"
+              >
+                {submitting
+                  ? 'Hesap Bağlanıyor...'
+                  : `${socialPickerProvider === 'google' ? 'Google' : 'Apple'} Hesabını Bağla`}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderProfileFieldsForm = (isSocialCompletion: boolean) => (
     <form onSubmit={handleRegisterSubmit} className="space-y-3" data-testid="auth-register-form">
@@ -558,7 +630,7 @@ export const MobileAuthModal: React.FC<MobileAuthModalProps> = ({
       <div className="grid grid-cols-2 gap-2.5">
         <div>
           <label htmlFor="auth-reg-age" className="text-xs font-bold text-slate-500 block mb-1">
-            Yaş *
+            Yaş (İsteğe Bağlı)
           </label>
           <input
             id="auth-reg-age"
@@ -577,7 +649,7 @@ export const MobileAuthModal: React.FC<MobileAuthModalProps> = ({
         </div>
         <div>
           <label htmlFor="auth-reg-gender" className="text-xs font-bold text-slate-500 block mb-1">
-            Cinsiyet *
+            Cinsiyet (İsteğe Bağlı)
           </label>
           <select
             id="auth-reg-gender"
@@ -990,54 +1062,6 @@ export const MobileAuthModal: React.FC<MobileAuthModalProps> = ({
                   {submitting ? 'Giriş Yapılıyor...' : 'Giriş Yap'}
                 </button>
               </form>
-
-              <div className="rounded-2xl border border-indigo-100 bg-[#F8FAFC] p-3 space-y-2">
-                <p className="text-[11px] font-bold text-slate-600 text-center">
-                  Tek Dokunuşla Demo Hesaplarla Dene (Şifre: lari123)
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    disabled={submitting}
-                    onClick={async () => {
-                      setSubmitting(true);
-                      setErrors({});
-                      setFormBannerError(null);
-                      const res = await loginWithEmail('mert@randevulari.com', 'lari123');
-                      setSubmitting(false);
-                      if (res.success) {
-                        onAuthenticated?.({ role: res.user?.role || 'customer' });
-                      } else {
-                        setFormBannerError(res.errorMessage || 'Demo girişi yapılamadı.');
-                      }
-                    }}
-                    className="min-h-10 rounded-xl border border-indigo-200 bg-white px-2.5 py-2 text-[11px] font-black text-[#4338CA] hover:bg-indigo-50 transition"
-                    data-testid="auth-quick-demo-customer-btn"
-                  >
-                    Demo Müşteri (Mert)
-                  </button>
-                  <button
-                    type="button"
-                    disabled={submitting}
-                    onClick={async () => {
-                      setSubmitting(true);
-                      setErrors({});
-                      setFormBannerError(null);
-                      const res = await loginWithEmail('partner@randevulari.com', 'lari123');
-                      setSubmitting(false);
-                      if (res.success) {
-                        onAuthenticated?.({ role: res.user?.role || 'tenant_owner' });
-                      } else {
-                        setFormBannerError(res.errorMessage || 'Demo girişi yapılamadı.');
-                      }
-                    }}
-                    className="min-h-10 rounded-xl border border-indigo-200 bg-white px-2.5 py-2 text-[11px] font-black text-[#4338CA] hover:bg-indigo-50 transition"
-                    data-testid="auth-quick-demo-partner-btn"
-                  >
-                    Demo Partner (Merve)
-                  </button>
-                </div>
-              </div>
             </>
           )}
 
@@ -1063,7 +1087,7 @@ export const MobileAuthModal: React.FC<MobileAuthModalProps> = ({
                 <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
                 <div className="min-w-0">
                   <p className="text-xs font-black">
-                    {regProvider === 'google' ? 'Google (Gmail)' : 'Apple'} Hesabı Doğrulandı
+                    {regProvider === 'google' ? 'Google Hesabı' : 'Apple Hesabı'} Bağlandı
                   </p>
                   <p className="text-[11px] truncate font-semibold">{regProfile.email}</p>
                 </div>
@@ -1074,15 +1098,6 @@ export const MobileAuthModal: React.FC<MobileAuthModalProps> = ({
 
           {viewMode === 'forgot_password' && (
             <div className="space-y-4">
-              {IS_LOCAL_DATA_MODE && (
-                <div
-                  className="rounded-2xl border-2 border-amber-300 bg-amber-50 px-3.5 py-3 text-xs font-semibold leading-relaxed text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
-                  data-testid="auth-forgot-password-local-preview-note"
-                >
-                  Yerel önizleme: Bu modda gerçek e-posta gönderilmez; şifre sıfırlama
-                  akışı yalnızca arayüz demosudur.
-                </div>
-              )}
               {resetEmailSent ? (
                 <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-4 text-center space-y-2 text-emerald-900">
                   <CheckCircle2 className="h-8 w-8 text-emerald-600 mx-auto" />

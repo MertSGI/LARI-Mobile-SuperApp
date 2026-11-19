@@ -19,7 +19,10 @@ import {
 import { MobileDiscoveryListingItem } from '../../../services/mobile/mobileDiscoveryService';
 import { VENUE_VISUAL_CATALOG } from '../../../services/mobile/mobileVisualAssets';
 import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
-import { convertFromTryMajor } from '../../../services/mobile/mobileRegionCurrencyService';
+import {
+  convertFromTryMajor,
+  getCurrencySymbol,
+} from '../../../services/mobile/mobileRegionCurrencyService';
 
 export interface StorefrontSpecialistProfile {
   id: string;
@@ -212,6 +215,7 @@ export const MobileStorefrontDetailDrawer: React.FC<
     showToast,
     storefrontCustomization,
   } = useMobileAppSession();
+  const currencySymbol = getCurrencySymbol(selectedCurrency);
   const [activeTab, setActiveTab] = useState<
     'services' | 'specialists' | 'portfolio' | 'hospitality'
   >('services');
@@ -626,7 +630,7 @@ export const MobileStorefrontDetailDrawer: React.FC<
                         {convertFromTryMajor(srv.priceMajor, selectedCurrency).toLocaleString(
                           'tr-TR'
                         )}{' '}
-                        {selectedCurrency}
+                        {currencySymbol}
                       </span>
                       <span>•</span>
                       <span className="inline-flex items-center gap-1">
@@ -790,7 +794,7 @@ export const MobileStorefrontDetailDrawer: React.FC<
             </span>
             <span className="text-base font-black text-[#111827]">
               {convertFromTryMajor(totalPrice, selectedCurrency).toLocaleString('tr-TR')}{' '}
-              {selectedCurrency}
+              {currencySymbol}
             </span>
           </div>
           <button

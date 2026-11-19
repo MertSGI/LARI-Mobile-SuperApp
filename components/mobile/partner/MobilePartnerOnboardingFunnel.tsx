@@ -30,6 +30,7 @@ import {
 } from '../../../services/planService';
 import {
   convertFromTryMajor,
+  getCurrencySymbol,
   sanitizePhoneDigits,
   validatePartnerRegistrationContact,
 } from '../../../services/mobile/mobileRegionCurrencyService';
@@ -120,6 +121,7 @@ export const MobilePartnerOnboardingFunnel: React.FC<
   const { themeMode, selectedCurrency, showToast, upgradeToPartnerAccount } =
     useMobileAppSession();
   const isDark = themeMode === 'dark';
+  const currencySymbol = getCurrencySymbol(selectedCurrency);
   const plans = useMemo(
     () => planService.getActivePlans(),
     []
@@ -339,7 +341,7 @@ export const MobilePartnerOnboardingFunnel: React.FC<
               className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#4F46E5] px-4 py-3 text-sm font-black text-white shadow-lg shadow-indigo-200/50"
               data-testid="partner-funnel-open-preview-btn"
             >
-              Kendi İşletmeni Önizle & Demo Gör
+              Kendi İşletmeni Canlı Önizle
               <ChevronRight className="h-4 w-4" />
             </button>
             <button
@@ -356,8 +358,8 @@ export const MobilePartnerOnboardingFunnel: React.FC<
         {step === 2 ? (
           <section className="space-y-4" data-testid="partner-funnel-step-preview">
             <div>
-              <span className="text-xs font-black text-[#4F46E5]">ADIM 2 • CANLI DEMO</span>
-              <h1 className="mt-1 text-xl font-black">Kendi İşletmeni Önizle & Demo Gör</h1>
+              <span className="text-xs font-black text-[#4F46E5]">ADIM 2 • CANLI VİTRİN ÖNİZLEME</span>
+              <h1 className="mt-1 text-xl font-black">Kendi İşletmeni Canlı Önizle</h1>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">
                 Bilgileri değiştir; müşteri vitrinin ve yönetim ekranın anında işletmene dönüşsün.
               </p>
@@ -567,7 +569,7 @@ export const MobilePartnerOnboardingFunnel: React.FC<
                               <span className="text-[9px] text-slate-500">45-60 dk • Bugün uygun</span>
                             </div>
                             <span className="text-xs font-black" style={{ color: signatureColor }}>
-                              {formatTry(convertFromTryMajor(900 + index * 450, selectedCurrency))} {selectedCurrency}
+                              {formatTry(convertFromTryMajor(900 + index * 450, selectedCurrency))} {currencySymbol}
                             </span>
                           </div>
                         ))}
@@ -586,7 +588,10 @@ export const MobilePartnerOnboardingFunnel: React.FC<
                   <div className="rounded-2xl p-4 text-white" style={{ backgroundColor: signatureColor }}>
                     <p className="text-[10px] font-black opacity-80">BUGÜN • {businessName || 'İşletmeniz'}</p>
                     <p className="mt-1 text-2xl font-black">12 Randevu</p>
-                    <p className="text-xs opacity-90">Tahmini ciro: 24.800 TRY</p>
+                    <p className="text-xs opacity-90">
+                      Tahmini ciro: {formatTry(convertFromTryMajor(24800, selectedCurrency))}{' '}
+                      {currencySymbol}
+                    </p>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {[['Ajanda', Clock3], ['QR Kabul', QrCode], ['Katalog', Store], ['Ciro', BarChart3]].map(([label, Icon]) => {
@@ -612,7 +617,11 @@ export const MobilePartnerOnboardingFunnel: React.FC<
               <h1 className="mt-1 text-xl font-black">İşletmene uygun paketi seç.</h1>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">Tüm planlarda %0 mağaza komisyonu ve hızlı kurulum dahildir.</p>
               <p className="mt-2 rounded-2xl border-2 border-amber-300 bg-amber-50 p-3 text-xs font-black text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
-                {starterPlan?.trialDays || 0} gün deneme bilgisi ve {formatTry(starterPlan?.monthlyPrice || 0)} TRY/ay fiyatı planService tarafından yönetilir.
+                {starterPlan?.trialDays || 0} gün deneme bilgisi ve{' '}
+                {formatTry(
+                  convertFromTryMajor(starterPlan?.monthlyPrice || 0, selectedCurrency)
+                )}{' '}
+                {currencySymbol}/ay fiyatı planService tarafından yönetilir.
               </p>
             </div>
 
@@ -651,8 +660,8 @@ export const MobilePartnerOnboardingFunnel: React.FC<
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h2 className="text-base font-black">{plan.name}</h2>
-                        <p className="mt-1 text-2xl font-black text-[#4338CA] dark:text-indigo-300">{formatTry(monthlyDisplay)} {selectedCurrency}<span className="text-xs text-slate-500">/ay</span></p>
-                        {billingPeriod === 'annual' ? <p className="text-[10px] font-bold text-emerald-600">Yıllık {formatTry(annualDisplay)} {selectedCurrency} faturalandırılır</p> : null}
+                        <p className="mt-1 text-2xl font-black text-[#4338CA] dark:text-indigo-300">{formatTry(monthlyDisplay)} {currencySymbol}<span className="text-xs text-slate-500">/ay</span></p>
+                        {billingPeriod === 'annual' ? <p className="text-[10px] font-bold text-emerald-600">Yıllık {formatTry(annualDisplay)} {currencySymbol} faturalandırılır</p> : null}
                       </div>
                       <span className={`flex h-7 w-7 items-center justify-center rounded-full border-2 ${selected ? 'border-[#4F46E5] bg-[#4F46E5] text-white' : 'border-slate-300'}`}>{selected ? <Check className="h-4 w-4" /> : null}</span>
                     </div>
@@ -778,7 +787,7 @@ export const MobilePartnerOnboardingFunnel: React.FC<
               <div className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#EEF2FF] text-xs font-black text-[#4F46E5]">1</span><div><h2 className="text-sm font-black">İlk Hizmet & Fiyat</h2><p className="text-[11px] text-slate-500">Müşterinin vitrinde göreceği ilk işlem.</p></div></div>
               <input value={serviceName} onChange={(event) => setServiceName(event.target.value)} className={inputClass} placeholder="İmza Bakım" data-testid="partner-funnel-service-name-input" />
               <div className="grid grid-cols-2 gap-2">
-                <input value={servicePrice} onChange={(event) => setServicePrice(event.target.value)} className={inputClass} type="number" min="0" placeholder="1.800 TRY" data-testid="partner-funnel-service-price-input" />
+                <input value={servicePrice} onChange={(event) => setServicePrice(event.target.value)} className={inputClass} type="number" min="0" placeholder={`${formatTry(convertFromTryMajor(1800, selectedCurrency))} ${currencySymbol}`} data-testid="partner-funnel-service-price-input" />
                 <input value={serviceDuration} onChange={(event) => setServiceDuration(event.target.value)} className={inputClass} type="number" min="1" placeholder="60 dk" data-testid="partner-funnel-service-duration-input" />
               </div>
             </div>
@@ -797,7 +806,7 @@ export const MobilePartnerOnboardingFunnel: React.FC<
               <div className={`mt-3 space-y-2 rounded-2xl border-2 p-3 text-xs ${softSurface}`}>
                 <p className="flex items-center gap-2 font-black"><Store className="h-4 w-4 text-[#4F46E5]" />{businessName}</p>
                 <p className="flex items-center gap-2"><Palette className="h-4 w-4 text-[#4F46E5]" />{sector} • {city} / {district}</p>
-                <p className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-[#4F46E5]" />{serviceName} • {formatTry(Number(servicePrice) || 0)} TRY • {serviceDuration} dk</p>
+                <p className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-[#4F46E5]" />{serviceName} • {formatTry(Number(servicePrice) || 0)} {currencySymbol} • {serviceDuration} dk</p>
                 <p className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-[#4F46E5]" />{staffName} • {openingTime} – {closingTime}</p>
                 <p className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-600" />{selectedPlan?.name} Partner paketi doğrulandı</p>
               </div>

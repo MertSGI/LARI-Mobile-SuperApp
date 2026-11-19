@@ -28,7 +28,10 @@ import {
 } from '../../../services/mobile/qrCheckinService';
 import { buildAppointmentIcsContent } from '../../../services/mobile/nativeBridgeService';
 import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
-import { convertFromTryMajor } from '../../../services/mobile/mobileRegionCurrencyService';
+import {
+  convertFromTryMajor,
+  getCurrencySymbol,
+} from '../../../services/mobile/mobileRegionCurrencyService';
 import {
   createMobileQrArtifact,
   QR_USAGE_SCENARIOS_BY_KIND,
@@ -82,6 +85,7 @@ export const MobileCustomerWalletPage: React.FC<
     showToast,
   } = useMobileAppSession();
   const isDark = themeMode === 'dark';
+  const currencySymbol = getCurrencySymbol(selectedCurrency);
   const effectiveGuest = Boolean(
     isGuestSession ||
       (isExplicitlySignedOut && !mobileAuthUser && sessionScopeKey === 'guest')
@@ -208,7 +212,7 @@ export const MobileCustomerWalletPage: React.FC<
     if (giftCode.trim().toUpperCase() === 'LARI500') {
       redeemGiftCode(giftCode);
       setGiftMessage(
-        `LARI500 (+${convertFromTryMajor(500, selectedCurrency).toLocaleString('tr-TR')} ${selectedCurrency}) cüzdana eklendi!`
+        `LARI500 (+${convertFromTryMajor(500, selectedCurrency).toLocaleString('tr-TR')} ${currencySymbol}) cüzdana eklendi!`
       );
       setGiftCode('');
     } else {
@@ -592,8 +596,8 @@ export const MobileCustomerWalletPage: React.FC<
                             </span>
                             <span className="font-bold">
                               {ln.coveredByPackage
-                                ? `0 ${selectedCurrency}`
-                                : `${convertFromTryMajor(ln.subtotalMajor, selectedCurrency).toLocaleString('tr-TR')} ${selectedCurrency}`}
+                                ? `0 ${currencySymbol}`
+                                : `${convertFromTryMajor(ln.subtotalMajor, selectedCurrency).toLocaleString('tr-TR')} ${currencySymbol}`}
                             </span>
                           </div>
                         ))}
@@ -604,7 +608,7 @@ export const MobileCustomerWalletPage: React.FC<
                               completedBreakdown.netPayableBeforeTipMajor,
                               selectedCurrency
                             ).toLocaleString('tr-TR')}{' '}
-                            {selectedCurrency}
+                            {currencySymbol}
                           </span>
                         </div>
                       </div>
@@ -674,7 +678,7 @@ export const MobileCustomerWalletPage: React.FC<
                                   )
                                 : 0)
                             ).toLocaleString('tr-TR')}{' '}
-                            {selectedCurrency})
+                            {currencySymbol})
                           </button>
                         </>
                       )}
@@ -844,7 +848,7 @@ export const MobileCustomerWalletPage: React.FC<
                         </span>
                         <span className="text-xs font-black">
                           {convertFromTryMajor(item.priceMajor, selectedCurrency).toLocaleString('tr-TR')}{' '}
-                          {selectedCurrency}
+                          {currencySymbol}
                         </span>
                       </div>
                     </div>
@@ -987,7 +991,7 @@ export const MobileCustomerWalletPage: React.FC<
               </span>
               <p className="text-xl font-black text-white mt-1">
                 {convertFromTryMajor(walletBalanceMinor / 100, selectedCurrency).toLocaleString('tr-TR')}{' '}
-                {selectedCurrency}
+                {currencySymbol}
               </p>
             </div>
             <div className="text-right">

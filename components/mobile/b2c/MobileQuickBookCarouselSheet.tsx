@@ -7,7 +7,10 @@ import {
   MobileDiscoveryListingItem,
   searchMobileMarketplace,
 } from '../../../services/mobile/mobileDiscoveryService';
-import { convertFromTryMajor } from '../../../services/mobile/mobileRegionCurrencyService';
+import {
+  convertFromTryMajor,
+  getCurrencySymbol,
+} from '../../../services/mobile/mobileRegionCurrencyService';
 import { VENUE_VISUAL_CATALOG } from '../../../services/mobile/mobileVisualAssets';
 import MobileStorefrontDetailDrawer, {
   StorefrontSpecialistProfile,
@@ -44,6 +47,7 @@ export const MobileQuickBookCarouselSheet: React.FC<
 > = ({ listings, initialVerticalFilter = 'all', onClose, onOpenBooking }) => {
   const { themeMode, selectedCurrency } = useMobileAppSession();
   const isDark = themeMode === 'dark';
+  const currencySymbol = getCurrencySymbol(selectedCurrency);
   const [verticalFilter, setVerticalFilter] = useState<
     LariBusinessVertical | 'all'
   >(initialVerticalFilter);
@@ -198,7 +202,7 @@ export const MobileQuickBookCarouselSheet: React.FC<
                           <Clock className="h-3.5 w-3.5" /> İlk müsait {item.nextAvailableSlot}
                         </span>
                         <span className="font-black">
-                          {convertedPrice?.toLocaleString('tr-TR')} {selectedCurrency}
+                          {convertedPrice?.toLocaleString('tr-TR')} {currencySymbol}
                         </span>
                       </div>
                     </div>

@@ -202,12 +202,11 @@ export function validateMobileUserProfile(
   if (cfg.code === 'TR' && !digits.startsWith('5')) {
     errors.phoneDigits = 'Türkiye cep telefonu 5 ile başlayan 10 rakam olmalıdır (örn: 5325550140).';
   }
-  const ageNum = Number(profile.age);
-  if (!profile.age.trim() || !Number.isInteger(ageNum) || ageNum < 16 || ageNum > 110) {
-    errors.age = 'Yaş 16 ile 110 arasında geçerli bir sayı olmalıdır.';
-  }
-  if (!profile.gender) {
-    errors.gender = 'Cinsiyet seçimi zorunludur.';
+  if (profile.age.trim()) {
+    const ageNum = Number(profile.age);
+    if (!Number.isInteger(ageNum) || ageNum < 16 || ageNum > 110) {
+      errors.age = 'Yaş 16 ile 110 arasında geçerli bir sayı olmalıdır.';
+    }
   }
   if (!profile.country.trim()) {
     errors.country = 'Ülke seçimi zorunludur.';
@@ -218,12 +217,25 @@ export function validateMobileUserProfile(
   if (!profile.district.trim()) {
     errors.district = 'İlçe seçimi zorunludur.';
   }
-  // interestedSectors is explicitly optional
+  // age, gender and interestedSectors are optional at signup
 
   return {
     valid: Object.keys(errors).length === 0,
     errors,
   };
+}
+
+export const CURRENCY_SYMBOLS: Record<SupportedCurrency, string> = {
+  TRY: '₺',
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+};
+
+export function getCurrencySymbol(
+  currency: SupportedCurrency = 'TRY'
+): string {
+  return CURRENCY_SYMBOLS[currency] || '₺';
 }
 
 const APPROX_RATES_FROM_TRY: Record<SupportedCurrency, number> = {
@@ -255,7 +267,7 @@ export function formatCurrencyLabel(
   amountMajor: number,
   currency: SupportedCurrency = 'TRY'
 ): string {
-  return `${Math.round(amountMajor).toLocaleString('tr-TR')} ${currency}`;
+  return `${Math.round(amountMajor).toLocaleString('tr-TR')} ${getCurrencySymbol(currency)}`;
 }
 
 /**

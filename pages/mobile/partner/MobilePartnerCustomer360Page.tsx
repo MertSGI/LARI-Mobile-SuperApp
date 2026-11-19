@@ -10,7 +10,10 @@ export async function scanMobileReactivationCohorts(tenantId: string, days: 60 |
 export async function grantMobileCustomerPackage(input: Parameters<typeof loyaltyReactivationService.grantCustomerPackage>[0], deps: Customer360Deps = {}) { return (deps.loyalty ?? loyaltyReactivationService).grantCustomerPackage(input); }
 
 import { useMobileAppSession } from '../../../contexts/MobileAppSessionContext';
-import { convertFromTryMajor } from '../../../services/mobile/mobileRegionCurrencyService';
+import {
+  convertFromTryMajor,
+  getCurrencySymbol,
+} from '../../../services/mobile/mobileRegionCurrencyService';
 import { sanitizeUserMessage } from '../../../services/mobile/mobileUiSanitizer';
 
 function verifyStaffPinInput(pin: string): boolean {
@@ -20,6 +23,7 @@ function verifyStaffPinInput(pin: string): boolean {
 export const MobilePartnerCustomer360Page: React.FC = () => {
   const { showToast, selectedCurrency, themeMode } = useMobileAppSession();
   const isDark = themeMode === 'dark';
+  const currencySymbol = getCurrencySymbol(selectedCurrency);
   const [unlocked, setUnlocked] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
@@ -149,7 +153,7 @@ export const MobilePartnerCustomer360Page: React.FC = () => {
                 <p className={`text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-500'}`}>
                   Toplam Harcama:{' '}
                   {convertFromTryMajor(18450, selectedCurrency).toLocaleString('tr-TR')}{' '}
-                  {selectedCurrency} • 14 Ziyaret
+                  {currencySymbol} • 14 Ziyaret
                 </p>
               </div>
               <span className="px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold">Sadık</span>
